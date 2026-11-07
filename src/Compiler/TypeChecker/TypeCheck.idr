@@ -151,7 +151,7 @@ attemptCheck computation = do
   case execStateT stateBefore computation of
     Right stateAfter       => put stateAfter >> pure Nothing
     Left (Blocked symbol)  => pure (Just symbol)
-    Left failure           => lift (Left failure)
+    Left (Failed err)      => typeError err
 
 -- The items whose check blocked, each with the symbol it is waiting for.
 attemptAllChecks : (ResolvedItem -> StateT TypeCheckerState (Either CheckFailure) ()) 
@@ -179,8 +179,7 @@ runBodyAndSignatureChecks (S fuel) work = do
     then runBodyAndSignatureChecks fuel next
     else do
       checkerState <- get
-      let typeError = resolutionCycleTypeError checkerState.tables (stuckSignatures ++ stuckBodies)
-      lift (Left (Failed typeError)) 
+      typeError (resolutionCycleTypeError checkerState.tables (stuckSignatures ++ stuckBodies))
 
 resolveAndCheckTypes : TypeCheckerState -> List ResolvedItem -> Either TypeError TypeTables
 resolveAndCheckTypes seededState items =

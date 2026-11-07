@@ -182,9 +182,9 @@ parsePrimaryExpression :
 ||| Repeatedly attaches calls, indexing, fields, tuple indices, and method
 ||| calls to an already-parsed receiver. Every recognized postfix form builds
 ||| a new outer expression and recursively continues, producing a maximal
-||| chain such as `values()[i].field.len()`. An unrecognized token is not an
+||| chain such as `values()[i].field.size()`. An unrecognized token is not an
 ||| error: it terminates the chain and is returned untouched to the caller.
-||| Tested by: `fn postfix() {values()[i].field.len()}`.
+||| Tested by: `fn postfix() {values()[i].field.size()}`.
 parsePostfixExpression :
      {0 root : List (Bounded Token)}
   -> SurfaceExpr
@@ -1074,7 +1074,7 @@ parseBracedBlock : Rule True SurfaceBlock
 ||| Falls through to primary and postfix parsing once no unary prefix
 ||| operator is present. Shared by the operator dispatch below and by the
 ||| final catch-all clause, so the fallback is written exactly once.
-||| Tested by: `fn postfix() {values()[i].field.len()}`.
+||| Tested by: `fn postfix() {values()[i].field.size()}`.
 parsePrimaryAndPostfix :
      {0 root : List (Bounded Token)}
   -> ExpressionRule True root

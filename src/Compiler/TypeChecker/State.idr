@@ -5,6 +5,7 @@ import Data.SortedMap
 import Data.SortedSet
 
 import Compiler.TypeChecker.Data
+import Compiler.TypeChecker.Helper
 import Compiler.TypeChecker.TcType
 import Compiler.TypeChecker.Type
 import Frontend.Syntax.AST
@@ -64,4 +65,14 @@ data CheckFailure
   = Blocked SymbolId                               -- needs this symbol's signature, value or checked body first
   | Failed TypeError
 
+export
+typeError : TypeError -> StateT TypeCheckerState (Either CheckFailure) a
+typeError err = lift (Left (Failed err))
 
+export
+blocked : SymbolId -> StateT TypeCheckerState (Either CheckFailure) a
+blocked symbol = do
+  checkerState <- get
+  case lookup symbol checkerState.declarations of
+    Just _  => lift (Left (Blocked symbol))
+    Nothing => unreachable {function = "blocked"} {reason = "symbol cannot be found in checker state top level declarations"}

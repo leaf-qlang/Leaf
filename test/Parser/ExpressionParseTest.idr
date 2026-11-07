@@ -527,12 +527,12 @@ runExpressionParseTests = runTests $ Test.do
         )
 
   test "postfix index field tuple-index and method-call expressions" $
-    parseAndPrettyPrint "fn postfix() {a[i]; p.x; t.0; a.len()}" `shouldBe`
-      Just "fn postfix() { a[i]; p.x; t.0; a.len() }"
+    parseAndPrettyPrint "fn postfix() {a[i]; p.x; t.0; a.size()}" `shouldBe`
+      Just "fn postfix() { a[i]; p.x; t.0; a.size() }"
 
   test "chained postfix expressions" $
-    parseAndPrettyPrint "fn postfix() {values()[i].field.len()}" `shouldBe`
-      Just "fn postfix() { values()[i].field.len() }"
+    parseAndPrettyPrint "fn postfix() {values()[i].field.size()}" `shouldBe`
+      Just "fn postfix() { values()[i].field.size() }"
 
   test "postfix recursion terminates through a deep mixed chain" $
     parseAndPrettyPrint

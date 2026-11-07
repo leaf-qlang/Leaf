@@ -241,10 +241,12 @@ data Builtin
   | BuiltinClean
   | BuiltinDiscard
   | BuiltinIsolated
+  | BuiltinLen
   | BuiltinMeasr
   | BuiltinProduct
   | BuiltinQAlloc
   | BuiltinReset
+  | BuiltinRev
   | BuiltinTensor
   | BuiltinSeparable
   | BuiltinStabilized
@@ -265,10 +267,12 @@ showBuiltinLeaf b =
     BuiltinClean     => "clean"
     BuiltinDiscard   => "discard"
     BuiltinIsolated  => "isolated"
+    BuiltinLen       => "len"
     BuiltinMeasr     => "measr"
     BuiltinProduct   => "product"
     BuiltinQAlloc    => "qalloc"
     BuiltinReset     => "reset"
+    BuiltinRev       => "rev"
     BuiltinTensor    => "tensor"
     BuiltinSeparable => "separable"
     BuiltinStabilized => "stabilized"

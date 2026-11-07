@@ -619,11 +619,11 @@ runLexerTests = runTests $ Test.do
         ]
 
   test "paths, tuple fields, and method calls tokenize structurally" $
-    lexTokenValues "my_library::helper t.0 a.len()" `shouldBe`
+    lexTokenValues "my_library::helper t.0 a.size()" `shouldBe`
       Right
         [ TokIdent "my_library", TokSym SymDoubleColon, TokIdent "helper"
         , TokIdent "t", TokSym SymDot, TokIntLitRaw "0"
-        , TokIdent "a", TokSym SymDot, TokIdent "len"
+        , TokIdent "a", TokSym SymDot, TokIdent "size"
         , TokSym SymLParen, TokSym SymRParen
         , TokEOF
         ]
@@ -724,11 +724,11 @@ runLexerTests = runTests $ Test.do
         , TokEOF
         ]
 
-  test "slice len indexing and re-slicing tokenize with method and range separators" $
-    lexTokenValues "let n = s.len(); let x = s[0]; let mid = &s[1..n-1];" `shouldBe`
+  test "slice size indexing and re-slicing tokenize with method and range separators" $
+    lexTokenValues "let n = s.size(); let x = s[0]; let mid = &s[1..n-1];" `shouldBe`
       Right
         [ TokKw KwLet, TokIdent "n", TokSym SymEq
-        , TokIdent "s", TokSym SymDot, TokIdent "len", TokSym SymLParen, TokSym SymRParen
+        , TokIdent "s", TokSym SymDot, TokIdent "size", TokSym SymLParen, TokSym SymRParen
         , TokSym SymSemi
         , TokKw KwLet, TokIdent "x", TokSym SymEq
         , TokIdent "s", TokSym SymLBracket, TokIntLitRaw "0", TokSym SymRBracket
