@@ -18,17 +18,29 @@ import TypeChecker.TypeTranslationTest
 
 main : IO ()
 main = do
+  putStrLn "== Lexer.LexerTest =="
   runLexerTests
+  putStrLn "== Parser.ExpressionParseTest =="
   runExpressionParseTests
+  putStrLn "== Parser.FunctionParseTest =="
   runFunctionParseTests
+  putStrLn "== Parser.TopModuleParseTest =="
   runTopModuleParseTests
+  putStrLn "== Parser.ValidationTests =="
   runPostParseValidationTests
+  putStrLn "== Desugarer.DesugaringTest =="
   runDesugaringTests
+  putStrLn "== ScopeAndNameResolution.ResolveTest =="
   runSymbolAndScopeResolutionTests
+  putStrLn "== ScopeAndNameResolution.PreludeTest =="
   runPreludeFunctionsResolutionTests
+  putStrLn "== ScopeAndNameResolution.ValidationTest =="
   runResolutionValidationTests
+  putStrLn "== TypeChecker.NumericTest =="
   runNumericTests
+  putStrLn "== TypeChecker.TypeTranslationTest =="
   runTypeTranslationTests
+  putStrLn "== CompileCodeExamplesTest =="
   runCompileCodeExamplesTests
   Right () <- discoverAndCompileExamples
     | Left err => do
