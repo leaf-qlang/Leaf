@@ -150,6 +150,7 @@ unsignedIntegerTypeSuffix =
   <|> "u32"
   <|> "u64"
   <|> "u128"
+  <|> "usize"
 
 integerTypeSuffix : RExp True
 integerTypeSuffix = signedIntegerTypeSuffix <|> unsignedIntegerTypeSuffix

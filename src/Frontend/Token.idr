@@ -49,6 +49,7 @@ data TypPrimName
   | TypPrimU32
   | TypPrimU64
   | TypPrimU128
+  | TypPrimUsize
   | TypPrimQbit
   | TypPrimQState
 
@@ -75,6 +76,7 @@ showTypPrimLeaf ty =
     TypPrimU32      => "u32"
     TypPrimU64      => "u64"
     TypPrimU128     => "u128"
+    TypPrimUsize    => "usize"
     TypPrimQbit    => "qbit"
     TypPrimQState   => "qstate"
 

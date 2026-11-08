@@ -130,6 +130,14 @@ u64 : LeafType
 u64 = LeafPrimitiveType TypPrimU64
 
 export
+u128 : LeafType
+u128 = LeafPrimitiveType TypPrimU128
+
+export
+usize : LeafType
+usize = LeafPrimitiveType TypPrimUsize
+
+export
 f32 : LeafType
 f32 = LeafPrimitiveType TypPrimF32
 

@@ -387,7 +387,7 @@ runLexerTests = runTests $ Test.do
         ]
 
   test "primitive types are primitive type tokens" $
-    lexTokenValues "angle32 angle64 bit bool f32 f64 i8 i16 i32 i64 i128 param u8 u16 u32 u64 u128 qbit qstate" `shouldBe`
+    lexTokenValues "angle32 angle64 bit bool f32 f64 i8 i16 i32 i64 i128 param u8 u16 u32 u64 u128 usize qbit qstate" `shouldBe`
       Right
         [ TokTypPrim TypPrimAngle32, TokTypPrim TypPrimAngle64
         , TokTypPrim TypPrimBit, TokTypPrim TypPrimBool
@@ -397,9 +397,14 @@ runLexerTests = runTests $ Test.do
         , TokTypPrim TypPrimI128, TokTypPrim TypPrimParam
         , TokTypPrim TypPrimU8, TokTypPrim TypPrimU16
         , TokTypPrim TypPrimU32, TokTypPrim TypPrimU64
-        , TokTypPrim TypPrimU128, TokTypPrim TypPrimQbit
-        , TokTypPrim TypPrimQState, TokEOF
+        , TokTypPrim TypPrimU128, TokTypPrim TypPrimUsize
+        , TokTypPrim TypPrimQbit, TokTypPrim TypPrimQState
+        , TokEOF
         ]
+
+  test "usize is a primitive type but a longer identifier starting with it is not" $
+    lexTokenValues "usize usize_len" `shouldBe`
+      Right [TokTypPrim TypPrimUsize, TokIdent "usize_len", TokEOF]
 
   test "Param is prelude identifier while param is primitive type" $
     lexTokenValues "Param param" `shouldBe`
@@ -794,23 +799,26 @@ runLexerTests = runTests $ Test.do
   -- Numbers.
   ------------------------------------------------------------
   test "decimal integers may contain underscores and suffixes" $
-    lexTokenValues "0 1_000 123i32 123_i32 9u128 9_u128 10_u32" `shouldBe`
+    lexTokenValues "0 1_000 123i32 123_i32 9u128 9_u128 10_u32 7usize 7_usize" `shouldBe`
       Right
         [ TokIntLitRaw "0", TokIntLitRaw "1_000"
         , TokIntLitRaw "123i32", TokIntLitRaw "123_i32"
         , TokIntLitRaw "9u128", TokIntLitRaw "9_u128"
         , TokIntLitRaw "10_u32"
+        , TokIntLitRaw "7usize", TokIntLitRaw "7_usize"
         , TokEOF
         ]
 
   test "radix integers may contain underscores and suffixes" $
-    lexTokenValues "0b1010 0b_1010u8 0o7_1_i16 0xff 0xFF 0xff_u8 0x_FF_u128 0b1111_1111_1001_0000i64" `shouldBe`
+    lexTokenValues "0b1010 0b_1010u8 0o7_1_i16 0xff 0xFF 0xff_u8 0x_FF_u128 0b1111_1111_1001_0000i64 0xffusize 0b_1010_usize 0o17usize" `shouldBe`
       Right
         [ TokIntLitRaw "0b1010", TokIntLitRaw "0b_1010u8"
         , TokIntLitRaw "0o7_1_i16", TokIntLitRaw "0xff"
         , TokIntLitRaw "0xFF", TokIntLitRaw "0xff_u8"
         , TokIntLitRaw "0x_FF_u128"
         , TokIntLitRaw "0b1111_1111_1001_0000i64"
+        , TokIntLitRaw "0xffusize", TokIntLitRaw "0b_1010_usize"
+        , TokIntLitRaw "0o17usize"
         , TokEOF
         ]
 

@@ -71,7 +71,7 @@ functionSignatureTests = Test.do
       `shouldBe` accepted
 
   test "pub items type-check like private ones" $
-    typeCheckOutcome "pub const N: u32 = 2; pub fn f(a: [i32; N]) -> [i32; N] { a }" `shouldBe` accepted
+    typeCheckOutcome "pub const N: u32 = 2; pub fn f(a: [i32; N as usize]) -> [i32; N as usize] { a }" `shouldBe` accepted
 
   test "a qstate parameter type is unsupported" $
     typeCheckOutcome "fn f(s: qstate) {}"
@@ -107,18 +107,18 @@ forwardReferenceTests = Test.do
     typeCheckOutcome "fn f() -> i32 { FIVE } const FIVE: i32 = 5;" `shouldBe` accepted
 
   test "a signature length may use a constant declared later" $
-    typeCheckOutcome "fn f(a: [i32; N]) -> i32 { a[0] } const N: u32 = 4;" `shouldBe` accepted
+    typeCheckOutcome "fn f(a: [i32; N as usize]) -> i32 { a[0] } const N: u32 = 4;" `shouldBe` accepted
 
   test "a signature length may call a const fn declared later" $
-    typeCheckOutcome "fn f(a: [i32; square(2)]) {} const fn square(x: u32) -> u32 { x * x }"
+    typeCheckOutcome "fn f(a: [i32; square(2) as usize]) {} const fn square(x: u32) -> u32 { x * x }"
       `shouldBe` accepted
 
   test "a signature length that needs several rounds is evaluated" $
-    typeCheckOutcome "fn f(a: [i32; LEN]) {} const LEN: u32 = double(HALF); const HALF: u32 = 2; const fn double(x: u32) -> u32 { x * 2 } fn g() { let a: [i32; 4] = [0; 4]; f(a); }"
+    typeCheckOutcome "fn f(a: [i32; LEN as usize]) {} const LEN: u32 = double(HALF); const HALF: u32 = 2; const fn double(x: u32) -> u32 { x * 2 } fn g() { let a: [i32; 4] = [0; 4]; f(a); }"
       `shouldBe` accepted
 
   test "a recursive const fn may size a signature" $
-    typeCheckOutcome "const fn fact(n: u32) -> u32 { if n == 0 { 1 } else { n * fact(n - 1) } } fn f(a: [i32; fact(3)]) {} fn g() { let a: [i32; 6] = [0; 6]; f(a); }"
+    typeCheckOutcome "const fn fact(n: u32) -> u32 { if n == 0 { 1 } else { n * fact(n - 1) } } fn f(a: [i32; fact(3) as usize]) {} fn g() { let a: [i32; 6] = [0; 6]; f(a); }"
       `shouldBe` accepted
 
 -- Retry boundaries and independently checked lengths (plan §2.3, §2.5, §3.3).
@@ -126,19 +126,19 @@ forwardReferenceTests = Test.do
 signatureRetryTests : List ETest
 signatureRetryTests = Test.do
   test "mutually recursive const functions can produce a finite signature length" $
-    typeCheckOutcome "fn f(a: [i32; even(4)]) {} const fn even(n: u32) -> u32 { if n == 0 { 1 } else { odd(n - 1) } } const fn odd(n: u32) -> u32 { if n == 0 { 0 } else { even(n - 1) } } fn g() { f([0; 1]); }"
+    typeCheckOutcome "fn f(a: [i32; even(4) as usize]) {} const fn even(n: u32) -> u32 { if n == 0 { 1 } else { odd(n - 1) } } const fn odd(n: u32) -> u32 { if n == 0 { 0 } else { even(n - 1) } } fn g() { f([0; 1]); }"
       `shouldBe` accepted
 
   test "nested function types evaluate both parameter and return array lengths" $
-    typeCheckOutcome "fn run(g: fn(a: [i32; N]) -> [i32; N], a: [i32; N]) -> [i32; N] { g(a) } const N: u32 = 2; fn identity(a: [i32; 2]) -> [i32; 2] { a } fn f() { let a: [i32; 2] = run(identity, [1, 2]); }"
+    typeCheckOutcome "fn run(g: fn(a: [i32; N as usize]) -> [i32; N as usize], a: [i32; N as usize]) -> [i32; N as usize] { g(a) } const N: u32 = 2; fn identity(a: [i32; 2]) -> [i32; 2] { a } fn f() { let a: [i32; 2] = run(identity, [1, 2]); }"
       `shouldBe` accepted
 
   test "the same dependent length can occur in several parameter and result types" $
-    typeCheckOutcome "fn f(a: [i32; size()], b: [bool; size()]) -> ([i32; size()], [bool; size()]) { (a, b) } const fn size() -> u32 { COUNT } const COUNT: u32 = 2; fn g() { let pair: ([i32; 2], [bool; 2]) = f([1, 2], [true, false]); }"
+    typeCheckOutcome "fn f(a: [i32; size() as usize], b: [bool; size() as usize]) -> ([i32; size() as usize], [bool; size() as usize]) { (a, b) } const fn size() -> u32 { COUNT } const COUNT: u32 = 2; fn g() { let pair: ([i32; 2], [bool; 2]) = f([1, 2], [true, false]); }"
       `shouldBe` accepted
 
   test "a blocked body retries with its return context and earlier local inference intact" $
-    typeCheckOutcome "fn f() -> i16 { let result = 7; let a: [i32; N] = [0; N]; result } const N: u32 = size(); const fn size() -> u32 { 2 }"
+    typeCheckOutcome "fn f() -> i16 { let result = 7; let a: [i32; N as usize] = [0; N as usize]; result } const N: u32 = size(); const fn size() -> u32 { 2 }"
       `shouldBe` accepted
 
   test "an isolated length does not default unrelated local inference variables" $
@@ -146,7 +146,7 @@ signatureRetryTests = Test.do
       `shouldBe` accepted
 
   test "several blocked constants and signatures settle without a false cycle" $
-    typeCheckOutcome "fn f(a: [i32; FIRST]) -> [i32; SECOND] { a } const FIRST: u32 = next(); const SECOND: u32 = LAST; const fn next() -> u32 { SECOND } const LAST: u32 = 3; fn g() { let a: [i32; 3] = f([0; 3]); }"
+    typeCheckOutcome "fn f(a: [i32; FIRST as usize]) -> [i32; SECOND as usize] { a } const FIRST: u32 = next(); const SECOND: u32 = LAST; const fn next() -> u32 { SECOND } const LAST: u32 = 3; fn g() { let a: [i32; 3] = f([0; 3]); }"
       `shouldBe` accepted
 
 -- Array lengths in signatures (plan §3.1, §3.4)
@@ -158,8 +158,8 @@ signatureLengthTests = Test.do
   test "a constant-expression length is evaluated" $
     typeCheckOutcome "fn f(a: [i32; 2 + 2]) {} fn g() { let a: [i32; 4] = [0; 4]; f(a); }" `shouldBe` accepted
 
-  test "a u64 constant may size an array" $
-    typeCheckOutcome "const N: u64 = 4; fn f(a: [i32; N]) {} fn g() { let a: [i32; 4] = [0; 4]; f(a); }"
+  test "an explicit usize cast lets a u64 constant size an array" $
+    typeCheckOutcome "const N: u64 = 4; fn f(a: [i32; N as usize]) {} fn g() { let a: [i32; 4] = [0; 4]; f(a); }"
       `shouldBe` accepted
 
   test "a signed constant cannot size an array" $
@@ -170,12 +170,12 @@ signatureLengthTests = Test.do
     typeCheckOutcome "const FLAG: bool = true; fn f(a: [i32; FLAG]) {}"
       `shouldBe` rejectedWith (InvalidArrayLength bool (spanAt 1 40))
 
-  test "a length that does not fit u32 is rejected" $
-    typeCheckOutcome "const N: u64 = 4294967296; fn f(a: [i32; N]) {}"
-      `shouldBe` rejectedWith (ArrayLengthTooLarge 4294967296 (spanAt 1 42))
+  test "a u128 length is rejected even when its value is known" $
+    typeCheckOutcome "const N: u128 = 18446744073709551616; fn f(a: [i32; N]) {}"
+      `shouldBe` rejectedWith (InvalidArrayLength u128 (spanAt 1 53))
 
   test "a non-const call cannot size a signature" $
-    typeCheckOutcome "fn g() -> u32 { 3 } fn f(a: [i32; g()]) {}"
+    typeCheckOutcome "fn g() -> u32 { 3 } fn f(a: [i32; g() as usize]) {}"
       `shouldBe` rejectedWith (NotAConstantExpression (spanAt 1 35))
 
   test "an argument's array length must equal the parameter's" $
@@ -255,11 +255,11 @@ declarationCycleTests = Test.do
       `shouldBe` rejectedWith (CyclicDeclaration ["B", "A"] (spanAt 1 7))
 
   test "a signature length and a const fn call that need each other are a cycle" $
-    typeCheckOutcome "const fn f(a: [i32; N]) -> u32 { 3 } const N: u32 = f([0; 3]);"
+    typeCheckOutcome "const fn f(a: [i32; N as usize]) -> u32 { 3 } const N: u32 = f([0; 3]);"
       `shouldBe` rejectedWith (CyclicDeclaration ["N", "f"] (spanAt 1 10))
 
   test "an item waiting on a cycle is not listed in it" $
-    typeCheckOutcome "const N: u32 = M; const M: u32 = N; fn f(a: [i32; N]) {}"
+    typeCheckOutcome "const N: u32 = M; const M: u32 = N; fn f(a: [i32; N as usize]) {}"
       `shouldBe` rejectedWith (CyclicDeclaration ["N", "M"] (spanAt 1 40))
 
   test "a three-constant dependency cycle reports every cycle member once" $
@@ -275,23 +275,23 @@ declarationCycleTests = Test.do
 lazyDependencyTests : List ETest
 lazyDependencyTests = Test.do
   test "a constant reference in an unselected else branch does not create a cycle" $
-    typeCheckOutcome "const A: u32 = if true { 1 } else { B }; const B: u32 = A; fn f() { let a: [i32; B] = [0; 1]; }"
+    typeCheckOutcome "const A: u32 = if true { 1 } else { B }; const B: u32 = A; fn f() { let a: [i32; B as usize] = [0; 1]; }"
       `shouldBe` accepted
 
   test "a constant reference in an unselected then branch does not create a cycle" $
-    typeCheckOutcome "const A: u32 = if false { B } else { 2 }; const B: u32 = A; fn f() { let a: [i32; B] = [0; 2]; }"
+    typeCheckOutcome "const A: u32 = if false { B } else { 2 }; const B: u32 = A; fn f() { let a: [i32; B as usize] = [0; 2]; }"
       `shouldBe` accepted
 
   test "short-circuiting and avoids a cyclic constant value dependency" $
-    typeCheckOutcome "const A: bool = false && B; const B: bool = A; const N: u32 = if (B) { 0 } else { 1 }; fn f() { let a: [i32; N] = [0; 1]; }"
+    typeCheckOutcome "const A: bool = false && B; const B: bool = A; const N: u32 = if (B) { 0 } else { 1 }; fn f() { let a: [i32; N as usize] = [0; 1]; }"
       `shouldBe` accepted
 
   test "short-circuiting or avoids a cyclic constant value dependency" $
-    typeCheckOutcome "const A: bool = true || B; const B: bool = A; const N: u32 = if (B) { 1 } else { 0 }; fn f() { let a: [i32; N] = [0; 1]; }"
+    typeCheckOutcome "const A: bool = true || B; const B: bool = A; const N: u32 = if (B) { 1 } else { 0 }; fn f() { let a: [i32; N as usize] = [0; 1]; }"
       `shouldBe` accepted
 
   test "an unselected const function branch does not wait on its caller's constant" $
-    typeCheckOutcome "const fn size() -> u32 { if true { 2 } else { N } } const N: u32 = size(); fn f() { let a: [i32; N] = [0; 2]; }"
+    typeCheckOutcome "const fn size() -> u32 { if true { 2 } else { N } } const N: u32 = size(); fn f() { let a: [i32; N as usize] = [0; 2]; }"
       `shouldBe` accepted
 
   test "a constant reference in the selected branch is a cycle" $
@@ -338,6 +338,41 @@ preludeValueTests = Test.do
     typeCheckOutcome "fn run(g: fn(x: f64) -> f64) -> f64 { g(1.0) } fn main() -> f64 { run(sin) }"
       `shouldBe` accepted
 
+-- Length typing precedes value conversion; usize is distinct from every uN.
+usizeSignatureTests : List ETest
+usizeSignatureTests = Test.do
+  test "a u8 constant cannot size a signature without a cast" $
+    typeCheckOutcome "const N: u8 = 3; fn f(a: [i32; N]) {}"
+      `shouldBe` rejectedWith (InvalidArrayLength u8 (spanAt 1 32))
+
+  test "a u32 constant cannot size a signature without a cast" $
+    typeCheckOutcome "const N: u32 = 3; fn f(a: [i32; N]) {}"
+      `shouldBe` rejectedWith (InvalidArrayLength u32 (spanAt 1 33))
+
+  test "a u64 constant cannot size a signature without a cast" $
+    typeCheckOutcome "const N: u64 = 3; fn f(a: [i32; N]) {}"
+      `shouldBe` rejectedWith (InvalidArrayLength u64 (spanAt 1 33))
+
+  test "a u128 constant cannot size a signature without a cast" $
+    typeCheckOutcome "const N: u128 = 3; fn f(a: [i32; N]) {}"
+      `shouldBe` rejectedWith (InvalidArrayLength u128 (spanAt 1 34))
+
+  test "even a zero-valued u64 length has the wrong type" $
+    typeCheckOutcome "const N: u64 = 0; fn f(a: [i32; N]) {}"
+      `shouldBe` rejectedWith (InvalidArrayLength u64 (spanAt 1 33))
+
+  test "a usize-returning const function can size a signature directly" $
+    typeCheckOutcome "const fn size() -> usize { 3 } fn f(a: [i32; size()]) -> [i32; 3] { a }"
+      `shouldBe` accepted
+
+  test "a fixed u64 return type is not inferred as usize in a length" $
+    typeCheckOutcome "const fn size() -> u64 { 3 } fn f(a: [i32; size()]) {}"
+      `shouldBe` rejectedWith (InvalidArrayLength u64 (spanAt 1 44))
+
+  test "a u128 length cast truncates to the 64-bit usize target" $
+    typeCheckOutcome "const N: u128 = 18446744073709551617; fn f(a: [i32; N as usize]) -> [i32; 1] { a }"
+      `shouldBe` accepted
+
 export
 runSignatureCheckTests : IO ()
 runSignatureCheckTests =
@@ -352,4 +387,5 @@ runSignatureCheckTests =
     , declarationCycleTests
     , lazyDependencyTests
     , preludeValueTests
+    , usizeSignatureTests
     ]

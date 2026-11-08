@@ -54,10 +54,7 @@ implementation Show BorrowKind where
 public export
 data UnaryOperator
   = UnaryNegate             -- -x
-  | UnaryLogicalNot         -- !x   (spec shows `!` only on booleans; if a
-                            --       bitwise-not reading is ever added, it is
-                            --       an overload resolved later, not a new
-                            --       surface operator)
+  | UnaryLogicalNot         -- !x: logical not on bool, flip on bit, bitwise not on integers
   | UnaryBorrow BorrowKind  -- &x / &mut x
 
 %runElab derive "UnaryOperator" [Eq]

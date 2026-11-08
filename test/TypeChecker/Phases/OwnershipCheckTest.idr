@@ -159,11 +159,11 @@ partialMoveTests = Test.do
       `shouldBe` rejectedWith (LinearQbitNotConsumed (spanAt 1 14))
 
   test "a move through a dynamic index is not tracked" $
-    typeCheckOutcome "fn f(i: u32) { let qs = qalloc(2); discard(qs[i]); discard(qs[1 - i]); }"
-      `shouldBe` rejectedWith (UntrackedElementMove (spanAt 1 44))
+    typeCheckOutcome "fn f(i: usize) { let qs = qalloc(2); discard(qs[i]); discard(qs[1 - i]); }"
+      `shouldBe` rejectedWith (UntrackedElementMove (spanAt 1 46))
 
   test "a borrow through a dynamic index stays usable" $
-    typeCheckOutcome "fn f(i: u32) { let qs = qalloc(4); H(&qs[i]); discard(qs); }" `shouldBe` accepted
+    typeCheckOutcome "fn f(i: usize) { let qs = qalloc(4); H(&qs[i]); discard(qs); }" `shouldBe` accepted
 
   test "an owned qubit cannot be moved out through a reference" $
     typeCheckOutcome "fn f(qs: &[qbit]) { discard(qs[0]); }"
@@ -224,8 +224,8 @@ loanTests = Test.do
       `shouldBe` rejectedWith (OverlappingBorrow (spanAt 1 82))
 
   test "dynamic indexes are not proven disjoint" $
-    typeCheckOutcome "fn f(qs: &[qbit], i: u32, j: u32) { CX(&qs[i], &qs[j]); }"
-      `shouldBe` rejectedWith (OverlappingBorrow (spanAt 1 48))
+    typeCheckOutcome "fn f(qs: &[qbit], i: usize, j: usize) { CX(&qs[i], &qs[j]); }"
+      `shouldBe` rejectedWith (OverlappingBorrow (spanAt 1 52))
 
   test "a loan used again on the next iteration stays live" $
     typeCheckOutcome "fn f(qs: &[qbit]) { let r = &qs[0]; for i in 0..2 { H(r); H(&qs[0]); } }"

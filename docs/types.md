@@ -34,7 +34,7 @@ i8, i16, i32, i64, i128
 
 (5) Unsigned integer types:
 ```leaf
-u8, u16, u32, u64, u128
+u8, u16, u32, u64, u128, usize
 ```
 
 (6) Floating-point types:

@@ -56,6 +56,7 @@ data BuiltinForm                           -- which documented overload of a bui
   = SingleQbit                             -- measr(q), qalloc(), barrier()
   | SelectedQbits Nat                      -- measr(q1, q2, q3), barrier(q1, q2, q3)
   | QbitArray Nat                          -- measr(qs), qalloc(3)
+  | NoOverload                             -- len(a), rev(0..n)
 
 public export
 data Callee
@@ -198,8 +199,8 @@ data TypeError
   | CyclicDeclaration (List String) SourceSpan                 -- symbols involved in a declaration dependency cycle
   -- Constant evaluation
   | NotAConstantExpression SourceSpan                          -- non-const or indirect call, for loop or quantum operation in a const context
-  | InvalidArrayLength LeafType SourceSpan                     -- type of a length, repeat count or qalloc count that is not unsigned
-  | ArrayLengthTooLarge Integer SourceSpan                     -- length, repeat count or qalloc count of 2^32 or more
+  | InvalidArrayLength LeafType SourceSpan                     -- type of a length, repeat count or qalloc count that is not usize
+  | ArrayLengthTooLarge Integer SourceSpan                     -- count outside 0..usize::MAX; defensive, since a typed usize value and an in-range literal cannot cause it
   | ArithmeticOverflow LeafType SourceSpan                     -- type of the overflowing operation, ex: 255u8 + 1 or 1u8 << 8
   | DivisionByZeroInConstant SourceSpan
   | ConstEvaluationLimitExceeded SourceSpan                    -- constant evaluation ran out of steps
@@ -274,9 +275,9 @@ showTypeError typeError =
     NotAConstantExpression sourceSpan =>
       at sourceSpan "This expression cannot be evaluated at compile time."
     InvalidArrayLength actual sourceSpan =>
-      at sourceSpan $ "An array length, repeat count or qubit count must have an unsigned integer type, but has type '" ++ show actual ++ "'."
+      at sourceSpan $ "An array length, repeat count or qubit count must have type 'usize', but has type '" ++ show actual ++ "'."
     ArrayLengthTooLarge value sourceSpan =>
-      at sourceSpan $ "The length " ++ show value ++ " does not fit in 'u32'."
+      at sourceSpan $ "The length " ++ show value ++ " does not fit in 'usize'."
     ArithmeticOverflow operationType sourceSpan =>
       at sourceSpan $ "Arithmetic overflow in a constant of type '" ++ show operationType ++ "'."
     DivisionByZeroInConstant sourceSpan =>

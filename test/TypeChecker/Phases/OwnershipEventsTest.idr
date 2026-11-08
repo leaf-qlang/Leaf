@@ -44,7 +44,7 @@ copyAndMoveTests = Test.do
     typeCheckOutcome "fn f() -> qbit { let q = qalloc(); let q = H(q); q }" `shouldBe` accepted
 
   test "len reads an array's length without moving it" $
-    typeCheckOutcome "fn f() -> u32 { let qs = qalloc(3); let n = len(qs); discard(qs); n }"
+    typeCheckOutcome "fn f() -> usize { let qs = qalloc(3); let n = len(qs); discard(qs); n }"
       `shouldBe` accepted
 
   test "a shared classical reference is copied" $

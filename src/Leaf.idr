@@ -4,19 +4,32 @@ module Leaf
 
 import Compiler.Desugar.Desugar
 import Compiler.Desugar.Helper
+import Compiler.LambdaCalculusLowering.Data
+import Compiler.Prelude
+import Compiler.ScopeAndNameResolution.Data
+import Compiler.ScopeAndNameResolution.Helper
 import Compiler.ScopeAndNameResolution.Resolve
-import Compiler.TypeChecker.OwnershipEffects
+import Compiler.ScopeAndNameResolution.Validate
+import Compiler.TypeChecker.Data
+import Compiler.TypeChecker.Helper
+import Compiler.TypeChecker.Numeric
+import Compiler.TypeChecker.Phases.BodyCheck
 import Compiler.TypeChecker.Phases.ConstEval
 import Compiler.TypeChecker.Phases.EffectsCheck
+import Compiler.TypeChecker.Phases.OwnershipCheck
 import Compiler.TypeChecker.Phases.OwnershipEvents
 import Compiler.TypeChecker.Phases.SignatureCheck
 import Compiler.TypeChecker.Phases.TypedAstTranslation
 import Compiler.TypeChecker.PreludeSignatures
+import Compiler.TypeChecker.State
+import Compiler.TypeChecker.TcType
 import Compiler.TypeChecker.Type
+import Compiler.TypeChecker.TypeCheck
 import Compiler.TypeChecker.Validate
 import Compiler.Validation.PostParseValidation
 import Frontend.ASTData
 import Frontend.ASTPhases
+import Frontend.Helper
 import Frontend.Lexer.Error
 import Frontend.Lexer.Lexer
 import Frontend.Lexer.Regex
@@ -24,6 +37,7 @@ import Frontend.Lexer.Rules
 import Frontend.Parser.Error
 import Frontend.Parser.Helper
 import Frontend.Parser.Parser
+import Frontend.QuantumAnnotations
 import Frontend.Source
 import Frontend.Syntax.AST
 import Frontend.Syntax.Attribute
@@ -38,4 +52,3 @@ import Frontend.Syntax.Type
 import Frontend.Token
 import Frontend.Utils.ASTDebugPrinter
 import Frontend.Utils.ASTPrettyPrinter
-

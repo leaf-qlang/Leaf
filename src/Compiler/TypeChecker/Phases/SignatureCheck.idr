@@ -8,6 +8,7 @@ import Control.Monad.State
 import Compiler.ScopeAndNameResolution.Data
 import Compiler.TypeChecker.Data
 import Compiler.TypeChecker.Helper
+import Compiler.TypeChecker.Phases.BodyCheck
 import Compiler.TypeChecker.State
 import Compiler.TypeChecker.Type
 import Frontend.ASTData

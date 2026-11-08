@@ -24,7 +24,7 @@ primitiveTypesProgram = """
   fn primitive_types(
       b: bit, q: qbit, a32: angle32, a64: angle64, p: param,
       i1: i8, i2: i16, i3: i32, i4: i64, i5: i128,
-      u1: u8, u2: u16, u3: u32, u4: u64, u5: u128,
+      u1: u8, u2: u16, u3: u32, u4: u64, u5: u128, u6: usize,
       f1: f32, f2: f64, flag: bool, unit: ()
   ) {
       discard(q);
@@ -49,6 +49,7 @@ basicTypesProgram = """
       let u: u32 = 1;
       let u: u64 = 1;
       let u: u128 = 1;
+      let u: usize = 1;
       let unit: () = ();
       let unit = ();
       let theta: param = Param("theta");
@@ -95,6 +96,8 @@ basicTypesProgram = """
       let x = 34 as u64;
       let x: u128 = 34;
       let x = 34 as u128;
+      let x: usize = 34;
+      let x = 34 as usize;
       let x: f32 = 34.0;
       let x = 34 as f32;
       let x: f64 = 34.0;
@@ -111,7 +114,7 @@ basicTypesProgram = """
 ||| Spec §7 and §8: arrays, lengths and len.
 arraysProgram : String
 arraysProgram = """
-  const N: u64 = 4;
+  const N: usize = 4;
   fn arrays() {
       let bs: [bool; 4] = [true, false, true, false];
       let is: [i32; 3] = [1, 2, 3];
@@ -129,7 +132,7 @@ arraysProgram = """
       let a: [i32; 4];
       let b: [i32; 2 + 2];
       let c: [i32; N];
-      let d: [i32; 4u32];
+      let d: [i32; 4usize];
       let bools = [true, false, true, false];
       let ints = [1, 2, 3];
       let zeros = [0; 3];
@@ -138,7 +141,7 @@ arraysProgram = """
       discard(qbits);
       let units = [(), (), (), (), ()];
   }
-  fn member_access() -> u32 {
+  fn member_access() -> usize {
       let a = [1, 2, 3];
       let first = a[0];
       let n = len(a);
@@ -716,6 +719,8 @@ literalsProgram = """
       let b = 0b1111_1111_1001_0000i64;
       let z = 10u32;
       let z = 10_u32;
+      let z = 10usize;
+      let z = 10_usize;
       let z = 123i32;
       let z = 123_i32;
   }

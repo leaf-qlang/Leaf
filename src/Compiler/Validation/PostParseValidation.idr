@@ -48,10 +48,9 @@ import Frontend.Syntax.Type
 --       referent without owning it; the parser already rejects one directly
 --       after `&` (`&affine qbit`)
 --   * an array length written as a (possibly parenthesized) integer literal
---       with a signed type suffix (`[qbit; 3i8]`, `[0; (3i8)]`) or a value
---       that does not fit its unsigned suffix type (`[qbit; 256u8]`): an
---       array length is unsigned, so only an unsigned suffix or none is
---       accepted
+--       with a suffix other than usize (`[qbit; 3i8]`, `[0; (3u64)]`) or
+--       a suffixed usize value that exceeds the target range: an array length
+--       has type usize, so only a usize suffix or none is accepted
 --
 -- Duplicate bindings are checked by name resolution: an immutable bare
 -- pattern name may denote a constant rather than introduce a binding.
@@ -140,15 +139,15 @@ data ValidationError : Type where
     -> (qualifier : QuantumMultiplicityQualifier)
     -> ValidationError
 
-  -- An array length written as an integer literal with a signed type
-  -- suffix, e.g. `[qbit; 3i8]`. `errorSpan` points at the literal.
-  SignedArrayLength :
+  -- An array length written as an integer literal with a non-usize type
+  -- suffix, e.g. `[qbit; 3u64]`. `errorSpan` points at the literal.
+  NonUsizeArrayLength :
        (errorSpan : SourceSpan)
     -> (suffixType : TypPrimName)
     -> ValidationError
 
   -- An array length written as an integer literal whose value does not fit
-  -- its suffix type, e.g. `[qbit; 256u8]`. `errorSpan` points at the literal.
+  -- usize, e.g. `[qbit; 18446744073709551616usize]`. `errorSpan` points at the literal.
   ArrayLengthOutOfRange :
        (errorSpan : SourceSpan)
     -> (literalText : String)
@@ -171,7 +170,7 @@ validationErrorSpan err =
     ControlBasisLengthMismatch s _ _ => s
     MultiplicityQualifierInLetAndType s _ _ => s
     MultiplicityQualifierBehindReference s _ => s
-    SignedArrayLength s _ => s
+    NonUsizeArrayLength s _ => s
     ArrayLengthOutOfRange s _ _ _ => s
 
 public export
@@ -208,9 +207,9 @@ Interpolation ValidationError where
         MultiplicityQualifierBehindReference _ qualifier =>
           "`" ++ show qualifier ++ "` cannot be written behind a reference; " ++
           "a reference borrows its referent without owning it"
-        SignedArrayLength _ suffixType =>
-          "an array length cannot have the signed type suffix `" ++
-          show suffixType ++ "`; write an unsigned suffix such as `u32`, or none"
+        NonUsizeArrayLength _ suffixType =>
+          "an array length must have type `usize`, but the suffix gives it type `" ++
+          show suffixType ++ "`; write a `usize` suffix, or none"
         ArrayLengthOutOfRange _ literalText suffixType suffixMaximum =>
           "the array length `" ++ literalText ++ "` does not fit in `" ++
           show suffixType ++ "`, whose largest value is " ++ show suffixMaximum
@@ -330,8 +329,8 @@ qualifiersBehindReference referent =
          MultiplicityQualifierBehindReference qualifierInfo.span qualifier)
       (ownedPositionQualifiers referent)
 
--- An array length written as an integer literal may carry only an unsigned
--- type suffix, and its value must fit that type. Parentheses are looked
+-- An array length literal may carry only a usize suffix, and its value
+-- must fit that type. Parentheses are looked
 -- through because desugaring removes them, leaving the bare literal for
 -- typing. Lengths computed by other expressions are left to typing.
 arrayLengthErrors : SurfaceExpr -> List ValidationError
@@ -340,8 +339,8 @@ arrayLengthErrors (MkAstNode _ _ (ExprParenthesized innerLength)) =
 arrayLengthErrors
     (MkAstNode lengthInfo _ (ExprLiteral (MkAstNode _ _ (LiteralIntegerRaw raw)))) =
   case arrayLengthProblem raw of
-    Just (SignedLengthSuffix suffixType) =>
-      [SignedArrayLength lengthInfo.span suffixType]
+    Just (NonUsizeLengthSuffix suffixType) =>
+      [NonUsizeArrayLength lengthInfo.span suffixType]
     Just (LengthExceedsSuffixType suffixType suffixMaximum) =>
       [ArrayLengthOutOfRange lengthInfo.span raw suffixType suffixMaximum]
     Nothing => []

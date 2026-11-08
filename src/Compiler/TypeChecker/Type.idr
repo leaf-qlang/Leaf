@@ -97,3 +97,23 @@ removeMultiplicity leafType =
 export
 quantumMultiplicityFreeReference : BorrowKind -> LeafType -> LeafType
 quantumMultiplicityFreeReference borrowKind referent = LeafReferenceType borrowKind (removeMultiplicity referent)
+
+export
+hasOwnedQbit : LeafType -> Bool
+hasOwnedQbit leafType =
+  case leafType of
+    LeafPrimitiveType TypPrimQbit => True
+    LeafPrimitiveType _ => False
+    LeafTupleType elementTypes => any recur (forget elementTypes)
+    LeafArrayType elementType _ => recur elementType
+    LeafSliceType elementType => recur elementType
+    LeafRangeType elementType => recur elementType
+    LeafQualifiedType _ qualifiedType => recur qualifiedType
+    LeafReferenceType _ _ => False
+    LeafFunctionType _ _ _ _ => False
+    LeafUnitType => False
+    LeafNeverType => False
+    LeafNamedType _ => False
+  where
+    recur : LeafType -> Bool
+    recur nestedType = hasOwnedQbit (assert_smaller leafType nestedType)

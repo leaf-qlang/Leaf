@@ -339,7 +339,7 @@ compoundAssignmentTests = Test.do
 castTests : List ETest
 castTests = Test.do
   test "integers cast to integers, floats and angles" $
-    typeCheckOutcome "fn f() { let a = 34 as i8; let b = 34 as u128; let c = 34 as f32; let d = 34 as angle32; }"
+    typeCheckOutcome "fn f() { let a = 34 as i8; let b = 34 as u128; let c = 34 as f32; let d = 34 as angle32; let e = 34 as usize; }"
       `shouldBe` accepted
 
   test "floats cast to integers and angles" $
@@ -422,14 +422,14 @@ arrayTests = Test.do
       `shouldBe` rejectedWith (TypeMismatch (array i32 4) (array i32 3) (spanAt 1 28))
 
   test "a constant may be a repeat count" $
-    typeCheckOutcome "const N: u32 = 3; fn f() { let a: [i32; 3] = [0; N]; }" `shouldBe` accepted
+    typeCheckOutcome "const N: u32 = 3; fn f() { let a: [i32; 3] = [0; N as usize]; }" `shouldBe` accepted
 
-  test "a repeat count must be unsigned" $
+  test "a repeat count must have type usize" $
     typeCheckOutcome "const N: i32 = 3; fn f() { let a = [0; N]; }"
       `shouldBe` rejectedWith (InvalidArrayLength i32 (spanAt 1 40))
 
   test "a constant may size a local array annotation" $
-    typeCheckOutcome "const N: u64 = 4; fn f() { let c: [i32; N] = [0; 4]; }" `shouldBe` accepted
+    typeCheckOutcome "const N: u64 = 4; fn f() { let c: [i32; N as usize] = [0; 4]; }" `shouldBe` accepted
 
   test "an empty array takes its element type from the annotation" $
     typeCheckOutcome "fn f() { let a: [i32; 0] = []; }" `shouldBe` accepted
@@ -441,16 +441,20 @@ arrayTests = Test.do
     typeCheckOutcome "fn f() { let a = []; }"
       `shouldBe` rejectedWith (CannotInferType (spanAt 1 14))
 
-  test "an array index has type u32" $
-    typeCheckOutcome "fn f(a: [i32; 3], i: u32) -> i32 { a[i] }" `shouldBe` accepted
+  test "an array index has type usize" $
+    typeCheckOutcome "fn f(a: [i32; 3], i: usize) -> i32 { a[i] }" `shouldBe` accepted
 
-  test "an index position fixes a loop variable to u32" $
+  test "an index position fixes a loop variable to usize" $
     typeCheckOutcome "fn f(a: [i32; 4]) -> i32 { let mut s = 0; for i in 0..4 { s += a[i]; } s }"
       `shouldBe` accepted
 
-  test "an index must be u32" $
+  test "an index must be usize" $
     typeCheckOutcome "fn f(a: [i32; 3], i: i32) -> i32 { a[i] }"
-      `shouldBe` rejectedWith (TypeMismatch u32 i32 (spanAt 1 38))
+      `shouldBe` rejectedWith (TypeMismatch usize i32 (spanAt 1 38))
+
+  test "a u32 value is not an index" $
+    typeCheckOutcome "fn f(a: [i32; 3], i: u32) -> i32 { a[i] }"
+      `shouldBe` rejectedWith (TypeMismatch usize u32 (spanAt 1 38))
 
   test "a constant index past the end is rejected" $
     typeCheckOutcome "fn f(a: [i32; 3]) -> i32 { a[3] }"
@@ -466,12 +470,15 @@ arrayTests = Test.do
   test "an element can be written through a mutable array reference" $
     typeCheckOutcome "fn f(a: &mut [i32; 3]) { a[0] = 1; }" `shouldBe` accepted
 
-  test "an unsuffixed length literal defaults to u32, not i32" $
+  test "an unsuffixed length literal is inferred as usize" $
     typeCheckOutcome "fn f() { let a: [bool; 3000000000]; }" `shouldBe` accepted
 
-  test "an unsuffixed length literal must fit u32" $
-    typeCheckOutcome "fn f() { let a: [bool; 4294967296]; }"
-      `shouldBe` rejectedWith (IntegerLiteralOutOfRange 4294967296 u32 (spanAt 1 24))
+  test "an unsuffixed length literal may exceed u32" $
+    typeCheckOutcome "fn f() { let a: [bool; 4294967296]; }" `shouldBe` accepted
+
+  test "an unsuffixed length literal must fit usize" $
+    typeCheckOutcome "fn f() { let a: [bool; 18446744073709551616]; }"
+      `shouldBe` rejectedWith (IntegerLiteralOutOfRange 18446744073709551616 usize (spanAt 1 24))
 
 -- Slices (plan §5.6, spec §9)
 sliceTests : List ETest
@@ -877,10 +884,10 @@ qubitAllocationTests = Test.do
       `shouldBe` rejectedWith (TypeMismatch (array linearQbit 2) (array linearQbit 3) (spanAt 1 30))
 
   test "a constant may be a qalloc count" $
-    typeCheckOutcome "const N: u32 = 2; fn f() { let qs: [qbit; 2] = qalloc(N); discard(qs); }"
+    typeCheckOutcome "const N: u32 = 2; fn f() { let qs: [qbit; 2] = qalloc(N as usize); discard(qs); }"
       `shouldBe` accepted
 
-  test "a qalloc count must be unsigned" $
+  test "a qalloc count must have type usize" $
     typeCheckOutcome "const N: i64 = 2; fn f() { let qs = qalloc(N); discard(qs); }"
       `shouldBe` rejectedWith (InvalidArrayLength i64 (spanAt 1 44))
 
@@ -1084,20 +1091,24 @@ builtinTests = Test.do
     typeCheckOutcome "fn f(qs: &[qbit]) { let bs = measr(qs); }"
       `shouldBe` rejectedWith (UnsizedValue (slice bit) (spanAt 1 30))
 
-  test "len returns u32 for arrays and slices" $
-    typeCheckOutcome "fn f(xs: &[i32]) -> u32 { let a = [1, 2, 3]; let n: u32 = len(a); len(xs) + n }"
+  test "len returns usize for arrays and slices" $
+    typeCheckOutcome "fn f(xs: &[i32]) -> usize { let a = [1, 2, 3]; let n: usize = len(a); len(xs) + n }"
       `shouldBe` accepted
 
   test "len does not return i32" $
     typeCheckOutcome "fn f() -> i32 { let a = [1, 2]; len(a) }"
-      `shouldBe` rejectedWith (TypeMismatch i32 u32 (spanAt 1 33))
+      `shouldBe` rejectedWith (TypeMismatch i32 usize (spanAt 1 33))
+
+  test "len does not return u32" $
+    typeCheckOutcome "fn f() -> u32 { let a = [1, 2]; len(a) }"
+      `shouldBe` rejectedWith (TypeMismatch u32 usize (spanAt 1 33))
 
   test "len accepts mutable slices and array references" $
-    typeCheckOutcome "fn f(xs: &mut [i32], a: &[i32; 3]) -> u32 { len(xs) + len(a) }" `shouldBe` accepted
+    typeCheckOutcome "fn f(xs: &mut [i32], a: &[i32; 3]) -> usize { len(xs) + len(a) }" `shouldBe` accepted
 
   test "len takes exactly one argument" $
-    typeCheckOutcome "fn f() -> u32 { let a = [1, 2]; len(a, a) }"
-      `shouldBe` rejectedWith (WrongArgumentCount 1 2 (spanAt 1 33))
+    typeCheckOutcome "fn f() -> usize { let a = [1, 2]; len(a, a) }"
+      `shouldBe` rejectedWith (WrongArgumentCount 1 2 (spanAt 1 35))
 
   test "reset preserves an affine argument's multiplicity" $
     typeCheckOutcome "fn f(q: affine qbit) -> affine qbit { reset(q) }" `shouldBe` accepted
@@ -1510,7 +1521,7 @@ unreachableBreakTests = Test.do
 -- an exclusive slice endpoint may equal the array length (plan §5.6; spec §9).
 storedRangeIndexTests : List ETest
 storedRangeIndexTests = Test.do
-  test "indexing constrains a stored range's open integer endpoints to u32" $
+  test "indexing constrains a stored range's open integer endpoints to usize" $
     typeCheckOutcome "fn f(a: [i32; 3]) { let r = 0..2; let s: &[i32] = &a[r]; }"
       `shouldBe` accepted
 
@@ -1519,7 +1530,7 @@ storedRangeIndexTests = Test.do
       `shouldBe` accepted
 
   test "a reversed range stored in a local cannot index an array" $
-    rejected (typeCheckOutcome "fn f(a: [i32; 3]) { let r = rev(0u32..2u32); let s = &a[r]; }")
+    rejected (typeCheckOutcome "fn f(a: [i32; 3]) { let r = rev(0usize..2usize); let s = &a[r]; }")
       `shouldBe` True
 
   test "empty slices may start at the array's end" $
@@ -1545,6 +1556,93 @@ unspecifiedDiagnosticTests = Test.do
 
   test "rev requires a range operand" $
     rejected (typeCheckOutcome "fn f() { let r = rev(5); }")
+      `shouldBe` True
+
+-- The fixed 64-bit target still gives usize its own type and inference rules.
+usizeTests : List ETest
+usizeTests = Test.do
+  test "usize literals span the full 64-bit range outside length positions" $
+    typeCheckOutcome "fn f() { let zeroCount: usize = 0; let high: usize = 18446744073709551615; let suffixed = 18446744073709551615usize; }"
+      `shouldBe` accepted
+
+  test "an oversized usize suffix is rejected outside a length position" $
+    typeCheckOutcome "fn f() { let n = 18446744073709551616usize; }"
+      `shouldBe` rejectedWith (IntegerLiteralOutOfRange 18446744073709551616 usize (spanAt 1 18))
+
+  test "an oversized unsuffixed value cannot take a usize annotation" $
+    typeCheckOutcome "fn f() { let n: usize = 18446744073709551616; }"
+      `shouldBe` rejectedWith (IntegerLiteralOutOfRange 18446744073709551616 usize (spanAt 1 25))
+
+  test "usize context does not change an unrelated integer literal default" $
+    typeCheckOutcome "fn f() { let huge = 3000000000; let a = [0; 2]; let x = a[0]; }"
+      `shouldBe` rejectedWith (IntegerLiteralOutOfRange 3000000000 i32 (spanAt 1 21))
+
+  test "usize is distinct from u64 when returning a value" $
+    typeCheckOutcome "fn f(n: usize) -> u64 { n }"
+      `shouldBe` rejectedWith (TypeMismatch u64 usize (spanAt 1 25))
+
+  test "u64 is distinct from usize when returning a value" $
+    typeCheckOutcome "fn f(n: u64) -> usize { n }"
+      `shouldBe` rejectedWith (TypeMismatch usize u64 (spanAt 1 25))
+
+  test "arithmetic does not mix usize and u64 implicitly" $
+    typeCheckOutcome "fn f(a: usize, b: u64) { let n = a + b; }"
+      `shouldBe` rejectedWith (InvalidBinaryOperands "+" usize u64 (spanAt 1 34))
+
+  test "usize values cannot be negated" $
+    typeCheckOutcome "fn f(n: usize) { let x = -n; }"
+      `shouldBe` rejectedWith (InvalidUnaryOperand "-" usize (spanAt 1 26))
+
+  test "usize has integer arithmetic comparisons and bitwise operators" $
+    typeCheckOutcome "fn f(a: usize, b: usize, shift: i32) -> usize { let sum = a + b; let diff = a - b; let productValue = a * b; let quotient = a / b; let rest = a % b; let bits = (a & b) | (a ^ b); let inverse = !a; let left = a << shift; let right = a >> shift; let comparison: bool = a < b && a != b; sum + diff + productValue + quotient + rest + bits + inverse + left + right }"
+      `shouldBe` accepted
+
+  test "usize compound assignments retain their type" $
+    typeCheckOutcome "fn f(n: usize, shift: i32) -> usize { let mut x: usize = 8; x += n; x -= n; x *= n; x /= n; x %= n; x &= n; x |= n; x ^= n; x <<= shift; x >>= shift; x }"
+      `shouldBe` accepted
+
+  test "usize conversions require explicit casts in both directions" $
+    typeCheckOutcome "fn f(n: usize, m: u64) { let a: u64 = n as u64; let b: usize = m as usize; let c: usize = 5u8 as usize; let d: u8 = n as u8; let e: f64 = n as f64; let g: usize = e as usize; }"
+      `shouldBe` accepted
+
+  test "u64 is not an array index on a 64-bit target" $
+    typeCheckOutcome "fn f(a: [i32; 3], i: u64) -> i32 { a[i] }"
+      `shouldBe` rejectedWith (TypeMismatch usize u64 (spanAt 1 38))
+
+  test "a u32 constant is not implicitly converted to a repeat count" $
+    typeCheckOutcome "const N: u32 = 3; fn f() { let a = [0; N]; }"
+      `shouldBe` rejectedWith (InvalidArrayLength u32 (spanAt 1 40))
+
+  test "a u64 constant is not implicitly converted to a local array length" $
+    typeCheckOutcome "const N: u64 = 3; fn f() { let a: [i32; N]; }"
+      `shouldBe` rejectedWith (InvalidArrayLength u64 (spanAt 1 41))
+
+  test "qalloc counts require usize even when u64 has the same width" $
+    typeCheckOutcome "const N: u64 = 2; fn f() { let qs = qalloc(N); discard(qs); }"
+      `shouldBe` rejectedWith (InvalidArrayLength u64 (spanAt 1 44))
+
+  test "usize constants size annotations repeat expressions and qalloc" $
+    typeCheckOutcome "const N: usize = 2; fn f() { let a: [i32; N] = [0; N]; let qs: [qbit; N] = qalloc(N); discard(qs); }"
+      `shouldBe` accepted
+
+  test "len returns usize rather than the equally wide u64" $
+    typeCheckOutcome "fn f(a: &[i32]) -> u64 { len(a) }"
+      `shouldBe` rejectedWith (TypeMismatch u64 usize (spanAt 1 26))
+
+  test "a stored u64 range cannot index an array" $
+    rejected (typeCheckOutcome "fn f(a: [i32; 3]) { let r = 0u64..2u64; let s = &a[r]; }")
+      `shouldBe` True
+
+  test "an explicitly typed u32 slice endpoint is not usize" $
+    rejected (typeCheckOutcome "fn f(a: [i32; 3], end: u32) { let s = &a[..end]; }")
+      `shouldBe` True
+
+  test "explicit usize endpoints support each slice range form" $
+    typeCheckOutcome "fn f(a: [i32; 3]) { let s: &[i32] = &a[0usize..2usize]; let t: &[i32] = &a[1usize..=2usize]; let u: &[i32] = &a[..2usize]; let v: &[i32] = &a[1usize..]; }"
+      `shouldBe` accepted
+
+  test "an inclusive usize maximum endpoint cannot wrap to an empty slice" $
+    rejected (typeCheckOutcome "fn f(a: [i32; 0]) { let s = &a[..=18446744073709551615usize]; }")
       `shouldBe` True
 
 export
@@ -1589,4 +1687,5 @@ runBodyCheckTests =
     , unreachableBreakTests
     , storedRangeIndexTests
     , unspecifiedDiagnosticTests
+    , usizeTests
     ]

@@ -35,8 +35,8 @@ itemTranslationTests = Test.do
       `shouldBe` Right "const FIVE: i32 = 5;"
 
   test "several items are translated in order" $
-    printedTypedAst "const N: u32 = 2; fn f(a: [i32; N]) -> i32 { a[0] } fn g() -> i32 { f([1, 2]) }"
-      `shouldBe` Right "const N: u32 = 2;\ngeneral fn f(a: [i32; N]) -> i32 { return a[0]; }\ngeneral fn g() -> i32 { return f([1, 2]); }"
+    printedTypedAst "const N: usize = 2; fn f(a: [i32; N]) -> i32 { a[0] } fn g() -> i32 { f([1, 2]) }"
+      `shouldBe` Right "const N: usize = 2;\ngeneral fn f(a: [i32; N]) -> i32 { return a[0]; }\ngeneral fn g() -> i32 { return f([1, 2]); }"
 
   test "the generated return after diverging branches is kept" $
     printedTypedAst "fn f(c: bool) -> i32 { if c { return 1; } else { return 2; }; }"
@@ -55,8 +55,8 @@ itemTranslationTests = Test.do
       `shouldBe` Right "general fn run(g: unitary fn(q: linear qbit) -> linear qbit, q: linear qbit) -> linear qbit { return g(q); }"
 
   test "array length expressions in types are translated" $
-    printedTypedAst "const N: u32 = 2; fn f(a: [i32; N + 1]) -> [i32; N + 1] { a }"
-      `shouldBe` Right "const N: u32 = 2;\ngeneral fn f(a: [i32; (N + 1)]) -> [i32; (N + 1)] { return a; }"
+    printedTypedAst "const N: usize = 2; fn f(a: [i32; N + 1]) -> [i32; N + 1] { a }"
+      `shouldBe` Right "const N: usize = 2;\ngeneral fn f(a: [i32; (N + 1)]) -> [i32; (N + 1)] { return a; }"
 
 -- Statements and patterns (plan §6.2)
 statementTranslationTests : List ETest

@@ -166,7 +166,7 @@ ctrl().on().apply()
 // Array and slice length, range reversal
 len(), rev()
 
-// (II) The following are prelude mathematical functions that can be used in Leaf programs. These are NOT part of language syntax, they should be parsed as regular functions:
+// (II) The following are prelude mathematical functions that can be used in Leaf programs. These are NOT part of language syntax, they should be parsed as regular functions. Here abs() exists only for signed integers and floats, min()/max() apply to any numeric type.
 cos(), acos(), sin(), asin(), tan(), atan()
 abs(), exp(), ceil(), floor(), ln(), log2(), log10(), max(), min(), round(), sqrt()
 // Declaring angle parameters, part of prelude:
@@ -198,7 +198,9 @@ angle32, angle64, param
 i8, i16, i32, i64, i128
 
 // unsigned integer types:
-u8, u16, u32, u64, u128
+// usize is an unsigned integer sized for the compilation target, currently fixed at 64 bits.
+// It is the type of array lengths, array and slice indices, repeat counts and of the value returned by len().
+u8, u16, u32, u64, u128, usize
 
 // floating-point types:
 f32, f64
@@ -241,6 +243,7 @@ let u : u16 = 1;
 let u : u32 = 1;
 let u : u64 = 1;
 let u : u128 = 1;
+let u : usize = 1;
 
 let unit : () = ();
 
@@ -307,6 +310,9 @@ const FIVE: i32 = 5;
   let x: u128 = 34;
   let x = 34 as u128;
 
+  let x: usize = 34;
+  let x = 34 as usize;
+
   // floating-point numbers
   let x: f32 = 34.0;
   let x = 34 as f32;
@@ -338,14 +344,20 @@ let angles: [angle64; 2] = [3.14, 1.57];
 let units: [(); 5] = [(), (), (), (), ()];
 let params: [param; 2] = [Param("theta"), Param("phi")];
 
-// arrays can be declared with [T; N] where N must be a const expression:
-let a: [i32; 4];          // integer literal, inferred as u32
+// arrays can be declared with [T; N] where N must be a const expression of type usize:
+let a: [i32; 4];          // integer literal, inferred as usize
 let b: [i32; 2 + 2];      // constant expression
-const N: u64 = 4;
+const N: usize = 4;
 let c: [i32; N];          // named constant
-let d: [i32; 4u32];       // an integer literal length may have an unsigned suffix
-let e: [i32; 4i32];       // INVALID: an array length cannot have a signed suffix
+let d: [i32; 4usize];     // an explicitly suffixed length must have type usize
+let e: [i32; 4i32];       // INVALID: an array length must have type usize
 let f: [i32; 256u8];      // INVALID: 256 does not fit in u8
+let g: [i32; 4u64];       // INVALID: u64 and usize are distinct types
+const M: u32 = 4;
+let h: [i32; M as usize]; // an explicit cast converts a different integer type
+let repeated = [0; M as usize]; // repeat counts also require constant usize values
+
+// Array counts may range up to usize::MAX
 
 // array declarations with inferred type
 let bools = [true, false, true, false];
@@ -361,7 +373,10 @@ let units = [(), (), (), (), ()];
 
 let a = [1, 2, 3];
 let first = a[0];
-let n = len(a);              // number of elements, of type u32
+let n = len(a);              // number of elements, of type usize
+let i: u32 = 1;
+let other = a[i as usize];   // indices and slice endpoints require usize too
+let invalid = a[i];          // INVALID: no implicit u32-to-usize conversion
 
 // For a fixed-size array the length is part of the type, so the compiler
 // knows len(a) statically.
@@ -762,7 +777,8 @@ x %= 4;
 // (18) Boolean Operators:
 //////////////////////////////
 
-let c = !a;
+let c = !a;          // a is bool: logical not
+let c2 = !b;         // b is bit: flips the bit (!0 is 1, !1 is 0), result is bit
 let d = a && b;
 let e = a || b;
 
@@ -1460,6 +1476,11 @@ general fn sample(q: qbit) -> bit {
 // (54) Integer literals
 /////////////////////////
 
+// Unsuffixed integer literals use the type required by their context. Without
+// other constraints they default to i32; lengths, repeat counts, qalloc counts,
+// indices and slice endpoints provide a usize context. A suffix fixes the type:
+// usize never implicitly converts to or from another integer type, including u64.
+
 let x = 1000;
 let x = 1_000;
 let x = 1_000_000;
@@ -1477,6 +1498,8 @@ let b = 0b1111_1111_1001_0000i64;
 
 let z = 10u32;
 let z = 10_u32;
+let z = 10usize;
+let z = 10_usize;
 let z = 123i32;
 let z = 123_i32;
 

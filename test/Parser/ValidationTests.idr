@@ -112,53 +112,69 @@ runPostParseValidationTests = runTests $ Test.do
   test "a signed suffix on an array type length is rejected" $
     validationMessages "fn f(qs: [qbit; 3i8]) {}" `shouldBe`
       Just
-        [ "test-fixture.rs:1:17: an array length cannot have the signed type " ++
-          "suffix `i8`; write an unsigned suffix such as `u32`, or none"
+        [ "test-fixture.rs:1:17: an array length must have type `usize`, but the suffix gives it type `i8`; write a `usize` suffix, or none"
         ]
 
   test "a signed suffix on a repeated array length is rejected" $
     validationMessages "fn f() {let xs = [0; 0x2_i128];}" `shouldBe`
       Just
-        [ "test-fixture.rs:1:22: an array length cannot have the signed type " ++
-          "suffix `i128`; write an unsigned suffix such as `u32`, or none"
+        [ "test-fixture.rs:1:22: an array length must have type `usize`, but the suffix gives it type `i128`; write a `usize` suffix, or none"
         ]
 
   test "a signed suffix on a parenthesized array type length is rejected" $
     validationMessages "fn f(qs: [qbit; (3i8)]) {}" `shouldBe`
       Just
-        [ "test-fixture.rs:1:18: an array length cannot have the signed type " ++
-          "suffix `i8`; write an unsigned suffix such as `u32`, or none"
+        [ "test-fixture.rs:1:18: an array length must have type `usize`, but the suffix gives it type `i8`; write a `usize` suffix, or none"
         ]
 
   test "a signed suffix on a doubly parenthesized repeated array length is rejected" $
     validationMessages "fn f() {let xs = [0; ((3i8))];}" `shouldBe`
       Just
-        [ "test-fixture.rs:1:24: an array length cannot have the signed type " ++
-          "suffix `i8`; write an unsigned suffix such as `u32`, or none"
+        [ "test-fixture.rs:1:24: an array length must have type `usize`, but the suffix gives it type `i8`; write a `usize` suffix, or none"
         ]
 
-  test "an array type length too large for its suffix type is rejected" $
+  test "a u8 array length is rejected regardless of its value" $
     validationMessages "fn f(qs: [qbit; 256u8]) {}" `shouldBe`
       Just
-        [ "test-fixture.rs:1:17: the array length `256u8` does not fit in " ++
-          "`u8`, whose largest value is 255"
+        [ "test-fixture.rs:1:17: an array length must have type `usize`, but the suffix gives it type `u8`; write a `usize` suffix, or none"
         ]
 
-  test "a repeated array length too large for its suffix type is rejected" $
+  test "a u16 repeat count is rejected regardless of its value" $
     validationMessages "fn f() {let xs = [0; 0x1_0000_u16];}" `shouldBe`
       Just
-        [ "test-fixture.rs:1:22: the array length `0x1_0000_u16` does not fit " ++
-          "in `u16`, whose largest value is 65535"
+        [ "test-fixture.rs:1:22: an array length must have type `usize`, but the suffix gives it type `u16`; write a `usize` suffix, or none"
         ]
 
-  test "unsigned and missing array length suffixes are accepted" $
+  test "usize and missing array length suffixes are accepted" $
     validationMessages
-      "fn f(qs: [qbit; 3u8], rs: [qbit; 0x2_u64], ss: [qbit; 4]) {let xs = [0; 4u32];}"
+      "fn f(qs: [qbit; 3usize], rs: [qbit; 0x2_usize], ss: [qbit; 4], ts: [qbit; 3usize]) {let xs = [0; 4usize]; let ys = [0; 0x5_usize];}"
       `shouldBe` Just []
 
-  test "array lengths at the largest value of their suffix type are accepted" $
+  test "usize maximum is a valid count before object layout is checked" $
     validationMessages
-      "fn f(qs: [qbit; 255u8], rs: [qbit; (0xff_u8)]) {let xs = [0; 65535u16];}"
+      "fn f(qs: [(); 18446744073709551615usize], rs: [qbit; (0xff_usize)]) {let xs = [0; 65535usize]; let ys = [(); 18446744073709551615usize];}"
+      `shouldBe` Just []
+
+  test "an array type length too large for usize is rejected" $
+    validationMessages "fn f(qs: [qbit; 18446744073709551616usize]) {}" `shouldBe`
+      Just
+        [ "test-fixture.rs:1:17: the array length `18446744073709551616usize` does not " ++
+          "fit in `usize`, whose largest value is 18446744073709551615"
+        ]
+
+  test "all fixed-width integer suffixes are rejected as array lengths" $
+    map (\suffix => validationMessages ("fn f(xs: [(); 1" ++ suffix ++ "]) {}"))
+        ["i8", "i16", "i32", "i64", "i128", "u8", "u16", "u32", "u64", "u128"]
+      `shouldBe`
+      map (\suffix => Just ["test-fixture.rs:1:15: an array length must have type `usize`, but the suffix gives it type `" ++ suffix ++ "`; write a `usize` suffix, or none"])
+        ["i8", "i16", "i32", "i64", "i128", "u8", "u16", "u32", "u64", "u128"]
+
+  test "a u64 repeat count does not become usize implicitly" $
+    validationMessages "fn f() {let xs = [0; 3u64];}" `shouldBe`
+      Just ["test-fixture.rs:1:22: an array length must have type `usize`, but the suffix gives it type `u64`; write a `usize` suffix, or none"]
+
+  test "an explicit cast to usize in a length is left for typing" $
+    validationMessages "fn f(xs: [i32; 3u64 as usize]) {let ys = [0; 3u8 as usize];}"
       `shouldBe` Just []
 
   test "break outside a loop is rejected after parsing" $

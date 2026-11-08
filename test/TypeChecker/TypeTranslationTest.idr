@@ -25,6 +25,12 @@ firstParameterType inputProgram = do
     | _ => Nothing
   Just (toInferredType parameterType)
 
+firstParameterLeafType : String -> Maybe LeafType
+firstParameterLeafType source =
+  case firstParameterType source of
+    Just (ResolvedType leafType) => Just leafType
+    _ => Nothing
+
 -- The array length in the type of a program's first parameter.
 firstParameterArrayLength : String -> Maybe Nat
 firstParameterArrayLength inputProgram =
@@ -75,11 +81,23 @@ runTypeTranslationTests = runTests $ Test.do
   test "an uppercase binary prefix is accepted in an array length" $
     firstParameterArrayLength "fn f(qs: [qbit; 0B101]) {}" `shouldBe` Just 5
 
-  test "an unsigned suffix is accepted in an array length" $
-    firstParameterArrayLength "fn f(qs: [qbit; 0x1f_u8]) {}" `shouldBe` Just 31
+  test "a decimal usize suffix is accepted in an array length" $
+    firstParameterArrayLength "fn f(qs: [qbit; 31usize]) {}" `shouldBe` Just 31
+
+  test "a usize suffix is accepted in an array length" $
+    firstParameterArrayLength "fn f(qs: [qbit; 0x1f_usize]) {}" `shouldBe` Just 31
 
   test "a parenthesized array length is evaluated" $
-    firstParameterArrayLength "fn f(qs: [qbit; ((3u8))]) {}" `shouldBe` Just 3
+    firstParameterArrayLength "fn f(qs: [qbit; ((3usize))]) {}" `shouldBe` Just 3
+
+  test "usize remains distinct from u64 during type translation" $
+    map show (firstParameterLeafType "fn f(n: usize) {}") `shouldBe` Just "usize"
+
+  test "the largest usize count is preserved without narrowing to a host Int" $
+    firstParameterArrayLength "fn f(xs: [(); 18446744073709551615usize]) {}" `shouldBe` Just 18446744073709551615
+
+  test "an out-of-range unsuffixed count is deferred to typing" $
+    firstParameterArrayLength "fn f(xs: [(); 18446744073709551616]) {}" `shouldBe` Nothing
 
   test "the qbit elements of an array are linear by default" $
     firstParameterElementMultiplicity "fn f(qs: [qbit; 2]) {}" `shouldBe` Just QuantumMultiplicityLinear

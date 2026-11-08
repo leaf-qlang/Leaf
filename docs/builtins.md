@@ -31,7 +31,7 @@ Array, slice and range operations:
 len(), rev()
 ```
 
-`len()` returns the number of elements of an array, a slice, or a reference to either, as a `u32`. For a fixed-size array `[T; N]` the length is part of the type, so the compiler knows the value statically:
+`len()` returns the number of elements of an array, a slice, or a reference to either, as a `usize`. For a fixed-size array `[T; N]` the length is part of the type, so the compiler knows the value statically:
 ```leaf
 let a = [1, 2, 3];
 let n = len(a);              // 3
@@ -72,4 +72,4 @@ Math utility prelude functions:
 ```leaf
 abs(), exp(), ceil(), floor(), ln(), log2(), log10(), max(), min(), round(), sqrt()
 ```
-
+Here `abs` can be applied to signed integers and floats, `min/max` apply to any numeric type.

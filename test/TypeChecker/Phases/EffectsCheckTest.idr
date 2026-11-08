@@ -78,7 +78,7 @@ signatureClaimTests = Test.do
       `shouldBe` rejectedWith (EffectViolation EffectClassical EffectUncompsafe (spanAt 1 10))
 
   test "owned widths use evaluated constant lengths" $
-    typeCheckOutcome "const N: u32 = 2; unitary fn f(qs: [qbit; N]) -> [qbit; N + 1] { [qs[0], qs[1], qalloc()] }"
+    typeCheckOutcome "const N: u32 = 2; unitary fn f(qs: [qbit; N as usize]) -> [qbit; (N + 1) as usize] { [qs[0], qs[1], qalloc()] }"
       `shouldBe` rejectedWith (QuantumWidthMismatch "unitary" 2 3 (spanAt 1 30))
 
 -- Operation effects under the declared ceiling (plan §7.2, §7.3)
