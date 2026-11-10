@@ -22,7 +22,7 @@ import TypeChecker.Helper
 -- function's name, its effect keyword or the offending type or length.
 --------------------------------------------------------------------------------
 
--- Function signatures (plan §4.1 item 2)
+-- Function signatures
 functionSignatureTests : List ETest
 functionSignatureTests = Test.do
   test "a function with primitive parameters and result type-checks" $
@@ -89,7 +89,7 @@ functionSignatureTests = Test.do
     typeCheckOutcome "fn f(s: [qstate; 2]) {}"
       `shouldBe` rejectedWith (UnsupportedFeature "qstate" (spanAt 1 10))
 
--- Forward references and recursion (plan §2.3, §9 item 3)
+-- Forward references and recursion
 forwardReferenceTests : List ETest
 forwardReferenceTests = Test.do
   test "a function may call a function declared later" $
@@ -121,7 +121,7 @@ forwardReferenceTests = Test.do
     typeCheckOutcome "const fn fact(n: u32) -> u32 { if n == 0 { 1 } else { n * fact(n - 1) } } fn f(a: [i32; fact(3) as usize]) {} fn g() { let a: [i32; 6] = [0; 6]; f(a); }"
       `shouldBe` accepted
 
--- Retry boundaries and independently checked lengths (plan §2.3, §2.5, §3.3).
+-- Retry boundaries and independently checked lengths.
 -- Each fixture makes a demand whose producer occurs later in source order.
 signatureRetryTests : List ETest
 signatureRetryTests = Test.do
@@ -149,7 +149,7 @@ signatureRetryTests = Test.do
     typeCheckOutcome "fn f(a: [i32; FIRST as usize]) -> [i32; SECOND as usize] { a } const FIRST: u32 = next(); const SECOND: u32 = LAST; const fn next() -> u32 { SECOND } const LAST: u32 = 3; fn g() { let a: [i32; 3] = f([0; 3]); }"
       `shouldBe` accepted
 
--- Array lengths in signatures (plan §3.1, §3.4)
+-- Array lengths in signatures
 signatureLengthTests : List ETest
 signatureLengthTests = Test.do
   test "a literal length in a signature type-checks" $
@@ -164,15 +164,15 @@ signatureLengthTests = Test.do
 
   test "a signed constant cannot size an array" $
     typeCheckOutcome "const N: i32 = 4; fn f(a: [i32; N]) {}"
-      `shouldBe` rejectedWith (InvalidArrayLength i32 (spanAt 1 33))
+      `shouldBe` rejectedWith (IncorrectArrayLengthType i32 (spanAt 1 33))
 
   test "a bool constant cannot size an array" $
     typeCheckOutcome "const FLAG: bool = true; fn f(a: [i32; FLAG]) {}"
-      `shouldBe` rejectedWith (InvalidArrayLength bool (spanAt 1 40))
+      `shouldBe` rejectedWith (IncorrectArrayLengthType bool (spanAt 1 40))
 
   test "a u128 length is rejected even when its value is known" $
     typeCheckOutcome "const N: u128 = 18446744073709551616; fn f(a: [i32; N]) {}"
-      `shouldBe` rejectedWith (InvalidArrayLength u128 (spanAt 1 53))
+      `shouldBe` rejectedWith (IncorrectArrayLengthType u128 (spanAt 1 53))
 
   test "a non-const call cannot size a signature" $
     typeCheckOutcome "fn g() -> u32 { 3 } fn f(a: [i32; g() as usize]) {}"
@@ -186,7 +186,7 @@ signatureLengthTests = Test.do
     typeCheckOutcome "fn f() -> [i32; 2] { [1, 2, 3] }"
       `shouldBe` rejectedWith (TypeMismatch (array i32 2) (array i32 3) (spanAt 1 22))
 
--- Constant items (plan §4.1 item 3)
+-- Constant items
 constantItemTests : List ETest
 constantItemTests = Test.do
   test "a constant has its written type" $
@@ -202,7 +202,7 @@ constantItemTests = Test.do
   test "a tuple constant has its written type" $
     typeCheckOutcome "const T: (u32, bool) = (3, true); fn f() -> bool { T.1 }" `shouldBe` accepted
 
--- Parameter names that resolve to constants (plan §1.4, §4.1 item 2, §5.6)
+-- Parameter names that resolve to constants
 constantParameterTests : List ETest
 constantParameterTests = Test.do
   test "a parameter named like a unit constant is an irrefutable pattern" $
@@ -219,7 +219,7 @@ constantParameterTests = Test.do
     typeCheckOutcome "const UNIT: () = (); fn f(UNIT: i32) {}"
       `shouldBe` rejectedWith (TypeMismatch i32 unit (spanAt 1 27))
 
--- Const functions are classical (plan §4.1 item 2, §11.1)
+-- Const functions are classical
 constFunctionTests : List ETest
 constFunctionTests = Test.do
   test "a const fn without an effect is recorded as classical" $
@@ -242,7 +242,7 @@ constFunctionTests = Test.do
     typeCheckOutcome "fn g() -> u32 { 3 } const fn f() -> u32 { g() }"
       `shouldBe` rejectedWith (NotAConstantExpression (spanAt 1 43))
 
--- Declaration cycles (plan §2.4): the error names the symbols on the cycle and
+-- Declaration cycles: the error names the symbols on the cycle and
 -- points at the name of the first item that is still waiting
 declarationCycleTests : List ETest
 declarationCycleTests = Test.do
@@ -270,7 +270,7 @@ declarationCycleTests = Test.do
     typeCheckOutcome "const fn f() -> u32 { N } const N: u32 = f();"
       `shouldBe` rejectedWith (CyclicDeclaration ["N"] (spanAt 1 33))
 
--- Only evaluated constant reads create value dependencies (plan §2.3, §3.2).
+-- Only evaluated constant reads create value dependencies.
 -- The references still have to be resolved and type-checked in every branch.
 lazyDependencyTests : List ETest
 lazyDependencyTests = Test.do
@@ -298,7 +298,7 @@ lazyDependencyTests = Test.do
     typeCheckOutcome "const A: u32 = if false { 1 } else { B }; const B: u32 = A;"
       `shouldBe` rejectedWith (CyclicDeclaration ["B", "A"] (spanAt 1 7))
 
--- Prelude functions used as values (plan §2.4, §4.2)
+-- Prelude functions used as values
 preludeValueTests : List ETest
 preludeValueTests = Test.do
   test "a gate can be passed where a unitary function type is expected" $
@@ -343,23 +343,23 @@ usizeSignatureTests : List ETest
 usizeSignatureTests = Test.do
   test "a u8 constant cannot size a signature without a cast" $
     typeCheckOutcome "const N: u8 = 3; fn f(a: [i32; N]) {}"
-      `shouldBe` rejectedWith (InvalidArrayLength u8 (spanAt 1 32))
+      `shouldBe` rejectedWith (IncorrectArrayLengthType u8 (spanAt 1 32))
 
   test "a u32 constant cannot size a signature without a cast" $
     typeCheckOutcome "const N: u32 = 3; fn f(a: [i32; N]) {}"
-      `shouldBe` rejectedWith (InvalidArrayLength u32 (spanAt 1 33))
+      `shouldBe` rejectedWith (IncorrectArrayLengthType u32 (spanAt 1 33))
 
   test "a u64 constant cannot size a signature without a cast" $
     typeCheckOutcome "const N: u64 = 3; fn f(a: [i32; N]) {}"
-      `shouldBe` rejectedWith (InvalidArrayLength u64 (spanAt 1 33))
+      `shouldBe` rejectedWith (IncorrectArrayLengthType u64 (spanAt 1 33))
 
   test "a u128 constant cannot size a signature without a cast" $
     typeCheckOutcome "const N: u128 = 3; fn f(a: [i32; N]) {}"
-      `shouldBe` rejectedWith (InvalidArrayLength u128 (spanAt 1 34))
+      `shouldBe` rejectedWith (IncorrectArrayLengthType u128 (spanAt 1 34))
 
   test "even a zero-valued u64 length has the wrong type" $
     typeCheckOutcome "const N: u64 = 0; fn f(a: [i32; N]) {}"
-      `shouldBe` rejectedWith (InvalidArrayLength u64 (spanAt 1 33))
+      `shouldBe` rejectedWith (IncorrectArrayLengthType u64 (spanAt 1 33))
 
   test "a usize-returning const function can size a signature directly" $
     typeCheckOutcome "const fn size() -> usize { 3 } fn f(a: [i32; size()]) -> [i32; 3] { a }"
@@ -367,7 +367,7 @@ usizeSignatureTests = Test.do
 
   test "a fixed u64 return type is not inferred as usize in a length" $
     typeCheckOutcome "const fn size() -> u64 { 3 } fn f(a: [i32; size()]) {}"
-      `shouldBe` rejectedWith (InvalidArrayLength u64 (spanAt 1 44))
+      `shouldBe` rejectedWith (IncorrectArrayLengthType u64 (spanAt 1 44))
 
   test "a u128 length cast truncates to the 64-bit usize target" $
     typeCheckOutcome "const N: u128 = 18446744073709551617; fn f(a: [i32; N as usize]) -> [i32; 1] { a }"

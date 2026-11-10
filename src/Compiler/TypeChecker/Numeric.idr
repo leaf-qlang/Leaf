@@ -97,7 +97,7 @@ export
 checkArrayLength : LeafType -> Integer -> SourceSpan -> Either TypeError Nat
 checkArrayLength actual value sourceSpan =
   if actual /= LeafPrimitiveType TypPrimUsize
-    then Left (InvalidArrayLength actual sourceSpan)
+    then Left (IncorrectArrayLengthType actual sourceSpan)
     else if value < 0 || value > cast usizeMaximum
       then Left (ArrayLengthTooLarge value sourceSpan)
       else Right (cast value)

@@ -101,46 +101,54 @@ integerLiteralValue raw =
 
     validSuffix : List Char -> Bool
     validSuffix [] = True
-    validSuffix suffix = pack suffix `elem` ["i8", "i16", "i32", "i64", "i128", "u8", "u16", "u32", "u64", "u128"]
+    validSuffix suffix = pack suffix `elem` ["i8", "i16", "i32", "i64", "i128", "u8", "u16", "u32", "u64", "u128", "usize"]
 
 ||| The integer type named by the suffix of a well-formed integer literal's raw
 ||| spelling, if one was written: "0xff_u8" names u8, "1_000" none. No digit
 ||| or base prefix contains `i` or `u`, so the suffix starts at the first one.
 public export
-integerLiteralSuffix : String -> Maybe TypPrimName
-integerLiteralSuffix raw =
+integerLiteralSuffixType : String -> Maybe TypPrimName
+integerLiteralSuffixType raw =
   case break (\c => c == 'i' || c == 'u') (unpack raw) of
     (_, []) => Nothing
     (_, suffix) => typeFromString (pack suffix)
+
+||| The current target uses 64-bit pointers, independently of the compiler host.
+public export
+usizeBitWidth : Nat
+usizeBitWidth = 64
+
+||| Largest representable count or index. Object layout imposes a separate
+||| byte-size limit; not every array of this length can be allocated.
+public export
+usizeMaximum : Nat
+usizeMaximum = 18446744073709551615
 
 ||| The largest value of an unsigned integer type; Nothing for any other type.
 public export
 unsignedIntegerMaximum : TypPrimName -> Maybe Nat
 unsignedIntegerMaximum primitiveName =
   case primitiveName of
-    TypPrimU8   => Just 255
-    TypPrimU16  => Just 65535
-    TypPrimU32  => Just 4294967295
-    TypPrimU64  => Just 18446744073709551615
-    TypPrimU128 => Just 340282366920938463463374607431768211455
-    _           => Nothing
+    TypPrimU8    => Just 255
+    TypPrimU16   => Just 65535
+    TypPrimU32   => Just 4294967295
+    TypPrimU64   => Just 18446744073709551615
+    TypPrimU128  => Just 340282366920938463463374607431768211455
+    TypPrimUsize => Just usizeMaximum
+    _            => Nothing
 
-||| Why a well-formed integer literal cannot be an array length. An array
-||| length is unsigned, so the literal may carry only an unsigned suffix (or
-||| none), and its value must fit the type that suffix names.
 public export
 data ArrayLengthProblem
-  = SignedLengthSuffix TypPrimName                -- `3i8`
-  | LengthExceedsSuffixType TypPrimName Nat       -- `256u8`, with u8's maximum
+  = NonUsizeLengthSuffix TypPrimName                -- `3i8`, `3u64`
+  | LengthExceedsSuffixType TypPrimName Nat       -- a suffixed usize literal beyond its maximum
 
 ||| The problem with an integer literal's raw spelling as an array length, if any.
 public export
 arrayLengthProblem : String -> Maybe ArrayLengthProblem
 arrayLengthProblem raw = do
-  suffixType <- integerLiteralSuffix raw
-  case unsignedIntegerMaximum suffixType of
-    Nothing => Just (SignedLengthSuffix suffixType)
-    Just maximum =>
-      if maybe False (> maximum) (integerLiteralValue raw)
-        then Just (LengthExceedsSuffixType suffixType maximum)
-        else Nothing
+  suffixType <- integerLiteralSuffixType raw
+  if suffixType /= TypPrimUsize
+    then Just (NonUsizeLengthSuffix suffixType)
+    else if maybe False (> usizeMaximum) (integerLiteralValue raw)
+      then Just (LengthExceedsSuffixType TypPrimUsize usizeMaximum)
+      else Nothing

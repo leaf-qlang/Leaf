@@ -18,6 +18,14 @@ runDesugaringTests = runTests $ Test.do
     desugarAndPrettyPrint "fn f() -> i32 { 1 }"
       `shouldBe` Just "general fn f() -> i32 { return 1; }"
 
+  test "missing effect of a const fn is filled in with classical" $
+    desugarAndPrettyPrint "const fn f() -> i32 { 1 }"
+      `shouldBe` Just "const classical fn f() -> i32 { return 1; }"
+
+  test "a written effect of a const fn is kept" $
+    desugarAndPrettyPrint "const general fn f() -> i32 { 1 }"
+      `shouldBe` Just "const general fn f() -> i32 { return 1; }"
+
   test "an explicit final return remains a single return statement" $
     desugarAndPrettyPrint "fn f() -> i32 { return 1 }"
       `shouldBe` Just "general fn f() -> i32 { return 1; }"

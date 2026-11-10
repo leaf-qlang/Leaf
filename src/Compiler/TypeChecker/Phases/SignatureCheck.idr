@@ -26,6 +26,14 @@ import Frontend.Syntax.Type
 
 %default total
 
+checkedFunctionEffect  : Maybe (ResolvedAstNode FunctionConstness)
+                      -> Maybe (ResolvedAstNode FunctionEffect)
+                      -> StateT TypeCheckerState (Either CheckFailure) FunctionEffect
+checkedFunctionEffect  _ Nothing = unreachable {function = "checkedFunctionEffect"} {reason = "desugaring did not supply a function effect"}
+checkedFunctionEffect  Nothing (Just (MkAstNode _ _ writtenEffect)) = pure writtenEffect
+checkedFunctionEffect  (Just _) (Just (MkAstNode _ _ EffectClassical)) = pure EffectClassical
+checkedFunctionEffect  (Just _) (Just (MkAstNode info _ writtenEffect)) = typeError (EffectViolation EffectClassical writtenEffect info.span)
+
 checkFunctionDeclaration : FunctionDeclarationNode ResolvedAstPhase -> StateT TypeCheckerState (Either CheckFailure) ()
 checkFunctionDeclaration
     (MkFunctionDeclarationNode
@@ -40,7 +48,39 @@ checkFunctionDeclaration
       supportClause
       contractClauses
       functionBody
-    ) = ?checkFunctionDeclarationH
+    ) = do
+      functionEffect <- checkedFunctionEffect functionConstness functionEffect
+      traverse_
+        (\parameter =>
+          case parameter.nodeValue of
+            NormalParameter _ _ (MkAstNode _ _ (MkResolvedNameNode nameNodeText nameNodeSymbolId)) parameterType => do
+              checkWrittenType parameterType
+              leafType <- writtenLeafTypeM evalConstExprNat parameterType
+              updateState nameNodeSymbolId (ResolvedType leafType)
+            ReceiverParameter _ _ => notImplemented {function = "checkFunctionDeclaration"} {feature = "receiver parameters"})
+        functionParameters
+      case returnType of
+           Just resolvedTy => do
+             checkWrittenType resolvedTy
+             ignore (writtenLeafTypeM evalConstExprNat resolvedTy)
+           Nothing => pure ()
+    where
+      typedSymbolInfo : TypedSymbolInfo -> InferredType -> TypedSymbolInfo
+      typedSymbolInfo symbolInfo inferredType =
+        case symbolInfo.symbolKind of
+          SymbolFunctionParameter => { symbolType := inferredType } symbolInfo
+          _ => symbolInfo
+      updateState : SymbolId -> InferredType -> StateT TypeCheckerState (Either CheckFailure) ()  
+      updateState symbolId inferredType = do
+        typeCheckerState <- get
+        case lookup symbolId typeCheckerState.tables.symbols of
+          Nothing => unreachable {function = "updateState"} {reason = "parameter symbol cannot be found in checker state"}
+          Just symbolInfo =>
+            modify $ \typeCheckerState =>
+              {
+                tables.symbols := insert symbolId (typedSymbolInfo symbolInfo inferredType) typeCheckerState.tables.symbols
+              } typeCheckerState
+
 
 checkConstDeclaration : ConstDeclarationNode ResolvedAstPhase ->  StateT TypeCheckerState (Either CheckFailure) ()
 checkConstDeclaration (MkConstDeclarationNode constDocs constVisibility constName constType constValue) = ?checkConstDeclarationH

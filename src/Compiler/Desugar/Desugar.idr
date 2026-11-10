@@ -483,7 +483,8 @@ desugarItem (MkAstNode itemInfo metadata item) =
                 (desugarAstNode constName)
                 (desugarType constType)
                 (desugarExpression constValue)
-      -- if function effect is missing, desugaring adds the default "general" function effect
+      -- if function effect is missing, desugaring adds the default function effect:
+      -- "classical" for a const function (const functions are classical), "general" otherwise
       -- if return type is missing, the default "unit" return type is added to function declaration
       -- if function does not return anything, desugaring chnages function body to return the "unit" data
       desugarFunctionDeclaration : FunctionDeclarationNode SurfaceAstPhase -> FunctionDeclarationNode CanonicalAstPhase
@@ -520,7 +521,9 @@ desugarItem (MkAstNode itemInfo metadata item) =
                 (desugarFunctionBody functionBody)
               where
                 desugarFunctionEffect : Maybe (AstNode SurfaceAstPhase FunctionEffect) -> Nat -> (Maybe (AstNode CanonicalAstPhase FunctionEffect), Nat)
-                desugarFunctionEffect Nothing inc = (Just $ canonicalAstNode (incrementedAstInfo itemInfo inc) DesugaredDefaultFunctionEffect EffectGeneral, inc + 1)
+                desugarFunctionEffect Nothing inc =
+                  let effect = maybe EffectGeneral (const EffectClassical) functionConstness
+                  in (Just $ canonicalAstNode (incrementedAstInfo itemInfo inc) DesugaredDefaultFunctionEffect effect, inc + 1)
                 desugarFunctionEffect (Just functionEffectNode) inc = (Just $ desugarAstNode functionEffectNode, inc)
                 desugarFunctionType : Maybe (Ty SurfaceAstPhase (Expr SurfaceAstPhase)) -> Nat -> Maybe (Ty CanonicalAstPhase (Expr CanonicalAstPhase))
                 desugarFunctionType Nothing inc = Just $ canonicalAstNode (incrementedAstInfo itemInfo inc) DesugaredDefaultFunctionReturnType TyUnit

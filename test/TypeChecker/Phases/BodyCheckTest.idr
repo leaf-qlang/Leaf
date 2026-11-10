@@ -426,7 +426,7 @@ arrayTests = Test.do
 
   test "a repeat count must have type usize" $
     typeCheckOutcome "const N: i32 = 3; fn f() { let a = [0; N]; }"
-      `shouldBe` rejectedWith (InvalidArrayLength i32 (spanAt 1 40))
+      `shouldBe` rejectedWith (IncorrectArrayLengthType i32 (spanAt 1 40))
 
   test "a constant may size a local array annotation" $
     typeCheckOutcome "const N: u64 = 4; fn f() { let c: [i32; N as usize] = [0; 4]; }" `shouldBe` accepted
@@ -889,7 +889,7 @@ qubitAllocationTests = Test.do
 
   test "a qalloc count must have type usize" $
     typeCheckOutcome "const N: i64 = 2; fn f() { let qs = qalloc(N); discard(qs); }"
-      `shouldBe` rejectedWith (InvalidArrayLength i64 (spanAt 1 44))
+      `shouldBe` rejectedWith (IncorrectArrayLengthType i64 (spanAt 1 44))
 
   test "measr consumes or borrows a qubit and returns a bit" $
     typeCheckOutcome "fn f() -> (bit, bit) { let q = qalloc(); let r = qalloc(); let b: bit = measr(&q); let c: bit = measr(q); let d = measr(r); (b, c) }"
@@ -1611,15 +1611,15 @@ usizeTests = Test.do
 
   test "a u32 constant is not implicitly converted to a repeat count" $
     typeCheckOutcome "const N: u32 = 3; fn f() { let a = [0; N]; }"
-      `shouldBe` rejectedWith (InvalidArrayLength u32 (spanAt 1 40))
+      `shouldBe` rejectedWith (IncorrectArrayLengthType u32 (spanAt 1 40))
 
   test "a u64 constant is not implicitly converted to a local array length" $
     typeCheckOutcome "const N: u64 = 3; fn f() { let a: [i32; N]; }"
-      `shouldBe` rejectedWith (InvalidArrayLength u64 (spanAt 1 41))
+      `shouldBe` rejectedWith (IncorrectArrayLengthType u64 (spanAt 1 41))
 
   test "qalloc counts require usize even when u64 has the same width" $
     typeCheckOutcome "const N: u64 = 2; fn f() { let qs = qalloc(N); discard(qs); }"
-      `shouldBe` rejectedWith (InvalidArrayLength u64 (spanAt 1 44))
+      `shouldBe` rejectedWith (IncorrectArrayLengthType u64 (spanAt 1 44))
 
   test "usize constants size annotations repeat expressions and qalloc" $
     typeCheckOutcome "const N: usize = 2; fn f() { let a: [i32; N] = [0; N]; let qs: [qbit; N] = qalloc(N); discard(qs); }"

@@ -468,7 +468,7 @@ constantLimitTests = Test.do
 
   test "a local array length with type u128 is rejected before conversion" $
     typeCheckOutcome "const N: u128 = 18446744073709551616; fn f() { let a: [i32; N]; }"
-      `shouldBe` rejectedWith (InvalidArrayLength u128 (spanAt 1 61))
+      `shouldBe` rejectedWith (IncorrectArrayLengthType u128 (spanAt 1 61))
 
   test "a slice index past its end is rejected during evaluation" $
     typeCheckOutcome "const fn get(xs: &[u32]) -> u32 { xs[3] } const N: u32 = get(&[1, 2]);"

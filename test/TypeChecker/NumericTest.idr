@@ -136,7 +136,7 @@ runNumericTests = runTests $ Test.do
 
   test "a u64 constant is not a valid usize count" $
     reported (checkArrayLength (LeafPrimitiveType TypPrimU64) 3 location) `shouldBe`
-      Left (show (InvalidArrayLength (LeafPrimitiveType TypPrimU64) location))
+      Left (show (IncorrectArrayLengthType (LeafPrimitiveType TypPrimU64) location))
 
   test "usize maximum is a valid count before object layout" $
     reported (checkArrayLength (LeafPrimitiveType TypPrimUsize) 18446744073709551615 location) `shouldBe`
