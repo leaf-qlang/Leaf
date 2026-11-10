@@ -99,7 +99,7 @@ unitaryToCore (U3 th ph la q) =
 
 -- 2-qbit gates
 
-unitaryToCore (CNOT c t {neq}) =
+unitaryToCore (CX c t {neq}) =
   MkCoreGate [] "cx" [] [c, t]
 
 unitaryToCore (CY c t {neq}) =
@@ -171,7 +171,7 @@ unitaryToCore (RZX th a b {neq}) =
 unitaryToCore (CCX c1 c2 t {d12} {d1t} {d2t}) =
   MkCoreGate [] "ccx" [] [c1, c2, t]
 
-unitaryToCore (CSWAP c a b {cab} {ca} {cb}) =
+unitaryToCore (CSWAP c a b {ab} {ca} {cb}) =
   MkCoreGate [] "cswap" [] [c, a, b]
 
 -- Generic Controlled wrapper:

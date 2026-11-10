@@ -6,7 +6,7 @@ import DSL.Gates
 %default total
 
 public export
-data InitVal = Init0 | Init1
+data InitState = Zero | One
 
 -- Quantum circuits with n inputs and m outputs
 public export
@@ -23,8 +23,8 @@ data Circuit : Nat -> Nat -> Type where
   -- Parallel composition
   Par : Circuit n1 m1 -> Circuit n2 m2 -> Circuit (n1 + n2) (m1 + m2)
 
-  -- Add a new qbit initialized in |0⟩ or |1⟩
-  Init : InitVal -> Circuit n (S n)
+  -- Add one qbit per initial state, each initialized in |0⟩ or |1⟩
+  Init : (states : List InitState) -> Circuit n (n + length states)
 
 -- Inverse of a circuit, if it exists
 public export

@@ -33,8 +33,8 @@ data UnitaryGate : Nat -> Type where
   U2    : Radians -> Radians -> (q : Fin n) -> UnitaryGate n                 -- U2(φ,λ) == U(π/2, φ, λ)
   U3    : Radians -> Radians -> Radians -> (q : Fin n) -> UnitaryGate n      -- U3(θ,φ,λ) == U(θ, φ, λ)
 
--- 2-qbit (with a proof that control ≠ target)
-  CNOT : (c,t : Fin n) -> {auto 0 neq : Not (c = t)} -> UnitaryGate n
+  -- 2-qbit (with a proof that control ≠ target)
+  CX    : (c,t : Fin n) -> {auto 0 neq : Not (c = t)} -> UnitaryGate n
   CY    : (c,t : Fin n) -> {auto 0 neq : Not (c = t)} -> UnitaryGate n
   CZ    : (c,t : Fin n) -> {auto 0 neq : Not (c = t)} -> UnitaryGate n
   CH    : (c,t : Fin n) -> {auto 0 neq : Not (c = t)} -> UnitaryGate n
@@ -65,7 +65,7 @@ data UnitaryGate : Nat -> Type where
         -> {auto 0 d2t : Not (c2 = t)}
         -> UnitaryGate n
   CSWAP : (c,a,b : Fin n)
-        -> {auto 0 cab : Not (a = b)}
+        -> {auto 0 ab  : Not (a = b)}
         -> {auto 0 ca  : Not (c = a)}
         -> {auto 0 cb  : Not (c = b)}
         -> UnitaryGate n
@@ -83,8 +83,8 @@ data UnitaryGate : Nat -> Type where
     UnitaryGate n
 
 public export
-CX : (c,t : Fin n) -> {auto 0 neq : Not (c = t)} -> UnitaryGate n
-CX c t {neq} = CNOT c t {neq = neq}
+CNOT : (c,t : Fin n) -> {auto 0 neq : Not (c = t)} -> UnitaryGate n
+CNOT c t {neq} = CX c t {neq = neq}
 
 public export
 data Gate : Nat -> Type where
@@ -112,7 +112,7 @@ targetsUnitary (U _ _ _ q)               = (_ ** [q])
 targetsUnitary (U1 _ q)                  = (_ ** [q])
 targetsUnitary (U2 _ _ q)                = (_ ** [q])
 targetsUnitary (U3 _ _ _ q)              = (_ ** [q])
-targetsUnitary (CNOT _ t)                = (_ ** [t])
+targetsUnitary (CX _ t)                  = (_ ** [t])
 targetsUnitary (CY _ t)                  = (_ ** [t])
 targetsUnitary (CZ _ t)                  = (_ ** [t])
 targetsUnitary (CH _ t)                  = (_ ** [t])

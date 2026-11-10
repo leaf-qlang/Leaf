@@ -42,7 +42,7 @@ adjointUnitary (U3 theta phi lambda q) =
   U3 (-theta) (-lambda) (-phi) q
 
 -- 2-qbit + 3-qbit: many of these are self-adjoint
-adjointUnitary (CNOT c t {neq})     = CNOT c t {neq = neq}
+adjointUnitary (CX c t {neq})       = CNOT c t {neq = neq}
 adjointUnitary (CY c t {neq})       = CY c t {neq = neq}
 adjointUnitary (CZ c t {neq})       = CZ c t {neq = neq}
 adjointUnitary (CH c t {neq})       = CH c t {neq = neq}
@@ -80,8 +80,8 @@ adjointUnitary (RZX theta a b {neq}) =
 adjointUnitary (CCX c1 c2 t {d12} {d1t} {d2t}) =
   CCX c1 c2 t {d12 = d12} {d1t = d1t} {d2t = d2t}
 
-adjointUnitary (CSWAP c a b {cab} {ca} {cb}) =
-  CSWAP c a b {cab = cab} {ca = ca} {cb = cb}
+adjointUnitary (CSWAP c a b {ab} {ca} {cb}) =
+  CSWAP c a b {ab = ab} {ca = ca} {cb = cb}
 
 -- Controlled wrapper: adjoint just adjoints the inner gate
 adjointUnitary (Controlled cs bs inner) =
