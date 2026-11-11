@@ -13,6 +13,7 @@ import Compiler.TypeChecker.State
 import Compiler.TypeChecker.Type
 import Frontend.ASTData
 import Frontend.ASTPhases
+import Frontend.QuantumAnnotations
 import Frontend.Syntax.Attribute
 import Frontend.Syntax.AST
 import Frontend.Syntax.Contract
@@ -50,37 +51,38 @@ checkFunctionDeclaration
       functionBody
     ) = do
       functionEffect <- checkedFunctionEffect functionConstness functionEffect
+      -- First pass: syntactic errors in every written type.
+      -- They must be reported before any array length is evaluated.
       traverse_
         (\parameter =>
           case parameter.nodeValue of
+            NormalParameter _ _ _ parameterType => checkWrittenType parameterType
+            ReceiverParameter _ _ => unreachable {function = "checkFunctionDeclaration"} {reason = "the parser does not produce receiver parameters"}
+        ) functionParameters
+      traverse_ checkWrittenType returnType
+      -- Second pass: evaluate lengths and record the types.
+      paramLeafTypes <- traverse
+        (\parameter =>
+          case parameter.nodeValue of
             NormalParameter _ _ (MkAstNode _ _ (MkResolvedNameNode nameNodeText nameNodeSymbolId)) parameterType => do
-              checkWrittenType parameterType
-              leafType <- writtenLeafTypeM evalConstExprNat parameterType
-              updateState nameNodeSymbolId (ResolvedType leafType)
-            ReceiverParameter _ _ => notImplemented {function = "checkFunctionDeclaration"} {feature = "receiver parameters"})
-        functionParameters
-      case returnType of
-           Just resolvedTy => do
-             checkWrittenType resolvedTy
-             ignore (writtenLeafTypeM evalConstExprNat resolvedTy)
-           Nothing => pure ()
-    where
-      typedSymbolInfo : TypedSymbolInfo -> InferredType -> TypedSymbolInfo
-      typedSymbolInfo symbolInfo inferredType =
-        case symbolInfo.symbolKind of
-          SymbolFunctionParameter => { symbolType := inferredType } symbolInfo
-          _ => symbolInfo
-      updateState : SymbolId -> InferredType -> StateT TypeCheckerState (Either CheckFailure) ()  
-      updateState symbolId inferredType = do
-        typeCheckerState <- get
-        case lookup symbolId typeCheckerState.tables.symbols of
-          Nothing => unreachable {function = "updateState"} {reason = "parameter symbol cannot be found in checker state"}
-          Just symbolInfo =>
-            modify $ \typeCheckerState =>
-              {
-                tables.symbols := insert symbolId (typedSymbolInfo symbolInfo inferredType) typeCheckerState.tables.symbols
-              } typeCheckerState
-
+              paramLeafType <- writtenLeafTypeM evalConstExprNat parameterType
+              typeCheckerState <- get
+              case lookup nameNodeSymbolId typeCheckerState.tables.symbols of
+                Nothing => unreachable {function = "checkFunctionDeclaration"} {reason = "parameter symbol cannot be found in checker state"}
+                Just symbolInfo =>
+                  case symbolInfo.symbolKind of
+                    SymbolFunctionParameter => do
+                      recordSymbolType nameNodeSymbolId paramLeafType
+                      recordParameterStorage nameNodeSymbolId paramLeafType
+                    _ => pure ()
+              pure paramLeafType
+            ReceiverParameter _ _ => unreachable {function = "checkFunctionDeclaration"} {reason = "the parser does not produce receiver parameters"}
+        ) functionParameters
+      returnLeafType <- case returnType of
+        Just resolvedTy => writtenLeafTypeM evalConstExprNat resolvedTy
+        Nothing => unreachable {function = "checkFunctionDeclaration"} {reason = "desugaring did not supply a return type"}
+      let functionNameSymbolId = functionName.nodeValue.nameNodeSymbolId
+      recordSymbolType functionNameSymbolId (LeafFunctionType functionEffect (map (.nodeValue) supportClause) paramLeafTypes returnLeafType)
 
 checkConstDeclaration : ConstDeclarationNode ResolvedAstPhase ->  StateT TypeCheckerState (Either CheckFailure) ()
 checkConstDeclaration (MkConstDeclarationNode constDocs constVisibility constName constType constValue) = ?checkConstDeclarationH

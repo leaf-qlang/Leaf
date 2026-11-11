@@ -42,10 +42,10 @@ record ScopeTables where
   memberScopes     : SortedMap SymbolId ScopeId                    -- Given a symbol, which scope contains its members? Member example: const and functions inside a module
   references       : SortedMap SymbolId (SnocList SymbolReference)
   -- Resolver traversal state.
-  currentScope         : ScopeId                                  -- current scope while threading ScopeTables through the State monad
+  currentScope         : ScopeId                                   -- current scope while threading ScopeTables through the State monad
   currentScopeKind     : ScopeKind
-  currentModule        : SymbolId                                 -- module enclosing the current scope
-  constContextBoundary : Maybe ScopeId                            -- scope enclosing innermost array length or repeat count where a name cannot be a local parameter
+  currentModule        : SymbolId                                  -- module enclosing the current scope
+  constContextBoundary : Maybe ScopeId                             -- scope enclosing innermost array length or repeat count where a name cannot be a local parameter
 
 public export
 (.nextSymbolId) : ScopeTables -> SymbolId

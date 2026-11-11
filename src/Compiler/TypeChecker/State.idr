@@ -4,6 +4,7 @@ import Control.Monad.State
 import Data.SortedMap
 import Data.SortedSet
 
+import Compiler.ScopeAndNameResolution.Data
 import Compiler.TypeChecker.Data
 import Compiler.TypeChecker.Helper
 import Compiler.TypeChecker.TcType
@@ -11,6 +12,7 @@ import Compiler.TypeChecker.Type
 import Frontend.Syntax.AST
 import Frontend.ASTData
 import Frontend.ASTPhases
+import Frontend.QuantumAnnotations
 import Frontend.Syntax.Common
 
 %default total
@@ -76,3 +78,37 @@ blocked symbol = do
   case lookup symbol checkerState.declarations of
     Just _  => lift (Left (Blocked symbol))
     Nothing => unreachable {function = "blocked"} {reason = "symbol cannot be found in checker state top level declarations"}
+
+--------------------------------------------------------------------------------
+-- Recording results
+--------------------------------------------------------------------------------
+
+typedSymbolInfo : TypedSymbolInfo -> InferredType -> TypedSymbolInfo
+typedSymbolInfo symbolInfo inferredType = { symbolType := inferredType } symbolInfo
+
+export
+recordSymbolType : SymbolId -> LeafType -> StateT TypeCheckerState (Either CheckFailure) ()
+recordSymbolType symbolId leafType = do
+  checkerState <- get
+  case lookup symbolId checkerState.tables.symbols of
+    Nothing => unreachable {function = "recordSymbolType"} {reason = "symbol cannot be found in the symbol table"}
+    Just symbolInfo => do
+      let typedSymbol = typedSymbolInfo symbolInfo (ResolvedType leafType)
+      modify $ \currentState => { tables.symbols := insert symbolId typedSymbol currentState.tables.symbols } currentState
+
+export
+typedLocalVarQualifiers : TypedLocalVarQualifiers -> LeafType -> TypedLocalVarQualifiers
+typedLocalVarQualifiers localVarQualifiers leafType =
+  if hasOwnedQbit leafType
+    then { quantumStorage := AssignedQbitStorage (MkQuantumStorageProperties NoAutomaticCleanup) } localVarQualifiers
+    else { quantumStorage := NotQbitLocal } localVarQualifiers
+
+export
+recordParameterStorage : SymbolId -> LeafType -> StateT TypeCheckerState (Either CheckFailure) ()
+recordParameterStorage symbolId leafType = do
+  checkerState <- get
+  case lookup symbolId checkerState.tables.localVarsMeta of
+    Nothing => unreachable {function = "recordParameterStorage"} {reason = "symbol cannot be found in the local variable metadata"}
+    Just qualifiers => do
+      let typedQualifiers = typedLocalVarQualifiers qualifiers leafType
+      modify $ \currentState => { tables.localVarsMeta := insert symbolId typedQualifiers currentState.tables.localVarsMeta } currentState
