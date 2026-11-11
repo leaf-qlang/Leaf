@@ -6,25 +6,35 @@ import DSL.Gates
 %default total
 
 public export
-data InitState = Zero | One
+data State = Zero | One
 
 -- Quantum circuits with n inputs and m outputs
 public export
 data Circuit : Nat -> Nat -> Type where
   -- Identity / “empty” circuit
-  Id  : Circuit n n
+  Id : {0 n : Nat} -> Circuit n n
 
   -- A single primitive gate
-  GateApplication : Gate n -> Circuit n n
+  GateApplication : {0 n : Nat} -> Gate n -> Circuit n n
 
   -- Sequential composition
-  Seq : Circuit n m -> Circuit m k -> Circuit n k
+  Seq : {0 n : Nat} ->
+        {0 m : Nat} ->
+        {0 k : Nat} ->
+        Circuit n m -> Circuit m k -> Circuit n k
 
   -- Parallel composition
-  Par : Circuit n1 m1 -> Circuit n2 m2 -> Circuit (n1 + n2) (m1 + m2)
+  Par : {0 n1 : Nat} ->
+        {0 m1 : Nat} ->
+        {0 n2 : Nat} ->
+        {0 m2 : Nat} ->
+        Circuit n1 m1 ->
+        Circuit n2 m2 ->
+        Circuit (n1 + n2) (m1 + m2)
 
-  -- Add one qbit per initial state, each initialized in |0⟩ or |1⟩
-  Init : (states : List InitState) -> Circuit n (n + length states)
+  -- Add one qubit per initial state
+  Init : {0 n : Nat} -> (states : List State) -> Circuit n (n + length states)
+
 
 -- Inverse of a circuit, if it exists
 public export
@@ -48,6 +58,7 @@ inv (Par c1 c2) = do
   pure (Par c1' c2')
 
 inv (Init _) = Nothing
+
 
 -- Repeated application of a circuit
 public export
