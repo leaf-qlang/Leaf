@@ -7,6 +7,7 @@ Higher priority:
 
 - Lean 4 code generation.
 - Modules and imports.
+- Add a classical expression language to Idris2 DSL.
 - Handle supports adjoint/ctrl function clauses.
 - Support for adjoint() operation.
 - Uncomputation support.
