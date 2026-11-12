@@ -23,9 +23,9 @@ data Circuit : Nat -> Nat -> Type where
         {0 k : Nat} ->
         Circuit n m -> Circuit m k -> Circuit n k
 
-  -- Parallel composition
-  Par : {0 n1 : Nat} ->
-        {0 m1 : Nat} ->
+  -- n1 and m1 are kept at run time
+  Par : {n1 : Nat} ->
+        {m1 : Nat} ->
         {0 n2 : Nat} ->
         {0 m2 : Nat} ->
         Circuit n1 m1 ->
