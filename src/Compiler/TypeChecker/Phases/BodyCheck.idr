@@ -45,18 +45,32 @@ evalConstExprNat (MkAstNode astInfo _ (ExprLiteral (MkAstNode _ _ (LiteralIntege
 -- only literal expression are implemented for now in order to unblock Phase A
 evalConstExprNat _ = notImplemented {function = "evalConstExprNat"} {feature = "array lengths other than a literal (needs ConstEval/ConstRules)"}
 
-||| Reports, at the offending node's own span, the two written-type errors of
-||| §4.1 item 4: a `qstate` anywhere in the type (`UnsupportedFeature "qstate"`,
-||| §1.5 item 8) and a slice in an owned position -- entered through
-||| parentheses, tuples, arrays and slices, but not behind a reference or
-||| inside a function type -- (`UnsizedValue`, §5.6). Walks the written type
-||| rather than the `LeafType`, because only the written nodes carry spans.
-||| Shared by pass A (parameter, result and constant types) and pass B (`let`
-||| annotations).
+||| A slice type [T] has no length known at compile time, so it can't be a parameter, result or constant type on its own. 
+||| A reference to a slice, &[T], is fine, a slice reference carries both a pointer to its first element and its length.
 export
 checkWrittenType : ResolvedTy -> StateT TypeCheckerState (Either CheckFailure) ()
-checkWrittenType writtenType = ?checkWrittenTypeH
-
+checkWrittenType = walk False
+  where
+    walk : (unsizedAllowed : Bool) -> ResolvedTy -> StateT TypeCheckerState (Either CheckFailure) ()
+    walk unsizedAllowed typeAstNode@(MkAstNode astInfo metadata typeNode) =
+      case typeNode of
+        TyPrimitive primitiveName => pure ()
+        TyPath typePath => notImplemented {function = "checkWrittenType"} {feature = "structs, enums or qenums"}
+        TyUnit => pure ()
+        TyParenthesized innerType => assert_total (idris_crash "Parenthesized types should have been removed during the desugaring phase.")
+        TyTuple elementTypes => traverse_ (\element => walk False (assert_smaller typeNode element)) elementTypes
+        TyArray elementType sizeExpression => walk False (assert_smaller typeNode elementType)
+        TySlice elementType =>
+          if unsizedAllowed
+            then walk False (assert_smaller typeNode elementType)
+            else do
+              leafType <- writtenLeafTypeM evalConstExprNat typeAstNode
+              typeError (UnsizedValue leafType astInfo.span)
+        TyReference borrowKind referencedType => walk True (assert_smaller typeNode referencedType)
+        TyQualified multiplicityQualifier qualifiedType => walk unsizedAllowed (assert_smaller typeNode qualifiedType)
+        TyFunction functionEffect functionParameters returnType => do
+          traverse_ (\parameter => walk False (assert_smaller typeNode parameter.nodeValue.parameterType)) functionParameters
+          traverse_ (\result => walk False (assert_smaller typeNode result)) returnType
 
 checkFunctionDeclaration : FunctionDeclarationNode ResolvedAstPhase -> StateT TypeCheckerState (Either CheckFailure) ()
 checkFunctionDeclaration

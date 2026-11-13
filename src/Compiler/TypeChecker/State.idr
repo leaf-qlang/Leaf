@@ -94,9 +94,8 @@ recordSymbolType symbolId leafType = do
     Nothing => unreachable {function = "recordSymbolType"} {reason = "symbol cannot be found in the symbol table"}
     Just symbolInfo => do
       let typedSymbol = typedSymbolInfo symbolInfo (ResolvedType leafType)
-      modify $ \currentState => { tables.symbols := insert symbolId typedSymbol currentState.tables.symbols } currentState
+      modify $ \state => { tables.symbols := insert symbolId typedSymbol state.tables.symbols } state
 
-export
 typedLocalVarQualifiers : TypedLocalVarQualifiers -> LeafType -> TypedLocalVarQualifiers
 typedLocalVarQualifiers localVarQualifiers leafType =
   if hasOwnedQbit leafType
@@ -111,4 +110,9 @@ recordParameterStorage symbolId leafType = do
     Nothing => unreachable {function = "recordParameterStorage"} {reason = "symbol cannot be found in the local variable metadata"}
     Just qualifiers => do
       let typedQualifiers = typedLocalVarQualifiers qualifiers leafType
-      modify $ \currentState => { tables.localVarsMeta := insert symbolId typedQualifiers currentState.tables.localVarsMeta } currentState
+      modify $ \state => { tables.localVarsMeta := insert symbolId typedQualifiers state.tables.localVarsMeta } state
+
+export
+recordConstValue : SymbolId -> ConstValue -> StateT TypeCheckerState (Either CheckFailure) ()
+recordConstValue symbolId constValue =
+  modify $ \state => { tables.constValues := insert symbolId constValue state.tables.constValues } state

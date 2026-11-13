@@ -23,7 +23,7 @@ import Frontend.ASTPhases
 --
 -- Qbit arguments are ordinary EXPRESSIONS (a name `q1`, an array literal
 -- `[q1, q2]`, an index `qs[2]`), so this module is parameterized over the
--- expression type exactly like TyNode's arraySizeExpr -- Decl.idr ties the
+-- expression type exactly like TyNode's arraySizeExprType -- Decl.idr ties the
 -- knot with the concrete Expr phase. Which expressions are ACCEPTABLE
 -- contract arguments (lvalue-ish qbit designators, not arbitrary
 -- computation) is a validation pass's check against the preserved spans.

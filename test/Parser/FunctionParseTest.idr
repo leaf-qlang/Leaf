@@ -79,6 +79,27 @@ runFunctionParseTests = runTests $ Test.do
     parseAndPrettyPrint "fn use_types(person: Person, config: my_module::Config) {}"
       `shouldBe` Just "fn use_types(person: Person, config: my_module::Config) { }"
 
+  test "a qstate parameter type is rejected by the parser" $
+    parseErrorDetails "fn f(s: qstate) {}" `shouldBe`
+      Just
+        ( "Parse error at: test-fixture.rs:1:9, with message: The `qstate` type is not yet supported."
+        , (1, 15)
+        )
+
+  test "qstate nested in an array type is rejected by the parser" $
+    parseErrorDetails "fn f(s: [qstate; 2]) {}" `shouldBe`
+      Just
+        ( "Parse error at: test-fixture.rs:1:10, with message: The `qstate` type is not yet supported."
+        , (1, 16)
+        )
+
+  test "a qstate local type is rejected by the parser" $
+    parseErrorDetails "fn f() { let s: qstate; }" `shouldBe`
+      Just
+        ( "Parse error at: test-fixture.rs:1:17, with message: The `qstate` type is not yet supported."
+        , (1, 23)
+        )
+
   test "path types with more than two segments" $
     parseAndPrettyPrint "fn use_types(value: root::inner::Leaf) {}"
       `shouldBe` Just "fn use_types(value: root::inner::Leaf) { }"

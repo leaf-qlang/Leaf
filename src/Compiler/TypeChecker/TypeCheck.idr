@@ -84,7 +84,7 @@ seedPresetSymbolTypes tables = { symbols := map seedPresetSymbolType tables.symb
     seedPresetSymbolType symbol =
       case (symbol.symbolKind, symbol.origin) of
         (SymbolModule, _)               => { symbolType := NoValueType } symbol
-        (SymbolFunction, PreludeSymbol) => { symbolType := preludeSymbolType symbol.declaredName } symbol
+        (SymbolFunction, PreludeSymbol) => { symbolType := preludeValueType symbol.declaredName } symbol
         _                               => symbol
 
 seedTypeCheckerState : ResolvedModule -> List ResolvedItem -> TypeCheckerState

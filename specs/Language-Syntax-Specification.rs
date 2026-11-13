@@ -166,14 +166,14 @@ ctrl().on().apply()
 // Array and slice length, range reversal
 len(), rev()
 
-// (II) The following are prelude mathematical functions that can be used in Leaf programs. These are NOT part of language syntax, they should be parsed as regular functions. Here abs() exists only for signed integers and floats, min()/max() apply to any numeric type.
+// (II) The following are prelude mathematical functions that can be used in Leaf programs. These are NOT part of language syntax, they should be parsed as regular functions. Here abs() exists only for signed integers and floats, min()/max() apply to any numeric type, and all the other functions apply to f32 and f64 only. Each function is overloaded per numeric type and its result has the type of its argument(s): sin(x) is an f32 when x is an f32 and an f64 when x is an f64, and min(a, b) requires a and b to have the same type. Use `as` to convert between numeric types.
 cos(), acos(), sin(), asin(), tan(), atan()
 abs(), exp(), ceil(), floor(), ln(), log2(), log10(), max(), min(), round(), sqrt()
 // Declaring angle parameters, part of prelude:
 Param()
 // phase() is a complex-valued helper function part of prelude needed for quantum states specification: phase(1.23) = exp(i * 1.23)
 phase()
-// turns() part of prelude translates floating point numbers representing fractions of 2π into angle types, so turns(0.25) = π/2, turns(0.5) = π, turns(1.0) = 2π, etc.
+// turns() part of prelude translates floating point numbers representing fractions of 2π into angle types, so turns(0.25) = π/2, turns(0.5) = π, turns(1.0) = 2π, etc. The angle has the width of the float it is made from: turns() applied to an f32 gives an angle32 and applied to an f64 gives an angle64.
 turns()
 
 //////////////////////////////////////////////////////////////
@@ -606,7 +606,7 @@ let q: qbit = U1(0.25, q);
 let angle: angle64 = 3.141592653589793;
 let q: qbit = U1(angle, q);
 
-// (iii) angle32 and angle64 can be specified using the turns() prelude function to convert integer to angles: turns(0.25) = π/2
+// (iii) angle32 and angle64 can be specified using the turns() prelude function to convert floating point numbers to angles: turns(0.25) = π/2
 let angle: angle64 = turns(0.25);
 let q: qbit = U1(angle, q);
 

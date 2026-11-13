@@ -30,7 +30,7 @@ import Frontend.Syntax.Name
 --   * There are no range patterns and no const-expression patterns in the
 --     spec, so nothing else drags Expr in.
 --
--- Consequently PatternNode needs no `arraySizeExpr`-style parameter, and the
+-- Consequently PatternNode needs no `arraySizeExprType`-style parameter, and the
 -- concrete SurfacePattern alias can be defined right here.
 --
 -- Both grammars are recursive (or reference located children), so they are

@@ -208,7 +208,7 @@ data TypeError
   -- Expressions, patterns and places
   | UnknownMember String SourceSpan                            -- member name; no supported type has named fields or methods
   | InvalidBuiltinContext String SourceSpan                    -- builtin used outside a call or a valid position, ex: let m = measr;
-  | UnsupportedFeature String SourceSpan                       -- excluded construct, ex: qstate, tensor, a string literal outside Param
+  | UnsupportedFeature String SourceSpan                       -- excluded construct, ex: string literal outside Param or function attributes
   | IndexOutOfBounds Integer Nat SourceSpan                    -- index, length
   | UnsizedValue LeafType SourceSpan                           -- unsized type used by value, ex: let s = a[1..3];
   | MissingRangeEndpoint String SourceSpan                     -- construct needing the endpoint (rev or for), ex: rev(1..)

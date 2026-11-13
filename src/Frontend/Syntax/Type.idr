@@ -33,7 +33,7 @@ import Frontend.Syntax.Operator
 --
 -- The parameter does NOT leak beyond that point: every module downstream of
 -- Expr.idr (Stmt, Contract, Decl, ...) uses the concrete SurfaceTy alias and
--- never mentions arraySizeExpr.
+-- never mentions arraySizeExprType.
 --
 -- Representable examples:
 --
@@ -78,26 +78,26 @@ FunctionTypeParameterName phase = AstNode phase NameNode
 mutual
 
   public export
-  data TyNode : (phase : AstPhase) -> (arraySizeExpr : Type) -> Type where
+  data TyNode : (phase : AstPhase) -> (arraySizeExprType : Type) -> Type where
 
     -- Built-in primitive type name: qbit, qstate, bit, i32, f64, angle64,
     -- param, bool, ... Reuses the lexer's authoritative enumeration.
     TyPrimitive :
          (primitiveName : TypPrimName)
-      -> TyNode phase arraySizeExpr
+      -> TyNode phase arraySizeExprType
 
     -- User-defined named type: struct, enum, or qenum, possibly behind a
     -- module path (Person, my_module::Config). Which of those it actually
     -- names is resolution's job; here it is just a written path.
     TyPath :
          (typePath : Path phase)
-      -> TyNode phase arraySizeExpr
+      -> TyNode phase arraySizeExprType
 
     -- The unit TYPE `()`. A dedicated constructor: `()` is never an
     -- empty tuple, so TyTuple below cannot represent it (List1 requires at
     -- least one element).
     TyUnit :
-         TyNode phase arraySizeExpr
+         TyNode phase arraySizeExprType
 
     -- A parenthesized type `(T)`. Kept explicit in the surface AST because
     -- Leaf has one-element tuple types `(T,)`: with both in the grammar,
@@ -105,8 +105,8 @@ mutual
     -- "help: `(T)` is a parenthesized type, not a 1-tuple -- add a trailing
     -- comma" need the written form. Discarded during canonicalization.
     TyParenthesized :
-         (innerType : AstNode phase (TyNode phase arraySizeExpr))
-      -> TyNode phase arraySizeExpr
+         (innerType : AstNode phase (TyNode phase arraySizeExprType))
+      -> TyNode phase arraySizeExprType
 
     -- Tuple type with AT LEAST one element: (i32, f64), (qbit,).
     -- The List1 shape makes a zero-element tuple type unrepresentable --
@@ -114,24 +114,24 @@ mutual
     -- is only semantically visible in the one-element case, where it is
     -- the entire difference between TyTuple and TyParenthesized.
     TyTuple :
-         (elementTypes : List1 (AstNode phase (TyNode phase arraySizeExpr)))
-      -> TyNode phase arraySizeExpr
+         (elementTypes : List1 (AstNode phase (TyNode phase arraySizeExprType)))
+      -> TyNode phase arraySizeExprType
 
     -- Fixed-size array type [T; N]. The size is stored as a WRITTEN
     -- EXPRESSION (integer literal, `2 + 2`, a named constant N, ...);
     -- requiring it to be a const expression is a later pass's check.
     TyArray :
-         (elementType    : AstNode phase (TyNode phase arraySizeExpr))
-      -> (sizeExpression : arraySizeExpr)
-      -> TyNode phase arraySizeExpr
+         (elementType    : AstNode phase (TyNode phase arraySizeExprType))
+      -> (sizeExpression : arraySizeExprType)
+      -> TyNode phase arraySizeExprType
 
     -- Slice type [T]. In well-formed Leaf source this only occurs behind a
     -- reference (&[T], &mut [T]) -- as TyReference wrapping TySlice -- but
     -- the AST does not enforce "slices only behind references"; a bare
     -- `[T]` annotation is a semantic (sizedness) error with a good span.
     TySlice :
-         (elementType : AstNode phase (TyNode phase arraySizeExpr))
-      -> TyNode phase arraySizeExpr
+         (elementType : AstNode phase (TyNode phase arraySizeExprType))
+      -> TyNode phase arraySizeExprType
 
     -- Reference type: &T or &mut T, reusing BorrowKind so shared-vs-mutable
     -- is spelled once for both expressions and types. The borrow kind is
@@ -143,8 +143,8 @@ mutual
     -- (`&[linear qbit]`), and desugaring inserts none.
     TyReference :
          (borrowKind     : AstNode phase BorrowKind)
-      -> (referencedType : AstNode phase (TyNode phase arraySizeExpr))
-      -> TyNode phase arraySizeExpr
+      -> (referencedType : AstNode phase (TyNode phase arraySizeExprType))
+      -> TyNode phase arraySizeExprType
 
     -- Multiplicity-qualified type: linear qbit, affine qbit. Exactly one
     -- qualifier, located so diagnostics can point at the keyword. `scratch`
@@ -155,8 +155,8 @@ mutual
     -- `affine (qbit, qbit)`) at the span of the token following it.
     TyQualified :
          (multiplicityQualifier : AstNode phase QuantumMultiplicityQualifier)
-      -> (qualifiedType      : AstNode phase (TyNode phase arraySizeExpr))
-      -> TyNode phase arraySizeExpr
+      -> (qualifiedType      : AstNode phase (TyNode phase arraySizeExprType))
+      -> TyNode phase arraySizeExprType
 
     -- Function type, as used for higher-order parameters:
     --
@@ -168,9 +168,9 @@ mutual
     -- means no `->` was written, distinct from an explicit `-> ()`.
     TyFunction :
          (functionEffect     : Maybe (AstNode phase FunctionEffect))
-      -> (functionParameters : List (AstNode phase (FunctionTypeParameterNode phase arraySizeExpr)))
-      -> (returnType         : Maybe (AstNode phase (TyNode phase arraySizeExpr)))
-      -> TyNode phase arraySizeExpr
+      -> (functionParameters : List (AstNode phase (FunctionTypeParameterNode phase arraySizeExprType)))
+      -> (returnType         : Maybe (AstNode phase (TyNode phase arraySizeExprType)))
+      -> TyNode phase arraySizeExprType
 
   -- One parameter inside a FUNCTION TYPE: `qs: [qbit; 4]`. The name is
   -- required because every function-type parameter in the spec is written
@@ -203,15 +203,15 @@ mutual
   -- unresolved sidesteps all of that -- see ASTData.idr's SymbolKind, which
   -- correspondingly has no case for it.
   public export
-  record FunctionTypeParameterNode (phase : AstPhase) (arraySizeExpr : Type) where
+  record FunctionTypeParameterNode (phase : AstPhase) (arraySizeExprType : Type) where
     constructor MkFunctionTypeParameterNode
     parameterName : FunctionTypeParameterName phase
-    parameterType : AstNode phase (TyNode phase arraySizeExpr)
+    parameterType : AstNode phase (TyNode phase arraySizeExprType)
 
 --------------------------------------------------------------------------------
 -- AST-wrapped type
 --------------------------------------------------------------------------------
--- Expr.idr / AST.idr tie the knot by instantiating `arraySizeExpr` with the
+-- Expr.idr / AST.idr tie the knot by instantiating `arraySizeExprType` with the
 -- located expression type at the same phase:
 --
 --   SurfaceTy : Type
@@ -219,8 +219,8 @@ mutual
 --------------------------------------------------------------------------------
 
 public export
-Ty : (phase : AstPhase) -> (arraySizeExpr : Type) -> Type
-Ty phase arraySizeExpr = AstNode phase (TyNode phase arraySizeExpr)
+Ty : (phase : AstPhase) -> (arraySizeExprType : Type) -> Type
+Ty phase arraySizeExprType = AstNode phase (TyNode phase arraySizeExprType)
 
 --------------------------------------------------------------------------------
 -- Owned positions
@@ -245,11 +245,11 @@ Ty phase arraySizeExpr = AstNode phase (TyNode phase arraySizeExpr)
 -- Applies `onOwned` to every owned position, rebuilding the type around the results.
 traverseOwnedPositions :
      {0 phase : AstPhase}
-  -> {0 arraySizeExpr : Type}
+  -> {0 arraySizeExprType : Type}
   -> Applicative f
-  => (onOwned : Ty phase arraySizeExpr -> f (Ty phase arraySizeExpr))
-  -> Ty phase arraySizeExpr
-  -> f (Ty phase arraySizeExpr)
+  => (onOwned : Ty phase arraySizeExprType -> f (Ty phase arraySizeExprType))
+  -> Ty phase arraySizeExprType
+  -> f (Ty phase arraySizeExprType)
 traverseOwnedPositions onOwned typeAstNode@(MkAstNode typeInfo metadata typeNode) =
   case typeNode of
     TyPrimitive TypPrimQbit => onOwned typeAstNode
@@ -261,27 +261,27 @@ traverseOwnedPositions onOwned typeAstNode@(MkAstNode typeInfo metadata typeNode
     TySlice elementType => rebuild . TySlice <$> recur elementType
     _ => pure typeAstNode
   where
-    rebuild : TyNode phase arraySizeExpr -> Ty phase arraySizeExpr
+    rebuild : TyNode phase arraySizeExprType -> Ty phase arraySizeExprType
     rebuild = MkAstNode typeInfo metadata
 
-    recur : Ty phase arraySizeExpr -> f (Ty phase arraySizeExpr)
+    recur : Ty phase arraySizeExprType -> f (Ty phase arraySizeExprType)
     recur nestedType = traverseOwnedPositions onOwned (assert_smaller typeAstNode nestedType)
 
 ||| Every owned position of a type, in source order.
 export
-ownedPositions : Ty phase arraySizeExpr -> List (Ty phase arraySizeExpr)
+ownedPositions : Ty phase arraySizeExprType -> List (Ty phase arraySizeExprType)
 ownedPositions = runConst . traverseOwnedPositions (\position => MkConst [position])
 
 ||| Rewrites every owned position of a type.
 export
 mapOwnedPositions :
-     (Ty phase arraySizeExpr -> Ty phase arraySizeExpr)
-  -> Ty phase arraySizeExpr
-  -> Ty phase arraySizeExpr
+     (Ty phase arraySizeExprType -> Ty phase arraySizeExprType)
+  -> Ty phase arraySizeExprType
+  -> Ty phase arraySizeExprType
 mapOwnedPositions rewritePosition = runIdentity . traverseOwnedPositions (Id . rewritePosition)
 
 ||| The multiplicity qualifier written at an owned position, if any.
 export
-positionQualifier : Ty phase arraySizeExpr -> Maybe (AstNode phase QuantumMultiplicityQualifier)
+positionQualifier : Ty phase arraySizeExprType -> Maybe (AstNode phase QuantumMultiplicityQualifier)
 positionQualifier (MkAstNode _ _ (TyQualified qualifier _)) = Just qualifier
 positionQualifier _ = Nothing

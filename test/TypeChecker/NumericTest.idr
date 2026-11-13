@@ -1,7 +1,9 @@
 module TypeChecker.NumericTest
 
+import Data.Maybe
 import Test.Simple
 
+import Compiler.Prelude
 import Compiler.TypeChecker.Data
 import Compiler.TypeChecker.Numeric
 import Compiler.TypeChecker.PreludeSignatures
@@ -133,6 +135,20 @@ runNumericTests = runTests $ Test.do
   test "min and max include usize" $
     (map (elem TypPrimUsize) (mathClasses "min"), map (elem TypPrimUsize) (mathClasses "max")) `shouldBe`
       (Just True, Just True)
+
+  test "the other math functions are overloaded over f32 and f64 only" $
+    all (\name => mathClasses name == Just [TypPrimF32, TypPrimF64])
+      ["sin", "cos", "tan", "asin", "acos", "atan", "exp", "ln", "log2", "log10", "sqrt", "floor", "ceil", "round"]
+      `shouldBe` True
+
+  test "turns accepts f32 and f64 and produces the angle of the same width" $
+    (case preludeSignature "turns" of
+       Just (TurnsSignature classes) => Just (map (\class => (numericClassPrimitive class, turnsAngleType class)) classes)
+       _ => Nothing)
+      `shouldBe` Just [(TypPrimF32, Just TypPrimAngle32), (TypPrimF64, Just TypPrimAngle64)]
+
+  test "every prelude name has a signature except phase, which is excluded with qstate" $
+    filter (isNothing . preludeSignature) preludeFunctionNames `shouldBe` ["phase"]
 
   test "a u64 constant is not a valid usize count" $
     reported (checkArrayLength (LeafPrimitiveType TypPrimU64) 3 location) `shouldBe`

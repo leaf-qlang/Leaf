@@ -375,6 +375,9 @@ mutual
   parseTypeAfterHead typeNodeId nextNodeId token bounds remaining smaller acc =
     let afterHeadSmaller = rebaseSmaller smaller (uncons Same) in
     case token of
+      TokTypPrim TypPrimQState =>
+        failWithCustomError
+          (UnsupportedFeature "The `qstate` type is not yet supported.") bounds
       TokTypPrim primitiveName =>
         Succ0
           (surfaceAstNode

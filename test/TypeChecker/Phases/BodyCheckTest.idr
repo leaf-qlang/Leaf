@@ -138,13 +138,9 @@ paramAndStringTests = Test.do
     typeCheckOutcome "fn Param(x: i32) -> i32 { x } fn f() -> i32 { Param(\"theta\") }"
       `shouldBe` rejectedWith (UnsupportedFeature "string literal" (spanAt 1 53))
 
--- Excluded qstate constructs and misplaced builtins (plan §1.4, §1.5 item 8)
+-- Excluded constructs and misplaced builtins (plan §1.4, §1.5 item 8)
 excludedConstructTests : List ETest
 excludedConstructTests = Test.do
-  test "a qstate local type is unsupported" $
-    typeCheckOutcome "fn f() { let s: qstate; }"
-      `shouldBe` rejectedWith (UnsupportedFeature "qstate" (spanAt 1 17))
-
   test "a basis-string value is unsupported" $
     typeCheckOutcome "fn f() { let state = bs\"1011\"; }"
       `shouldBe` rejectedWith (UnsupportedFeature "basis-string value" (spanAt 1 22))

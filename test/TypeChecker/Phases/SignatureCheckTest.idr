@@ -73,10 +73,6 @@ functionSignatureTests = Test.do
   test "pub items type-check like private ones" $
     typeCheckOutcome "pub const N: u32 = 2; pub fn f(a: [i32; N as usize]) -> [i32; N as usize] { a }" `shouldBe` accepted
 
-  test "a qstate parameter type is unsupported" $
-    typeCheckOutcome "fn f(s: qstate) {}"
-      `shouldBe` rejectedWith (UnsupportedFeature "qstate" (spanAt 1 9))
-
   test "an owned slice parameter is unsized" $
     typeCheckOutcome "fn f(xs: [i32]) {}"
       `shouldBe` rejectedWith (UnsizedValue (slice i32) (spanAt 1 10))
@@ -84,10 +80,6 @@ functionSignatureTests = Test.do
   test "an owned slice result is unsized" $
     typeCheckOutcome "fn f() -> [i32] {}"
       `shouldBe` rejectedWith (UnsizedValue (slice i32) (spanAt 1 11))
-
-  test "a qstate nested in a parameter type is unsupported" $
-    typeCheckOutcome "fn f(s: [qstate; 2]) {}"
-      `shouldBe` rejectedWith (UnsupportedFeature "qstate" (spanAt 1 10))
 
 -- Forward references and recursion
 forwardReferenceTests : List ETest

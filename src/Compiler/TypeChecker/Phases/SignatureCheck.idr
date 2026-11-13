@@ -57,7 +57,7 @@ checkFunctionDeclaration
         (\parameter =>
           case parameter.nodeValue of
             NormalParameter _ _ _ parameterType => checkWrittenType parameterType
-            ReceiverParameter _ _ => unreachable {function = "checkFunctionDeclaration"} {reason = "the parser does not produce receiver parameters"}
+            ReceiverParameter _ _ => unreachable {function = "checkFunctionDeclaration"} {reason = "the parser does yet not produce receiver parameters"}
         ) functionParameters
       traverse_ checkWrittenType returnType
       -- Second pass: evaluate lengths and record the types.
@@ -85,7 +85,11 @@ checkFunctionDeclaration
       recordSymbolType functionNameSymbolId (LeafFunctionType functionEffect (map (.nodeValue) supportClause) paramLeafTypes returnLeafType)
 
 checkConstDeclaration : ConstDeclarationNode ResolvedAstPhase ->  StateT TypeCheckerState (Either CheckFailure) ()
-checkConstDeclaration (MkConstDeclarationNode constDocs constVisibility constName constType constValue) = ?checkConstDeclarationH
+checkConstDeclaration (MkConstDeclarationNode constDocs constVisibility constName constType constValue) = do
+      checkWrittenType constType
+      let constSymbolId = constName.nodeValue.nameNodeSymbolId
+      constLeafType <- writtenLeafTypeM evalConstExprNat constType
+      recordSymbolType constSymbolId constLeafType
 
 export
 checkSignature : ResolvedItem -> StateT TypeCheckerState (Either CheckFailure) ()

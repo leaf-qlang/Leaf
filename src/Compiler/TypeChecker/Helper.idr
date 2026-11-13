@@ -31,58 +31,42 @@ unreachable function reason =
   assert_total $ idris_crash $
     "Typechecking, " ++ function ++ ": internal error: " ++ reason ++ "."
 
--- Only resolved paths carry the SymbolId of the type they name.
-pathTarget : {astPhase : AstPhase} -> Path astPhase -> SymbolId
-pathTarget {astPhase = SurfaceAstPhase} _ =
-  unreachable {function = "pathTarget"} {reason = "type paths are resolved before typechecking"}
-pathTarget {astPhase = CanonicalAstPhase} _ =
-  unreachable {function = "pathTarget"} {reason = "type paths are resolved before typechecking"}
-pathTarget {astPhase = ResolvedAstPhase} path = path.nodeValue.resolvedPathTargetSymbolId
-pathTarget {astPhase = TypedAstPhase} path = path.nodeValue.resolvedPathTargetSymbolId
+pathTargetSymbolId : {astPhase : AstPhase} -> Path astPhase -> SymbolId
+pathTargetSymbolId {astPhase = SurfaceAstPhase} _ = unreachable {function = "pathTargetSymbolId"} {reason = "paths are not yet resolved"}
+pathTargetSymbolId {astPhase = CanonicalAstPhase} _ = unreachable {function = "pathTargetSymbolId"} {reason = "paths are not yet resolved"}
+pathTargetSymbolId {astPhase = ResolvedAstPhase} path = path.nodeValue.resolvedPathTargetSymbolId
+pathTargetSymbolId {astPhase = TypedAstPhase} path = path.nodeValue.resolvedPathTargetSymbolId
 
-||| Translate a written type into the semantic type it denotes, or
-||| TypeNotYetResolved when an array length needs const evaluation.
 export
-toInferredType : {astPhase : AstPhase} -> Ty astPhase (Expr astPhase) -> InferredType
-toInferredType typeAstNode@(MkAstNode _ _ typeNode) =
-  maybe TypeNotYetResolved ResolvedType $ case typeNode of
-    TyPrimitive primitiveName =>
-      Just (LeafPrimitiveType primitiveName)
-    TyPath typePath =>
-      Just (LeafNamedType (pathTarget typePath))
-    TyUnit =>
-      Just LeafUnitType
-    TyParenthesized innerType =>
-      recur innerType
-    TyTuple elementTypes =>
-      LeafTupleType <$> traverse recur elementTypes
-    TyArray elementType sizeExpression =>
-      LeafArrayType <$> recur elementType <*> arrayLength sizeExpression
-    TySlice elementType =>
-      LeafSliceType <$> recur elementType
-    TyReference borrowKind referencedType =>
-      quantumMultiplicityFreeReference borrowKind.nodeValue <$> recur referencedType
-    TyQualified multiplicityQualifier qualifiedType =>
-      LeafQualifiedType multiplicityQualifier.nodeValue <$> recur qualifiedType
+writtenLeafTypeM :  {astPhase : AstPhase} -> Monad m => (resolveLength : Expr astPhase -> m Nat) -> Ty astPhase (Expr astPhase) -> m LeafType
+writtenLeafTypeM resolveLength typeAstNode@(MkAstNode _ _ typeNode) =
+  case typeNode of
+    TyPrimitive primitiveName => pure (LeafPrimitiveType primitiveName)
+    TyPath typePath           => pure (LeafNamedType (pathTargetSymbolId typePath))
+    TyUnit                    => pure LeafUnitType
+    TyParenthesized innerType => recur innerType
+    TyTuple elementTypes      => LeafTupleType <$> traverse recur elementTypes
+    TyArray elementType sizeExpression => LeafArrayType <$> recur elementType <*> resolveLength sizeExpression
+    TySlice elementType => LeafSliceType <$> recur elementType
+    TyReference borrowKind referencedType => quantumMultiplicityFreeReference borrowKind.nodeValue <$> recur referencedType
+    TyQualified multiplicityQualifier qualifiedType => LeafQualifiedType multiplicityQualifier.nodeValue <$> recur qualifiedType
     TyFunction functionEffect functionParameters returnType =>
       LeafFunctionType (maybe EffectGeneral (.nodeValue) functionEffect) []
         <$> traverse (\parameter => recur parameter.nodeValue.parameterType) functionParameters
-        <*> maybe (Just LeafUnitType) recur returnType
+        <*> maybe (pure LeafUnitType) recur returnType
   where
-    resolvedLeafType : InferredType -> Maybe LeafType
-    resolvedLeafType (ResolvedType leafType) = Just leafType
-    resolvedLeafType _ = Nothing
+    recur : Ty astPhase (Expr astPhase) -> m LeafType
+    recur nestedType = writtenLeafTypeM resolveLength (assert_smaller typeAstNode nestedType)
 
-    recur : Ty astPhase (Expr astPhase) -> Maybe LeafType
-    recur nestedType = resolvedLeafType (toInferredType (assert_smaller typeAstNode nestedType))
-
-    -- Named constants and constant expressions need const evaluation, which
-    -- requires typechecker state.
-    arrayLength : Expr astPhase -> Maybe Nat
-    arrayLength (MkAstNode _ _ (ExprLiteral (MkAstNode _ _ (LiteralIntegerRaw raw)))) =
+export
+toInferredType : {astPhase : AstPhase} -> Ty astPhase (Expr astPhase) -> InferredType
+toInferredType = maybe TypeNotYetResolved ResolvedType . writtenLeafTypeM literalArrayLength
+  where
+    literalArrayLength : Expr astPhase -> Maybe Nat
+    literalArrayLength (MkAstNode _ _ (ExprLiteral (MkAstNode _ _ (LiteralIntegerRaw raw)))) =
       case (integerLiteralValue raw, arrayLengthProblem raw) of
-        (Just length, Nothing) => Just length
+        (Just length, Nothing) => if length <= usizeMaximum then Just length else Nothing
         (Just _, Just _) => unreachable {function = "toInferredType"} {reason = "post-parse validation rejects this array length: " ++ raw}
         (Nothing, _) => unreachable {function = "toInferredType"} {reason = "the lexer accepted a malformed integer literal: " ++ raw}
-    arrayLength _ = Nothing
+    literalArrayLength _ = Nothing
 
