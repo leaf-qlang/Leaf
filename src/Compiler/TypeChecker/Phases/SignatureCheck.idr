@@ -56,10 +56,10 @@ checkFunctionDeclaration
       traverse_
         (\parameter =>
           case parameter.nodeValue of
-            NormalParameter _ _ _ parameterType => checkWrittenType parameterType
+            NormalParameter _ _ _ parameterType => checkTypeIsSized parameterType
             ReceiverParameter _ _ => unreachable {function = "checkFunctionDeclaration"} {reason = "the parser does yet not produce receiver parameters"}
         ) functionParameters
-      traverse_ checkWrittenType returnType
+      traverse_ checkTypeIsSized returnType
       -- Second pass: evaluate lengths and record the types.
       paramLeafTypes <- traverse
         (\parameter =>
@@ -86,7 +86,7 @@ checkFunctionDeclaration
 
 checkConstDeclaration : ConstDeclarationNode ResolvedAstPhase ->  StateT TypeCheckerState (Either CheckFailure) ()
 checkConstDeclaration (MkConstDeclarationNode constDocs constVisibility constName constType constValue) = do
-      checkWrittenType constType
+      checkTypeIsSized constType
       let constSymbolId = constName.nodeValue.nameNodeSymbolId
       constLeafType <- writtenLeafTypeM evalConstExprNat constType
       recordSymbolType constSymbolId constLeafType

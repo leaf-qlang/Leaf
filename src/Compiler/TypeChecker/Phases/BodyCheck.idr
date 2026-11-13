@@ -48,14 +48,14 @@ evalConstExprNat _ = notImplemented {function = "evalConstExprNat"} {feature = "
 ||| A slice type [T] has no length known at compile time, so it can't be a parameter, result or constant type on its own. 
 ||| A reference to a slice, &[T], is fine, a slice reference carries both a pointer to its first element and its length.
 export
-checkWrittenType : ResolvedTy -> StateT TypeCheckerState (Either CheckFailure) ()
-checkWrittenType = walk False
+checkTypeIsSized : ResolvedTy -> StateT TypeCheckerState (Either CheckFailure) ()
+checkTypeIsSized = walk False
   where
     walk : (unsizedAllowed : Bool) -> ResolvedTy -> StateT TypeCheckerState (Either CheckFailure) ()
     walk unsizedAllowed typeAstNode@(MkAstNode astInfo metadata typeNode) =
       case typeNode of
         TyPrimitive primitiveName => pure ()
-        TyPath typePath => notImplemented {function = "checkWrittenType"} {feature = "structs, enums or qenums"}
+        TyPath typePath => notImplemented {function = "checkTypeIsSized"} {feature = "structs, enums or qenums"}
         TyUnit => pure ()
         TyParenthesized innerType => assert_total (idris_crash "Parenthesized types should have been removed during the desugaring phase.")
         TyTuple elementTypes => traverse_ (\element => walk False (assert_smaller typeNode element)) elementTypes
