@@ -4,25 +4,25 @@ import Data.List1
 import Data.String
 import Text.Bounds
 
-import Compiler.Desugar.Desugar
-import Compiler.ScopeAndNameResolution.Data
-import Compiler.ScopeAndNameResolution.Resolve
-import Compiler.ScopeAndNameResolution.Validate
-import Compiler.TypeChecker.Data
-import Compiler.TypeChecker.Type
-import Compiler.TypeChecker.TypeCheck
-import Compiler.Validation.PostParseValidation
-import Frontend.ASTPhases
-import Frontend.Lexer.Error
-import Frontend.Lexer.Lexer
-import Frontend.Parser.Error
-import Frontend.Parser.Parser
-import Frontend.Source
-import Frontend.Syntax.AST
-import Frontend.Syntax.Common
-import Frontend.Syntax.Operator
-import Frontend.Token
-import Frontend.Utils.ASTPrettyPrinter
+import Compiler.Frontend.Desugar.Desugar
+import Compiler.Frontend.ScopeAndNameResolution.Data
+import Compiler.Frontend.ScopeAndNameResolution.Resolve
+import Compiler.Frontend.ScopeAndNameResolution.Validate
+import Compiler.Frontend.TypeChecker.Data
+import Compiler.Frontend.TypeChecker.Type
+import Compiler.Frontend.TypeChecker.TypeCheck
+import Compiler.Frontend.Validation.PostParseValidation
+import Compiler.Frontend.ASTPhases
+import Compiler.Frontend.Lexer.Error
+import Compiler.Frontend.Lexer.Lexer
+import Compiler.Frontend.Parser.Error
+import Compiler.Frontend.Parser.Parser
+import Compiler.Frontend.Source
+import Compiler.Frontend.Syntax.AST
+import Compiler.Frontend.Syntax.Common
+import Compiler.Frontend.Syntax.Operator
+import Compiler.Frontend.Token
+import Compiler.Frontend.Utils.ASTPrettyPrinter
 
 %default total
 

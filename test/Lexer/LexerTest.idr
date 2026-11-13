@@ -3,9 +3,9 @@ module Lexer.LexerTest
 import Text.Bounds
 import Test.Simple
 
-import Frontend.Token
-import Frontend.Lexer.Error
-import Frontend.Lexer.Lexer
+import Compiler.Frontend.Token
+import Compiler.Frontend.Lexer.Error
+import Compiler.Frontend.Lexer.Lexer
 
 %default total
 

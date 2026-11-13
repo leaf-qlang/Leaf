@@ -53,6 +53,8 @@ general fn main() -> bit {
 
 [Documentation](docs/README.md)
 
+[Compiler architecture and source layout](docs/overview-and-architecture.md#source-layout)
+
 ## Progress Status
 
 | Capability                    | Status      |

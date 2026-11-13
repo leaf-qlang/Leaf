@@ -1,15 +1,15 @@
 module ScopeAndNameResolution.ResolveTest
 
-import Compiler.ScopeAndNameResolution.Data
-import Frontend.ASTData
-import Frontend.ASTPhases
-import Frontend.Source
-import Frontend.Syntax.AST
-import Frontend.Syntax.Common
-import Frontend.Syntax.Name
-import Frontend.Syntax.Operator
-import Frontend.Syntax.Pattern
-import Frontend.Syntax.Type
+import Compiler.Frontend.ScopeAndNameResolution.Data
+import Compiler.Frontend.ASTData
+import Compiler.Frontend.ASTPhases
+import Compiler.Frontend.Source
+import Compiler.Frontend.Syntax.AST
+import Compiler.Frontend.Syntax.Common
+import Compiler.Frontend.Syntax.Name
+import Compiler.Frontend.Syntax.Operator
+import Compiler.Frontend.Syntax.Pattern
+import Compiler.Frontend.Syntax.Type
 import ScopeAndNameResolution.Helper
 import ScopeAndNameResolution.ResolveTestHelper
 

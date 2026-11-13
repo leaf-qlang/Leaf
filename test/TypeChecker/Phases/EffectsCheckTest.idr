@@ -2,8 +2,8 @@ module TypeChecker.Phases.EffectsCheckTest
 
 import Test.Simple
 
-import Compiler.TypeChecker.Data
-import Frontend.Syntax.Common
+import Compiler.Frontend.TypeChecker.Data
+import Compiler.Frontend.Syntax.Common
 import TypeChecker.Helper
 
 %default total

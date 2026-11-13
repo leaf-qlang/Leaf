@@ -2,9 +2,9 @@ module TypeChecker.Phases.BodyCheckTest
 
 import Test.Simple
 
-import Compiler.TypeChecker.Data
-import Compiler.TypeChecker.Type
-import Frontend.Syntax.Common
+import Compiler.Frontend.TypeChecker.Data
+import Compiler.Frontend.TypeChecker.Type
+import Compiler.Frontend.Syntax.Common
 import TypeChecker.Helper
 
 %default total

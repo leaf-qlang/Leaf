@@ -3,15 +3,15 @@ module TypeChecker.NumericTest
 import Data.Maybe
 import Test.Simple
 
-import Compiler.Prelude
-import Compiler.TypeChecker.Data
-import Compiler.TypeChecker.Numeric
-import Compiler.TypeChecker.PreludeSignatures
-import Compiler.TypeChecker.Type
-import Frontend.Source
-import Frontend.Syntax.Literal
-import Frontend.Syntax.Operator
-import Frontend.Token
+import Compiler.Frontend.Prelude
+import Compiler.Frontend.TypeChecker.Data
+import Compiler.Frontend.TypeChecker.Numeric
+import Compiler.Frontend.TypeChecker.PreludeSignatures
+import Compiler.Frontend.TypeChecker.Type
+import Compiler.Frontend.Source
+import Compiler.Frontend.Syntax.Literal
+import Compiler.Frontend.Syntax.Operator
+import Compiler.Frontend.Token
 
 %default total
 

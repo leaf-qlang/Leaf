@@ -1,10 +1,10 @@
 module ScopeAndNameResolution.PreludeTest
 
-import Compiler.Prelude
-import Compiler.ScopeAndNameResolution.Data
-import Compiler.ScopeAndNameResolution.Validate
-import Frontend.ASTData
-import Frontend.Source
+import Compiler.Frontend.Prelude
+import Compiler.Frontend.ScopeAndNameResolution.Data
+import Compiler.Frontend.ScopeAndNameResolution.Validate
+import Compiler.Frontend.ASTData
+import Compiler.Frontend.Source
 import ScopeAndNameResolution.Helper
 import ScopeAndNameResolution.PreludeTestHelper
 

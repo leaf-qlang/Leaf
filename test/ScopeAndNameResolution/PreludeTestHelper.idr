@@ -1,12 +1,12 @@
 module ScopeAndNameResolution.PreludeTestHelper
 
-import Compiler.Prelude
-import Compiler.ScopeAndNameResolution.Data
-import Frontend.ASTData
-import Frontend.ASTPhases
-import Frontend.Source
-import Frontend.Syntax.AST
-import Frontend.Syntax.Name
+import Compiler.Frontend.Prelude
+import Compiler.Frontend.ScopeAndNameResolution.Data
+import Compiler.Frontend.ASTData
+import Compiler.Frontend.ASTPhases
+import Compiler.Frontend.Source
+import Compiler.Frontend.Syntax.AST
+import Compiler.Frontend.Syntax.Name
 import ScopeAndNameResolution.Helper
 
 import Data.List

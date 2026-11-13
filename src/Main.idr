@@ -6,21 +6,21 @@ import Text.Bounds
 import System
 import System.File
 
-import Compiler.Desugar.Desugar
-import Compiler.ScopeAndNameResolution.Data
-import Compiler.ScopeAndNameResolution.Resolve
-import Compiler.ScopeAndNameResolution.Validate
-import Frontend.ASTPhases
-import Frontend.Token
-import Frontend.Lexer.Error
-import Frontend.Lexer.Lexer
-import Frontend.Parser.Error
-import Frontend.Parser.Parser
-import Compiler.Validation.PostParseValidation
-import Frontend.Source
-import Frontend.Syntax.AST
-import Frontend.Utils.ASTDebugPrinter
-import Frontend.Utils.ASTPrettyPrinter
+import Compiler.Frontend.Desugar.Desugar
+import Compiler.Frontend.ScopeAndNameResolution.Data
+import Compiler.Frontend.ScopeAndNameResolution.Resolve
+import Compiler.Frontend.ScopeAndNameResolution.Validate
+import Compiler.Frontend.ASTPhases
+import Compiler.Frontend.Token
+import Compiler.Frontend.Lexer.Error
+import Compiler.Frontend.Lexer.Lexer
+import Compiler.Frontend.Parser.Error
+import Compiler.Frontend.Parser.Parser
+import Compiler.Frontend.Validation.PostParseValidation
+import Compiler.Frontend.Source
+import Compiler.Frontend.Syntax.AST
+import Compiler.Frontend.Utils.ASTDebugPrinter
+import Compiler.Frontend.Utils.ASTPrettyPrinter
 
 %default total
 

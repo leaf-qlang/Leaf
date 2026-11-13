@@ -2,7 +2,7 @@ module CompileCodeExamplesTest
 
 import Test.Simple
 
-import Compiler.ScopeAndNameResolution.Data
+import Compiler.Frontend.ScopeAndNameResolution.Data
 import Main
 
 %default total

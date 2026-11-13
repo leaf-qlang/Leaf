@@ -2,9 +2,9 @@ module Parser.ValidationTests
 
 import Test.Simple
 
-import Frontend.ASTPhases
-import Compiler.Validation.PostParseValidation
-import Frontend.Syntax.AST
+import Compiler.Frontend.ASTPhases
+import Compiler.Frontend.Validation.PostParseValidation
+import Compiler.Frontend.Syntax.AST
 import Parser.Helper
 
 %default total

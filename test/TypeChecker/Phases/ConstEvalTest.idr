@@ -2,7 +2,7 @@ module TypeChecker.Phases.ConstEvalTest
 
 import Test.Simple
 
-import Compiler.TypeChecker.Data
+import Compiler.Frontend.TypeChecker.Data
 import TypeChecker.Helper
 
 %default total

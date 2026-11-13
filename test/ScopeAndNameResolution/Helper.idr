@@ -1,19 +1,19 @@
 module ScopeAndNameResolution.Helper
 
-import Compiler.Desugar.Desugar
-import Compiler.ScopeAndNameResolution.Data
-import Compiler.ScopeAndNameResolution.Resolve
-import Compiler.ScopeAndNameResolution.Validate
-import Frontend.ASTData
-import Frontend.ASTPhases
-import Frontend.Lexer.Error
-import Frontend.Lexer.Lexer
-import Frontend.Parser.Error
-import Frontend.Parser.Parser
-import Compiler.Validation.PostParseValidation
-import Frontend.Source
-import Frontend.Syntax.AST
-import Frontend.Token
+import Compiler.Frontend.Desugar.Desugar
+import Compiler.Frontend.ScopeAndNameResolution.Data
+import Compiler.Frontend.ScopeAndNameResolution.Resolve
+import Compiler.Frontend.ScopeAndNameResolution.Validate
+import Compiler.Frontend.ASTData
+import Compiler.Frontend.ASTPhases
+import Compiler.Frontend.Lexer.Error
+import Compiler.Frontend.Lexer.Lexer
+import Compiler.Frontend.Parser.Error
+import Compiler.Frontend.Parser.Parser
+import Compiler.Frontend.Validation.PostParseValidation
+import Compiler.Frontend.Source
+import Compiler.Frontend.Syntax.AST
+import Compiler.Frontend.Token
 import Text.Bounds
 
 import Data.List

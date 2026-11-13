@@ -2,19 +2,19 @@ module Desugarer.Helper
 
 import Text.Bounds
 
-import Compiler.Desugar.Desugar
-import Frontend.ASTData
-import Frontend.ASTPhases
-import Frontend.Lexer.Error
-import Frontend.Lexer.Lexer
-import Frontend.Parser.Error
-import Frontend.Parser.Parser
-import Frontend.Source
-import Frontend.Syntax.AST
-import Frontend.Syntax.Common
-import Frontend.Syntax.Type
-import Frontend.Utils.ASTPrettyPrinter
-import Frontend.Token
+import Compiler.Frontend.Desugar.Desugar
+import Compiler.Frontend.ASTData
+import Compiler.Frontend.ASTPhases
+import Compiler.Frontend.Lexer.Error
+import Compiler.Frontend.Lexer.Lexer
+import Compiler.Frontend.Parser.Error
+import Compiler.Frontend.Parser.Parser
+import Compiler.Frontend.Source
+import Compiler.Frontend.Syntax.AST
+import Compiler.Frontend.Syntax.Common
+import Compiler.Frontend.Syntax.Type
+import Compiler.Frontend.Utils.ASTPrettyPrinter
+import Compiler.Frontend.Token
 
 %default total
 

@@ -2,16 +2,16 @@ module TypeChecker.TypeTranslationTest
 
 import Test.Simple
 
-import Compiler.TypeChecker.Data
-import Compiler.TypeChecker.Helper
-import Compiler.TypeChecker.Type
+import Compiler.Frontend.TypeChecker.Data
+import Compiler.Frontend.TypeChecker.Helper
+import Compiler.Frontend.TypeChecker.Type
 import Data.List1
 import Desugarer.Helper
-import Frontend.ASTPhases
-import Frontend.Syntax.AST
-import Frontend.Syntax.Common
-import Frontend.Syntax.Type
-import Frontend.Token
+import Compiler.Frontend.ASTPhases
+import Compiler.Frontend.Syntax.AST
+import Compiler.Frontend.Syntax.Common
+import Compiler.Frontend.Syntax.Type
+import Compiler.Frontend.Token
 
 %default total
 

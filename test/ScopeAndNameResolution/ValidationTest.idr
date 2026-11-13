@@ -1,12 +1,12 @@
 module ScopeAndNameResolution.ValidationTest
 
-import Compiler.ScopeAndNameResolution.Data
-import Compiler.ScopeAndNameResolution.Validate
-import Frontend.ASTData
-import Frontend.ASTPhases
-import Frontend.Source
-import Frontend.Syntax.AST
-import Compiler.TypeChecker.Type
+import Compiler.Frontend.ScopeAndNameResolution.Data
+import Compiler.Frontend.ScopeAndNameResolution.Validate
+import Compiler.Frontend.ASTData
+import Compiler.Frontend.ASTPhases
+import Compiler.Frontend.Source
+import Compiler.Frontend.Syntax.AST
+import Compiler.Frontend.TypeChecker.Type
 import ScopeAndNameResolution.Helper
 
 import Data.List
