@@ -4,7 +4,7 @@ import Data.List1
 import Data.SortedMap
 import Data.String
 
-import Compiler.Frontend.ScopeAndNameResolution.Data
+import Compiler.Frontend.ScopeAndNameResolver.Data
 import Compiler.Frontend.TypeChecker.Type
 import Compiler.Frontend.ASTData
 import Compiler.Frontend.ASTPhases

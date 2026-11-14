@@ -1,4 +1,4 @@
-module Compiler.Frontend.Validation.PostParseValidation
+module Compiler.Frontend.Validator.PostParseValidation
 
 import Data.List
 import Data.List1

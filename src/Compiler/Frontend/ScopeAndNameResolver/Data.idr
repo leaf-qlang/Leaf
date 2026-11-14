@@ -1,4 +1,4 @@
-module Compiler.Frontend.ScopeAndNameResolution.Data
+module Compiler.Frontend.ScopeAndNameResolver.Data
 
 import Compiler.Frontend.ASTData
 import Compiler.Frontend.ASTPhases

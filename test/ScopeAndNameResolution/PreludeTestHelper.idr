@@ -1,7 +1,7 @@
 module ScopeAndNameResolution.PreludeTestHelper
 
 import Compiler.Frontend.Prelude
-import Compiler.Frontend.ScopeAndNameResolution.Data
+import Compiler.Frontend.ScopeAndNameResolver.Data
 import Compiler.Frontend.ASTData
 import Compiler.Frontend.ASTPhases
 import Compiler.Frontend.Source

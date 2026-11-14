@@ -2,14 +2,14 @@ module Leaf
 
 -- a module used to load Leaf libraries in REPL sessions
 
-import Compiler.Frontend.Desugar.Desugar
-import Compiler.Frontend.Desugar.Helper
+import Compiler.Frontend.Desugarer.Desugar
+import Compiler.Frontend.Desugarer.Helper
 import Core.Data
 import Compiler.Frontend.Prelude
-import Compiler.Frontend.ScopeAndNameResolution.Data
-import Compiler.Frontend.ScopeAndNameResolution.Helper
-import Compiler.Frontend.ScopeAndNameResolution.Resolve
-import Compiler.Frontend.ScopeAndNameResolution.Validate
+import Compiler.Frontend.ScopeAndNameResolver.Data
+import Compiler.Frontend.ScopeAndNameResolver.Helper
+import Compiler.Frontend.ScopeAndNameResolver.Resolve
+import Compiler.Frontend.ScopeAndNameResolver.Validate
 import Compiler.Frontend.TypeChecker.Data
 import Compiler.Frontend.TypeChecker.Helper
 import Compiler.Frontend.TypeChecker.Numeric
@@ -26,7 +26,7 @@ import Compiler.Frontend.TypeChecker.TcType
 import Compiler.Frontend.TypeChecker.Type
 import Compiler.Frontend.TypeChecker.TypeCheck
 import Compiler.Frontend.TypeChecker.Validate
-import Compiler.Frontend.Validation.PostParseValidation
+import Compiler.Frontend.Validator.PostParseValidation
 import Compiler.Frontend.ASTData
 import Compiler.Frontend.ASTPhases
 import Compiler.Frontend.Helper

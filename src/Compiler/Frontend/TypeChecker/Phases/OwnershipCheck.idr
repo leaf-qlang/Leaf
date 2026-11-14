@@ -4,7 +4,7 @@ import Data.List1
 import Data.SortedMap
 
 import Control.Monad.State
-import Compiler.Frontend.ScopeAndNameResolution.Data
+import Compiler.Frontend.ScopeAndNameResolver.Data
 import Compiler.Frontend.TypeChecker.Data
 import Compiler.Frontend.TypeChecker.Helper
 import Compiler.Frontend.TypeChecker.State

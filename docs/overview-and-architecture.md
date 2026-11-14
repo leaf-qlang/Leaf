@@ -14,46 +14,36 @@ More precisely, Leaf is intended to be a statically typed and safe language. Thi
 1. Frontend - lexes and parses Leaf source, validates and desugars its syntax, resolves names, and checks types, ownership, and effects to produce a checked AST.
 2. Lowering to Core - translates the checked AST to a small, typed IR based on quantum lambda calculus.
 3. Lowering to DSL - translates Core to the circuit-oriented IR implemented as an Idris2 DSL.
-4. Backend - emits the target representation from the DSL:
+4. Exporter - generates from an Idris2 DSL program representation an equivalent Lean representation.
+4. Backend - emits the backend target representation from the DSL:
    - OpenQASM3 for now.
    - QIR to be added later.
-
-The planned exporter provides another output path from the DSL: it generates
-Lean definitions for formal verification under `Compiler/Exporter/`.
 
 ### Source layout
 
 ```text
 src/
-├── Core/                       # Quantum lambda-calculus IR definitions
-├── DSL/                        # Circuit representation, builders, and examples
+├── Core/                       # Quantum lambda-calculus high level IR
+├── DSL/                        # Idris2 DSL low-level IR
 ├── Compiler/
 │   ├── Frontend/
 │   │   ├── Lexer/
 │   │   ├── Parser/
 │   │   ├── Syntax/
-│   │   ├── Validation/
-│   │   ├── Desugar/
-│   │   ├── ScopeAndNameResolution/
+│   │   ├── Validator/
+│   │   ├── Desugarer/
+│   │   ├── ScopeAndNameResolver/
 │   │   ├── TypeChecker/
 │   │   └── Utils/
-│   ├── Lowering/
-│   │   ├── ToCore/
-│   │   └── CoreToDSL/
-│   ├── Backend/
+│   ├── Lowering/ 
+│   │   ├── ToCore/             # Typed AST (surface syntax) to high-level IR
+│   │   └── CoreToDSL/          # High-level IR to low-level IR
+│   ├── Backend/                # Output code generation
 │   │   └── OpenQASM3/
-│   └── Exporter/               # Planned DSL-to-Lean export
+│   └── Exporter/               # Low level IR to Lean exporter
 ├── Leaf.idr                    # REPL entry point
 └── Main.idr                    # Command-line entry point
 ```
-
-`Core` and `DSL` own their representations and intrinsic operations. They do
-not import compiler passes or each other. `Compiler.Lowering.ToCore` will
-depend on the checked frontend AST and Core; `Compiler.Lowering.CoreToDSL`
-will depend on both Core and DSL. Backends and the Lean exporter consume
-the DSL; the DSL does not depend on either of them. The frontend's
-shared source locations, tokens, AST metadata, quantum annotations, and
-prelude definitions live directly under `Compiler/Frontend/`.
 
 ### Formal verification support
 

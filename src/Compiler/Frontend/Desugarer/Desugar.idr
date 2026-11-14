@@ -1,6 +1,6 @@
-module Compiler.Frontend.Desugar.Desugar
+module Compiler.Frontend.Desugarer.Desugar
 
-import Compiler.Frontend.Desugar.Helper
+import Compiler.Frontend.Desugarer.Helper
 import Data.List
 import Data.List1
 import Compiler.Frontend.ASTData

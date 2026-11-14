@@ -4,7 +4,7 @@ import Data.String
 import System.Directory
 import System.File
 
-import Compiler.Frontend.ScopeAndNameResolution.Data
+import Compiler.Frontend.ScopeAndNameResolver.Data
 import Main
 
 compileLeafFile : String -> IO (Either String ())

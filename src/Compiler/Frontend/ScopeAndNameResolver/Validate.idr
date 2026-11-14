@@ -1,6 +1,6 @@
-module Compiler.Frontend.ScopeAndNameResolution.Validate
+module Compiler.Frontend.ScopeAndNameResolver.Validate
 
-import Compiler.Frontend.ScopeAndNameResolution.Data
+import Compiler.Frontend.ScopeAndNameResolver.Data
 import Compiler.Frontend.ASTData
 import Compiler.Frontend.Source
 

@@ -2,7 +2,7 @@ module Desugarer.Helper
 
 import Text.Bounds
 
-import Compiler.Frontend.Desugar.Desugar
+import Compiler.Frontend.Desugarer.Desugar
 import Compiler.Frontend.ASTData
 import Compiler.Frontend.ASTPhases
 import Compiler.Frontend.Lexer.Error

@@ -4,14 +4,14 @@ import Data.List1
 import Data.String
 import Text.Bounds
 
-import Compiler.Frontend.Desugar.Desugar
-import Compiler.Frontend.ScopeAndNameResolution.Data
-import Compiler.Frontend.ScopeAndNameResolution.Resolve
-import Compiler.Frontend.ScopeAndNameResolution.Validate
+import Compiler.Frontend.Desugarer.Desugar
+import Compiler.Frontend.ScopeAndNameResolver.Data
+import Compiler.Frontend.ScopeAndNameResolver.Resolve
+import Compiler.Frontend.ScopeAndNameResolver.Validate
 import Compiler.Frontend.TypeChecker.Data
 import Compiler.Frontend.TypeChecker.Type
 import Compiler.Frontend.TypeChecker.TypeCheck
-import Compiler.Frontend.Validation.PostParseValidation
+import Compiler.Frontend.Validator.PostParseValidation
 import Compiler.Frontend.ASTPhases
 import Compiler.Frontend.Lexer.Error
 import Compiler.Frontend.Lexer.Lexer

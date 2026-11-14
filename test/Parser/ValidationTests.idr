@@ -3,7 +3,7 @@ module Parser.ValidationTests
 import Test.Simple
 
 import Compiler.Frontend.ASTPhases
-import Compiler.Frontend.Validation.PostParseValidation
+import Compiler.Frontend.Validator.PostParseValidation
 import Compiler.Frontend.Syntax.AST
 import Parser.Helper
 

@@ -5,7 +5,7 @@ import Data.List
 import Data.SortedMap
 import Data.SortedSet
 
-import Compiler.Frontend.ScopeAndNameResolution.Data
+import Compiler.Frontend.ScopeAndNameResolver.Data
 import Compiler.Frontend.TypeChecker.Phases.BodyCheck                -- phase B
 import Compiler.Frontend.TypeChecker.Data
 import Compiler.Frontend.TypeChecker.Phases.EffectsCheck             -- phase E

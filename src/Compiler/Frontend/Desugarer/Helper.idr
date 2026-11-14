@@ -1,4 +1,4 @@
-module Compiler.Frontend.Desugar.Helper
+module Compiler.Frontend.Desugarer.Helper
 
 import Data.List1
 import Data.Maybe

@@ -1,10 +1,10 @@
-module Compiler.Frontend.ScopeAndNameResolution.Resolve
+module Compiler.Frontend.ScopeAndNameResolver.Resolve
 
 import Control.Monad.State
 import Compiler.Frontend.Prelude
 import Compiler.Frontend.TypeChecker.Data
-import Compiler.Frontend.ScopeAndNameResolution.Data
-import Compiler.Frontend.ScopeAndNameResolution.Helper
+import Compiler.Frontend.ScopeAndNameResolver.Data
+import Compiler.Frontend.ScopeAndNameResolver.Helper
 import Data.List
 import Data.List1
 import Data.Maybe
@@ -321,7 +321,7 @@ resolvePattern pattern = do
     -- here too (struct shorthand fields, explicit field patterns, enum tuple
     -- arguments); the `_ => []` case would otherwise skip their duplicates.
     -- Duplicate parameters of impl methods must also be checked once ItemImpl is
-    -- resolved, since Compiler.Frontend.Validation.PostParseValidation no longer reports them.
+    -- resolved, since Compiler.Frontend.Validator.PostParseValidation no longer reports them.
     bindingNames : ResolvedPattern -> List ResolvedName
     bindingNames (MkAstNode _ _ pattern) = case pattern of
       PatternName _ name => [name]

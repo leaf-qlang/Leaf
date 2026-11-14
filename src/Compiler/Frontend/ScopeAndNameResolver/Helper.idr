@@ -1,7 +1,7 @@
-module Compiler.Frontend.ScopeAndNameResolution.Helper
+module Compiler.Frontend.ScopeAndNameResolver.Helper
 
 import Control.Monad.State
-import Compiler.Frontend.ScopeAndNameResolution.Data
+import Compiler.Frontend.ScopeAndNameResolver.Data
 import Data.SortedMap
 import Compiler.Frontend.ASTData
 import Compiler.Frontend.ASTPhases
