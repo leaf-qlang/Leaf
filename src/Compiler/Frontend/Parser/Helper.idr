@@ -216,12 +216,12 @@ storageQualifierFromToken : Token -> Maybe QuantumStorageQualifier
 storageQualifierFromToken (TokKw keyword) = storageQualifierFromKeyword keyword
 storageQualifierFromToken _               = Nothing
 
-||| The multiplicity qualifier a `linear` or `affine` token denotes.
+||| The quantum usage qualifier a `linear` or `affine` token denotes.
 public export
-multiplicityQualifierFromToken : Token -> Maybe QuantumMultiplicityQualifier
-multiplicityQualifierFromToken token =
+quantumUsageQualifierFromToken : Token -> Maybe QuantumUsageQualifier
+quantumUsageQualifierFromToken token =
   case storageQualifierFromToken token of
-    Just qualifier => storageMultiplicity qualifier
+    Just qualifier => storageQuantumUsage qualifier
     Nothing => Nothing
 
 public export
@@ -349,13 +349,13 @@ nextTokenSatisfies :
 nextTokenSatisfies predicate ((B token _) :: _) = predicate token
 nextTokenSatisfies _ [] = False
 
-||| Valid quantum-storage qualifiers collected in source order. Multiplicity and
-||| scratch occupy separate slots so duplicates and conflicting multiplicity
+||| Valid quantum-storage qualifiers collected in source order. Quantum usage and
+||| scratch occupy separate slots so duplicates and conflicting quantum usage
 ||| qualifiers can be rejected consistently by every grammar that uses them.
 public export
 record StorageQualifiers where
   constructor MkStorageQualifiers
-  multiplicity : Maybe (SurfaceAstNode QuantumStorageQualifier)
+  quantumUsage : Maybe (SurfaceAstNode QuantumStorageQualifier)
   scratch : Maybe (SurfaceAstNode QuantumStorageQualifier)
   ordered : SnocList (SurfaceAstNode QuantumStorageQualifier)
 
@@ -381,14 +381,14 @@ addStorageQualifier qualifiers located =
     QualifierScratch =>
       case qualifiers.scratch of
         Just existing => Left (secondQualifierMessage existing.nodeValue located.nodeValue)
-        Nothing => Right $ MkStorageQualifiers qualifiers.multiplicity
+        Nothing => Right $ MkStorageQualifiers qualifiers.quantumUsage
           (Just located) (qualifiers.ordered :< located)
-    QualifierLinear => addMultiplicity
-    QualifierAffine => addMultiplicity
+    QualifierLinear => addQuantumUsage
+    QualifierAffine => addQuantumUsage
   where
-    addMultiplicity : Either String StorageQualifiers
-    addMultiplicity =
-      case qualifiers.multiplicity of
+    addQuantumUsage : Either String StorageQualifiers
+    addQuantumUsage =
+      case qualifiers.quantumUsage of
         Nothing => Right $ MkStorageQualifiers (Just located)
           qualifiers.scratch (qualifiers.ordered :< located)
         Just existing => Left (secondQualifierMessage existing.nodeValue located.nodeValue)
@@ -399,25 +399,25 @@ public export
 scratchInTypeMessage : String
 scratchInTypeMessage = "The `scratch` qualifier is only allowed on `let` bindings, not in types: write `let scratch q: qbit = ...`."
 
-||| The multiplicity qualifier a storage keyword denotes inside a type, or the
+||| The quantum usage qualifier a storage keyword denotes inside a type, or the
 ||| diagnostic for `scratch`.
 public export
-typeMultiplicityQualifier : QuantumStorageQualifier -> Either String QuantumMultiplicityQualifier
-typeMultiplicityQualifier qualifier =
-  maybe (Left scratchInTypeMessage) Right (storageMultiplicity qualifier)
+typeQuantumUsageQualifier : QuantumStorageQualifier -> Either String QuantumUsageQualifier
+typeQuantumUsageQualifier qualifier =
+  maybe (Left scratchInTypeMessage) Right (storageQuantumUsage qualifier)
 
-||| Diagnostic for a second storage keyword following a multiplicity qualifier
-||| inside a type: a type holds exactly one multiplicity qualifier.
-secondTypeQualifierMessage : QuantumMultiplicityQualifier -> QuantumStorageQualifier -> String
+||| Diagnostic for a second storage keyword following a quantum usage qualifier
+||| inside a type: a type holds exactly one quantum usage qualifier.
+secondTypeQualifierMessage : QuantumUsageQualifier -> QuantumStorageQualifier -> String
 secondTypeQualifierMessage first second =
-  either id (secondQualifierMessage first) (typeMultiplicityQualifier second)
+  either id (secondQualifierMessage first) (typeQuantumUsageQualifier second)
 
-||| Diagnostic for a token other than `qbit` following a multiplicity qualifier
+||| Diagnostic for a token other than `qbit` following a quantum usage qualifier
 ||| inside a type: a qualifier applies to a single qbit, so a qbit array or
 ||| tuple qualifies each of its qbits instead. A slice is only ever borrowed,
 ||| and nothing behind a reference is qualified, so no slice suggestion.
 public export
-qualifiedNonQbitMessage : QuantumMultiplicityQualifier -> Token -> String
+qualifiedNonQbitMessage : QuantumUsageQualifier -> Token -> String
 qualifiedNonQbitMessage qualifier token =
   case storageQualifierFromToken token of
     Just second => secondTypeQualifierMessage qualifier second
@@ -437,9 +437,9 @@ qualifiedNonQbitMessage qualifier token =
     qualifiedQbit : String
     qualifiedQbit = show qualifier ++ " qbit"
 
-||| Diagnostic for a multiplicity qualifier written directly after `&` or `&mut`.
+||| Diagnostic for a quantum usage qualifier written directly after `&` or `&mut`.
 public export
-qualifierBehindReferenceMessage : QuantumMultiplicityQualifier -> String
+qualifierBehindReferenceMessage : QuantumUsageQualifier -> String
 qualifierBehindReferenceMessage qualifier =
   "The `" ++ show qualifier ++ "` qualifier cannot be written behind a reference: " ++
   "a reference borrows its referent without owning it, so remove the qualifier."

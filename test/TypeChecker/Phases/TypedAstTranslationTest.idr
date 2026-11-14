@@ -77,7 +77,7 @@ statementTranslationTests = Test.do
     printedTypedAst "const UNIT: () = (); fn f(UNIT: ()) {}"
       `shouldBe` Right "const UNIT: () = ();\ngeneral fn f(UNIT: ()) -> () { return (); }"
 
-  test "a let multiplicity keeps its place in the annotation" $
+  test "a let quantum usage keeps its place in the annotation" $
     printedTypedAst "fn f() -> bit { let affine q: qbit = qalloc(); H(&q); measr(q) }"
       `shouldBe` Right "general fn f() -> bit { let q: affine qbit = qalloc(); H((&q)); return measr(q); }"
 

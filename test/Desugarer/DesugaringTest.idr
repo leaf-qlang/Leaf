@@ -213,7 +213,7 @@ runDesugaringTests = runTests $ Test.do
       Just
         "general fn allocate() -> () { let scratch q: linear qbit = qalloc(); return (); }"
 
-  test "scratch with an explicit multiplicity qualifier keeps scratch on the let" $
+  test "scratch with an explicit quantum usage qualifier keeps scratch on the let" $
     desugarAndPrettyPrint "fn allocate() { let affine scratch q: qbit = qalloc(); }"
       `shouldBe`
       Just

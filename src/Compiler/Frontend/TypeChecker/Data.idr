@@ -215,7 +215,7 @@ data TypeError
   | ReversedRange Integer Integer SourceSpan                   -- start, end, ex: &a[3..1]
   | WrongPatternArity Nat Nat SourceSpan                       -- value's element count, pattern's element count
   | RefutableBindingPattern SourceSpan                         -- ex: let ZERO = 0; where ZERO is a constant
-  | MultiplicityMismatch QuantumMultiplicityQualifier QuantumMultiplicityQualifier SourceSpan  -- required, actual, ex: let affine r = H(q); with q linear
+  | QuantumUsageMismatch QuantumUsageQualifier QuantumUsageQualifier SourceSpan  -- required, actual, ex: let affine r = H(q); with q linear
   | BreakValueInUnitLoop SourceSpan                            -- break with a value inside while or for
   | AssignmentThroughSharedReference SourceSpan                -- ex: r[0] = 0; where r: &[i32]
   -- Effects and attributes
@@ -304,7 +304,7 @@ showTypeError typeError =
       at sourceSpan $ "The value has " ++ show expected ++ " element(s), but the pattern has " ++ show actual ++ "."
     RefutableBindingPattern sourceSpan =>
       at sourceSpan "This pattern does not match every value; a binding needs an irrefutable pattern."
-    MultiplicityMismatch required actual sourceSpan =>
+    QuantumUsageMismatch required actual sourceSpan =>
       at sourceSpan $ "Expected a '" ++ show required ++ "' qbit, but found a '" ++ show actual ++ "' qbit; use weaken to make a linear qbit affine."
     BreakValueInUnitLoop sourceSpan =>
       at sourceSpan "A 'while' or 'for' loop cannot break with a value."

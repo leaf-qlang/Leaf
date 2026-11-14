@@ -248,7 +248,7 @@ mutual
     canonicalAstNode expressionInfo WrittenCode (desugarExpressionNode expressionInfo expressionNode)
 
   desugarType : Ty SurfaceAstPhase (Expr SurfaceAstPhase) -> Ty CanonicalAstPhase (Expr CanonicalAstPhase)
-  desugarType writtenType = defaultQbitMultiplicity (desugarWrittenType writtenType)
+  desugarType writtenType = defaultQbitQuantumUsage (desugarWrittenType writtenType)
 
   -- Perenthesized types will be removed. The parameters and result of a
   -- function type own their values, so they get the default `linear`; the
@@ -277,8 +277,8 @@ mutual
           TyReference 
             (desugarAstNode borrowKind) 
             (desugarNestedType referencedType)
-        TyQualified multiplicityQualifier qualifiedType =>
-          TyQualified (desugarAstNode multiplicityQualifier) (desugarNestedType qualifiedType)
+        TyQualified quantumUsageQualifier qualifiedType =>
+          TyQualified (desugarAstNode quantumUsageQualifier) (desugarNestedType qualifiedType)
         TyFunction functionEffect functionParameters returnType =>
           TyFunction
             (map desugarAstNode functionEffect)
@@ -382,7 +382,7 @@ mutual
       case statementNode of
         StatementLet (MkLetBindingNode qualifiers pattern typeAnnotation initializer) =>
           let (letQualifiers, letTypeAnnotation) =
-                moveLetMultiplicityIntoType
+                moveLetQuantumUsageIntoType
                   (map desugarAstNode qualifiers)
                   (map (\ty => desugarWrittenType (assert_smaller statementNode ty)) typeAnnotation)
           in StatementLet $

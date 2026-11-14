@@ -84,7 +84,7 @@ runExpressionParseTests = runTests $ Test.do
       Just
         "fn allocate() { let linear q: qbit = qalloc(); let affine a: qbit = qalloc(); let scratch linear qs: [qbit; 2] = qalloc(2); let affine scratch t: qbit = qalloc(); }"
 
-  test "conflicting multiplicity qualifiers on let bindings are rejected" $
+  test "conflicting quantum usage qualifiers on let bindings are rejected" $
     parseAndPrettyPrint
       "fn bad() {let linear affine q: qbit = qalloc();}" `shouldBe` Nothing
 

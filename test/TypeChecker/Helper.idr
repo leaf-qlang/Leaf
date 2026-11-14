@@ -167,11 +167,11 @@ unit = LeafUnitType
 
 export
 linearQbit : LeafType
-linearQbit = LeafQualifiedType QuantumMultiplicityLinear (LeafPrimitiveType TypPrimQbit)
+linearQbit = LeafQualifiedType QuantumUsageLinear (LeafPrimitiveType TypPrimQbit)
 
 export
 affineQbit : LeafType
-affineQbit = LeafQualifiedType QuantumMultiplicityAffine (LeafPrimitiveType TypPrimQbit)
+affineQbit = LeafQualifiedType QuantumUsageAffine (LeafPrimitiveType TypPrimQbit)
 
 ||| `&qbit`: a reference to a linear or an affine qbit.
 export

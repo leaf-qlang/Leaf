@@ -48,8 +48,8 @@ writtenLeafTypeM resolveLength typeAstNode@(MkAstNode _ _ typeNode) =
     TyTuple elementTypes      => LeafTupleType <$> traverse recur elementTypes
     TyArray elementType sizeExpression => LeafArrayType <$> recur elementType <*> resolveLength sizeExpression
     TySlice elementType => LeafSliceType <$> recur elementType
-    TyReference borrowKind referencedType => quantumMultiplicityFreeReference borrowKind.nodeValue <$> recur referencedType
-    TyQualified multiplicityQualifier qualifiedType => LeafQualifiedType multiplicityQualifier.nodeValue <$> recur qualifiedType
+    TyReference borrowKind referencedType => quantumUsageFreeReference borrowKind.nodeValue <$> recur referencedType
+    TyQualified quantumUsageQualifier qualifiedType => LeafQualifiedType quantumUsageQualifier.nodeValue <$> recur qualifiedType
     TyFunction functionEffect functionParameters returnType =>
       LeafFunctionType (maybe EffectGeneral (.nodeValue) functionEffect) []
         <$> traverse (\parameter => recur parameter.nodeValue.parameterType) functionParameters

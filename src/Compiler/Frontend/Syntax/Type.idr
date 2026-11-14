@@ -59,7 +59,7 @@ import Compiler.Frontend.Syntax.Operator
 --                                        suffix, or too large for its suffix
 --
 -- `linear [qbit; 2]` and `affine (qbit, qbit)` are representable too, but
--- the parser never produces them: a multiplicity qualifier applies to a single
+-- the parser never produces them: a quantum usage qualifier applies to a single
 -- `qbit`, so collections qualify their elements (`[linear qbit; 2]`).
 --------------------------------------------------------------------------------
 
@@ -137,7 +137,7 @@ mutual
     -- is spelled once for both expressions and types. The borrow kind is
     -- located so "`mut` is never written on a qbit reference" can point at
     -- the `&mut` itself rather than the whole type. A reference borrows its
-    -- referent without owning it, so the referent never holds a multiplicity
+    -- referent without owning it, so the referent never holds a quantum usage
     -- qualifier at an owned position: the parser rejects one written directly
     -- after `&` (`&affine qbit`), post-parse validation one nested deeper
     -- (`&[linear qbit]`), and desugaring inserts none.
@@ -146,7 +146,7 @@ mutual
       -> (referencedType : AstNode phase (TyNode phase arraySizeExprType))
       -> TyNode phase arraySizeExprType
 
-    -- Multiplicity-qualified type: linear qbit, affine qbit. Exactly one
+    -- Quantum usage-qualified type: linear qbit, affine qbit. Exactly one
     -- qualifier, located so diagnostics can point at the keyword. `scratch`
     -- is unrepresentable here: it describes cleanup at the end of a binding's
     -- scope and is only valid on `let` bindings. The parser accepts only
@@ -154,7 +154,7 @@ mutual
     -- (`linear affine qbit`) and a qualified collection (`linear [qbit; 2]`,
     -- `affine (qbit, qbit)`) at the span of the token following it.
     TyQualified :
-         (multiplicityQualifier : AstNode phase QuantumMultiplicityQualifier)
+         (quantumUsageQualifier : AstNode phase QuantumUsageQualifier)
       -> (qualifiedType      : AstNode phase (TyNode phase arraySizeExprType))
       -> TyNode phase arraySizeExprType
 
@@ -225,16 +225,16 @@ Ty phase arraySizeExprType = AstNode phase (TyNode phase arraySizeExprType)
 --------------------------------------------------------------------------------
 -- Owned positions
 --------------------------------------------------------------------------------
--- The parts of a type that a multiplicity qualifier (`linear`, `affine`)
+-- The parts of a type that a quantum usage qualifier (`linear`, `affine`)
 -- applies to. Post-parse validation and desugaring both use this, so they
 -- agree on where a qualifier may be written and where one is inserted.
 --
 -- A type's OWNED POSITIONS are its qbits, each either unqualified (`qbit`)
--- or with its multiplicity qualifier (`affine qbit`, a TyQualified), found by
+-- or with its quantum usage qualifier (`affine qbit`, a TyQualified), found by
 -- entering parentheses, tuples, arrays and slices. Nothing else is entered:
 --
 --   * a reference borrows its referent, so the referent is not owned and
---     holds no multiplicity qualifier (see TyReference)
+--     holds no quantum usage qualifier (see TyReference)
 --   * a function type's parameters and result belong to the function's
 --     calls, not to the value the type describes
 --
@@ -280,8 +280,8 @@ mapOwnedPositions :
   -> Ty phase arraySizeExprType
 mapOwnedPositions rewritePosition = runIdentity . traverseOwnedPositions (Id . rewritePosition)
 
-||| The multiplicity qualifier written at an owned position, if any.
+||| The quantum usage qualifier written at an owned position, if any.
 export
-positionQualifier : Ty phase arraySizeExprType -> Maybe (AstNode phase QuantumMultiplicityQualifier)
+positionQualifier : Ty phase arraySizeExprType -> Maybe (AstNode phase QuantumUsageQualifier)
 positionQualifier (MkAstNode _ _ (TyQualified qualifier _)) = Just qualifier
 positionQualifier _ = Nothing

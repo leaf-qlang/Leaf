@@ -102,7 +102,7 @@ Show NodeProvenance where
   show DesugaredDefaultFunctionEffect = "inferred default function effect"
   show DesugaredDefaultFunctionReturnType = "inferred default function return type"
   show DesugaredDefaultQbitQualifier = "inferred default qbit qualifier"
-  show DesugaredMovedQbitQualifier = "quantum multiplicity qualifier moved from a let binding into its type"
+  show DesugaredMovedQbitQualifier = "quantum usage qualifier moved from a let binding into its type"
   show WrittenCode = "user written code"
 
 --------------------------------------------------------------------------------

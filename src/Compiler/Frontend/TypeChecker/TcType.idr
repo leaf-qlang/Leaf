@@ -15,17 +15,19 @@ import Compiler.Frontend.Syntax.Operator
 --------------------------------------------------------------------------------
 -- TcType mirrors LeafType constructor for constructor, but may still contain
 -- unknowns while a function body or const initializer is being checked: the
--- type of an unsuffixed literal (TcVariable) and the multiplicity of a
--- `qalloc` qbit (MultiplicityVariable). Writeback replaces every unknown,
+-- type of an unsuffixed literal (TcVariable) and the quantum usage of a
+-- `qalloc` qbit (QuantumUsageVariable). Writeback replaces every unknown,
 -- by what unification fixed it to or by its default, and turns the TcType
--- into a LeafType. TypeTables hold only LeafType, so no unknown reaches
--- lowering.
+-- into a LeafType.
 --------------------------------------------------------------------------------
 
 public export
-data TcMultiplicity
-  = KnownMultiplicity QuantumMultiplicityQualifier
-  | MultiplicityVariable Nat                  -- μ: defaults to linear
+data TcQuantumUsage
+  = KnownQuantumUsage QuantumUsageQualifier
+  | QuantumUsageVariable Nat          -- Nat identifies an entry in InferenceState.variables.
+                                      -- If its quantum usage qualifier remains unknown when inference finishes,
+                                      -- will default that qualifier to linear.
+
 
 public export
 data TcType
@@ -35,24 +37,24 @@ data TcType
   | TcTupleType (List1 TcType)
   | TcArrayType TcType Nat
   | TcSliceType TcType
-  | TcRangeType TcType
+  | TcRangeType RangeShape TcType
   | TcReferenceType BorrowKind TcType
   | TcFunctionType FunctionEffect (List SupportKind) (List TcType) TcType
-  | TcQualifiedType TcMultiplicity TcType
+  | TcQualifiedType TcQuantumUsage TcType
   | TcNeverType
-  | TcVariable Nat                            -- an unsuffixed literal's type, {integer} or {float}
+  | TcVariable Nat                     -- an unsuffixed literal's type, {integer} or {float}, Nat identifies an entry in InferenceState.variables.
 
 public export
-data LiteralKind
-  = IntegerLiteral                            -- {integer}: any integer type or bit, defaults to i32
-  | FloatLiteral                              -- {float}: f32, f64, angle32 or angle64, defaults to f64
+data TypeVariableKind
+  = GeneralTypeKind                    -- type for elements of an empty array or type an unannotated, uninitialized local.
+  | IntegerLiteral                     -- {integer}: any integer type or bit, defaults to i32
+  | FloatLiteral                       -- {float}: f32, f64, angle32 or angle64, defaults to f64
 
--- What an inference variable stands for, keyed by its Nat in
--- InferenceState.variables. Type variables and multiplicity variables
--- share one numbering.
 public export
 data VariableState
-  = OpenTypeVariable LiteralKind
-  | FixedTypeVariable TcType
-  | OpenMultiplicity
-  | FixedMultiplicity QuantumMultiplicityQualifier
+  = OpenTypeVariable TypeVariableKind Nat           -- root; Nat is its rank
+  | FixedTypeVariable TcType                        -- root, solved
+  | OpenQuantumUsage Nat                            -- root; rank
+  | FixedQuantumUsage QuantumUsageQualifier         -- root, solved
+  | LinkedVariable Nat                              -- not a root: same sort as its target
+

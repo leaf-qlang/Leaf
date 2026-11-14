@@ -140,14 +140,14 @@ runFunctionParseTests = runTests $ Test.do
       Just
         "fn qualified(q: affine qbit, pair: (linear qbit, affine qbit)) { }"
 
-  test "conflicting multiplicity qualifiers in a type are rejected" $
+  test "conflicting quantum usage qualifiers in a type are rejected" $
     parseErrorDetails "fn bad(q: linear affine qbit) {}" `shouldBe`
       Just
         ( "Parse error at: test-fixture.rs:1:18, with message: Cannot combine `linear` and `affine` storage qualifiers."
         , (1, 24)
         )
 
-  test "duplicate multiplicity qualifiers in a type are rejected" $
+  test "duplicate quantum usage qualifiers in a type are rejected" $
     parseErrorDetails "fn bad(q: affine affine qbit) {}" `shouldBe`
       Just
         ( "Parse error at: test-fixture.rs:1:18, with message: Duplicate `affine` storage qualifier."
@@ -161,7 +161,7 @@ runFunctionParseTests = runTests $ Test.do
         , (1, 18)
         )
 
-  test "scratch qualifier after a multiplicity qualifier in a type is rejected" $
+  test "scratch qualifier after a quantum usage qualifier in a type is rejected" $
     parseAndPrettyPrint "fn bad(q: linear scratch qbit) {}" `shouldBe` Nothing
 
   test "scratch qualifier in a nested type is rejected" $

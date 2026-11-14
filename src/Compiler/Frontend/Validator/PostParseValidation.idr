@@ -38,12 +38,12 @@ import Compiler.Frontend.Syntax.Type
 --   * `continue` outside a loop
 --   * `return` outside a function body (for example in a const initializer),
 --       while still walking and validating its optional value expression
---   * a multiplicity qualifier written both on a `let` and inside its type
+--   * a quantum usage qualifier written both on a `let` and inside its type
 --       annotation (`let linear q: affine qbit = ...`); reported at every
 --       qualifier at an owned position of the annotation (see "Owned
 --       positions" in Compiler.Frontend.Syntax.Type), so qualifiers inside function
 --       types are not repeats
---   * a multiplicity qualifier behind a reference, nested in its referent
+--   * a quantum usage qualifier behind a reference, nested in its referent
 --       (`&[linear qbit]`, `&(i32, affine qbit)`): a reference borrows its
 --       referent without owning it; the parser already rejects one directly
 --       after `&` (`&affine qbit`)
@@ -123,20 +123,20 @@ data ValidationError : Type where
     -> (basisLength : Nat)
     -> ValidationError
 
-  -- A multiplicity qualifier written both on a `let` and inside its type
+  -- A quantum usage qualifier written both on a `let` and inside its type
   -- annotation, e.g. `let linear q: affine qbit = qalloc();`. `errorSpan`
   -- points at the qualifier inside the annotation.
-  MultiplicityQualifierInLetAndType :
+  QuantumUsageQualifierInLetAndType :
        (errorSpan : SourceSpan)
-    -> (letQualifier : QuantumMultiplicityQualifier)
-    -> (typeQualifier : QuantumMultiplicityQualifier)
+    -> (letQualifier : QuantumUsageQualifier)
+    -> (typeQualifier : QuantumUsageQualifier)
     -> ValidationError
 
-  -- A multiplicity qualifier at an owned position of a reference's referent,
+  -- A quantum usage qualifier at an owned position of a reference's referent,
   -- e.g. `&[linear qbit]`. `errorSpan` points at the qualifier.
-  MultiplicityQualifierBehindReference :
+  QuantumUsageQualifierBehindReference :
        (errorSpan : SourceSpan)
-    -> (qualifier : QuantumMultiplicityQualifier)
+    -> (qualifier : QuantumUsageQualifier)
     -> ValidationError
 
   -- An array length written as an integer literal with a non-usize type
@@ -168,8 +168,8 @@ validationErrorSpan err =
     ContinueOutsideLoop s       => s
     ReturnOutsideFunction s     => s
     ControlBasisLengthMismatch s _ _ => s
-    MultiplicityQualifierInLetAndType s _ _ => s
-    MultiplicityQualifierBehindReference s _ => s
+    QuantumUsageQualifierInLetAndType s _ _ => s
+    QuantumUsageQualifierBehindReference s _ => s
     NonUsizeArrayLength s _ => s
     ArrayLengthOutOfRange s _ _ _ => s
 
@@ -200,11 +200,11 @@ Interpolation ValidationError where
           "control basis contains " ++ show basisLength ++
           " states, but the control expression has " ++ show controlCount ++
           " control qbits"
-        MultiplicityQualifierInLetAndType _ letQualifier typeQualifier =>
+        QuantumUsageQualifierInLetAndType _ letQualifier typeQualifier =>
           "`" ++ show typeQualifier ++ "` cannot be written in the type " ++
           "annotation because the `let` already has the `" ++ show letQualifier ++
-          "` qualifier; write the multiplicity qualifier in one place only"
-        MultiplicityQualifierBehindReference _ qualifier =>
+          "` qualifier; write the quantum usage qualifier in one place only"
+        QuantumUsageQualifierBehindReference _ qualifier =>
           "`" ++ show qualifier ++ "` cannot be written behind a reference; " ++
           "a reference borrows its referent without owning it"
         NonUsizeArrayLength _ suffixType =>
@@ -301,32 +301,32 @@ isSyntacticallyQbitTy ty =
     TyArray (MkAstNode _ _ element) _          => isSyntacticallyQbitTy element
     _                                          => False
 
--- Multiplicity qualifiers written at the owned positions of a type.
-ownedPositionQualifiers : SurfaceTy -> List (SurfaceAstNode QuantumMultiplicityQualifier)
+-- Quantum usage qualifiers written at the owned positions of a type.
+ownedPositionQualifiers : SurfaceTy -> List (SurfaceAstNode QuantumUsageQualifier)
 ownedPositionQualifiers = mapMaybe positionQualifier . ownedPositions
 
--- A `let` carrying `linear` or `affine` must not repeat a multiplicity qualifier
+-- A `let` carrying `linear` or `affine` must not repeat a quantum usage qualifier
 -- inside its type annotation. `scratch` on the `let` is unaffected.
-letMultiplicityConflicts :
+letQuantumUsageConflicts :
      List (AstNode SurfaceAstPhase QuantumStorageQualifier)
   -> Maybe SurfaceTy
   -> List ValidationError
-letMultiplicityConflicts _ Nothing = []
-letMultiplicityConflicts letQualifiers (Just annotation) =
-  case mapMaybe (storageMultiplicity . (.nodeValue)) letQualifiers of
+letQuantumUsageConflicts _ Nothing = []
+letQuantumUsageConflicts letQualifiers (Just annotation) =
+  case mapMaybe (storageQuantumUsage . (.nodeValue)) letQualifiers of
     [] => []
     letQualifier :: _ =>
       map (\(MkAstNode qualifierInfo _ typeQualifier) =>
-             MultiplicityQualifierInLetAndType qualifierInfo.span letQualifier typeQualifier)
+             QuantumUsageQualifierInLetAndType qualifierInfo.span letQualifier typeQualifier)
           (ownedPositionQualifiers annotation)
 
--- A reference's referent holds no multiplicity qualifier at an owned position.
+-- A reference's referent holds no quantum usage qualifier at an owned position.
 -- Qualifiers behind a nested reference are reported when the walk reaches
 -- that reference, since owned positions do not enter references.
 qualifiersBehindReference : SurfaceTy -> List ValidationError
 qualifiersBehindReference referent =
   map (\(MkAstNode qualifierInfo _ qualifier) =>
-         MultiplicityQualifierBehindReference qualifierInfo.span qualifier)
+         QuantumUsageQualifierBehindReference qualifierInfo.span qualifier)
       (ownedPositionQualifiers referent)
 
 -- An array length literal may carry only a usize suffix, and its value
@@ -493,7 +493,7 @@ mutual
   validateStatement ctx (MkAstNode _ _ stmt) =
     case stmt of
       StatementLet (MkLetBindingNode letQualifiers _ tyAnn maybeInit) =>
-           letMultiplicityConflicts letQualifiers tyAnn
+           letQuantumUsageConflicts letQualifiers tyAnn
         ++ validateMaybeTy ctx tyAnn
         ++ (case maybeInit of
               Nothing => []

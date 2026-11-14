@@ -29,10 +29,10 @@ data LeafType
   | LeafTupleType (List1 LeafType)
   | LeafArrayType LeafType Nat
   | LeafSliceType LeafType
-  | LeafRangeType LeafType
+  | LeafRangeType RangeShape LeafType
   | LeafReferenceType BorrowKind LeafType
   | LeafFunctionType FunctionEffect (List SupportKind) (List LeafType) LeafType
-  | LeafQualifiedType QuantumMultiplicityQualifier LeafType
+  | LeafQualifiedType QuantumUsageQualifier LeafType
   | LeafNeverType     -- expressions that never finish: return, break, continue, loop with no break
                       -- none of them ever produce a value at the point where they appear: control jumps somewhere else
 
@@ -49,7 +49,7 @@ showLeafType ty =
     LeafTupleType elements => "(" ++ joinBy ", " (map recur (forget elements)) ++ ")"
     LeafArrayType element count => "[" ++ recur element ++ "; " ++ show count ++ "]"
     LeafSliceType element => "[" ++ recur element ++ "]"
-    LeafRangeType element => "Range<" ++ recur element ++ ">"
+    LeafRangeType shape element => "Range<" ++ showRangeShape shape ++ ", " ++ recur element ++ ">"
     LeafReferenceType SharedBorrow referent =>
       (case referent of
          LeafReferenceType _ _ => "& "
@@ -82,8 +82,8 @@ implementation Show LeafType where
 --------------------------------------------------------------------------------
 
 export
-removeMultiplicity : LeafType -> LeafType
-removeMultiplicity leafType =
+removeQuantumUsage : LeafType -> LeafType
+removeQuantumUsage leafType =
   case leafType of
     LeafQualifiedType _ qualifiedType => qualifiedType
     LeafTupleType elementTypes => LeafTupleType (map recur elementTypes)
@@ -92,11 +92,11 @@ removeMultiplicity leafType =
     _ => leafType
   where
     recur : LeafType -> LeafType
-    recur nestedType = removeMultiplicity (assert_smaller leafType nestedType)
+    recur nestedType = removeQuantumUsage (assert_smaller leafType nestedType)
 
 export
-quantumMultiplicityFreeReference : BorrowKind -> LeafType -> LeafType
-quantumMultiplicityFreeReference borrowKind referent = LeafReferenceType borrowKind (removeMultiplicity referent)
+quantumUsageFreeReference : BorrowKind -> LeafType -> LeafType
+quantumUsageFreeReference borrowKind referent = LeafReferenceType borrowKind (removeQuantumUsage referent)
 
 export
 hasOwnedQbit : LeafType -> Bool
@@ -107,7 +107,7 @@ hasOwnedQbit leafType =
     LeafTupleType elementTypes => any recur (forget elementTypes)
     LeafArrayType elementType _ => recur elementType
     LeafSliceType elementType => recur elementType
-    LeafRangeType elementType => recur elementType
+    LeafRangeType _ elementType => recur elementType
     LeafQualifiedType _ qualifiedType => recur qualifiedType
     LeafReferenceType _ _ => False
     LeafFunctionType _ _ _ _ => False

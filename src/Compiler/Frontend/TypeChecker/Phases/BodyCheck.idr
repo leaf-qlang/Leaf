@@ -67,7 +67,7 @@ checkTypeIsSized = walk False
               leafType <- writtenLeafTypeM evalConstExprNat typeAstNode
               typeError (UnsizedValue leafType astInfo.span)
         TyReference borrowKind referencedType => walk True (assert_smaller typeNode referencedType)
-        TyQualified multiplicityQualifier qualifiedType => walk unsizedAllowed (assert_smaller typeNode qualifiedType)
+        TyQualified quantumUsageQualifier qualifiedType => walk unsizedAllowed (assert_smaller typeNode qualifiedType)
         TyFunction functionEffect functionParameters returnType => do
           traverse_ (\parameter => walk False (assert_smaller typeNode parameter.nodeValue.parameterType)) functionParameters
           traverse_ (\result => walk False (assert_smaller typeNode result)) returnType

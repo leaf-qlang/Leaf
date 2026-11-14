@@ -33,8 +33,6 @@ public export
 record FunctionContext where
   constructor MkFunctionContext
   returnType     : LeafType
-  declaredEffect : FunctionEffect
-  loops          : List LoopContext               -- innermost first
 
 public export
 record InferenceState where                       -- per function or const initializer, emptied by writeback
@@ -47,20 +45,21 @@ record InferenceState where                       -- per function or const initi
   scratchBinders   : List SymbolId
   uncomputeBinders : List SymbolId                -- bound with :=
   integerLiterals  : List (NodeId, Integer)       -- range-checked at writeback
+  loops            : List LoopContext             -- innermost first
 
 public export
 emptyInferenceState : InferenceState
-emptyInferenceState = MkInferenceState 0 empty empty empty empty [] [] []
+emptyInferenceState = MkInferenceState 0 empty empty empty empty [] [] [] []
 
 public export
 record TypeCheckerState where
   constructor MkTypeCheckerState
-  tables        : TypeTables
-  function      : Maybe FunctionContext            -- tells pass B (BodyCheck) which function it is operating inside, if any.
-  inference     : InferenceState                   -- pass B's (BodyCheck) scratch space for the one body it is checking right now
-  declarations  : SortedMap SymbolId ResolvedItem  -- maps each top-level item's symbol to that item's resolved AST node
-  checkedBodies : SortedSet SymbolId               -- set of functions whose bodies pass B (BodyCheck) has already finished
-  constExprs    : SortedMap NodeId Nat
+  tables          : TypeTables
+  functionContext : Maybe FunctionContext            -- tells pass B (BodyCheck) which function it is operating inside, if any.
+  inferenceState  : InferenceState                   -- pass B's (BodyCheck) scratch space for the one body it is checking right now
+  declarations    : SortedMap SymbolId ResolvedItem  -- maps each top-level item's symbol to that item's resolved AST node
+  checkedBodies   : SortedSet SymbolId               -- set of functions whose bodies pass B (BodyCheck) has already finished
+  constExprs      : SortedMap NodeId Nat
 
 public export
 data CheckFailure

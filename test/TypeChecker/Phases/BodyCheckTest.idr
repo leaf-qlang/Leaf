@@ -614,7 +614,7 @@ functionValueTests = Test.do
     typeCheckOutcome "isometry fn grow(q: qbit) -> (qbit, qbit) { (q, qalloc()) } fn run(g: coisometry fn(q: qbit) -> (qbit, qbit), q: qbit) -> (qbit, qbit) { g(q) } fn f() -> (qbit, qbit) { run(grow, qalloc()) }"
       `shouldBe` rejectedWith (TypeMismatch (fnType EffectCoisometry [linearQbit] (tuple [linearQbit, linearQbit])) (fnType EffectIsometry [linearQbit] (tuple [linearQbit, linearQbit])) (spanAt 1 174))
 
-  test "function parameter multiplicities must match exactly" $
+  test "function parameter quantum usage qualifiers must match exactly" $
     typeCheckOutcome "fn keep(q: affine qbit) -> affine qbit { q } fn run(g: fn(q: qbit) -> qbit, q: qbit) -> qbit { g(q) } fn f() -> qbit { run(keep, qalloc()) }"
       `shouldBe` rejectedWith (TypeMismatch (fnType EffectGeneral [linearQbit] linearQbit) (fnType EffectGeneral [affineQbit] affineQbit) (spanAt 1 124))
 
@@ -654,7 +654,7 @@ conditionalTests = Test.do
     typeCheckOutcome "fn f(flag: bool) -> i32 { let x = if flag { return 0; } else { 5 }; x }"
       `shouldBe` accepted
 
-  test "a branch join keeps qubit multiplicities invariant" $
+  test "a branch join keeps qubit quantum usage qualifiers invariant" $
     typeCheckOutcome "fn f(c: bool, a: qbit, b: affine qbit) { let q = if c { a } else { b }; discard(q); }"
       `shouldBe` rejectedWith (TypeMismatch linearQbit affineQbit (spanAt 1 68))
 
@@ -911,22 +911,22 @@ qubitAllocationTests = Test.do
     typeCheckOutcome "fn f(a: qbit, b: &qbit) { let (x, y) = measr(a, b); }"
       `shouldBe` rejectedWith (TypeMismatch linearQbit qbitRef (spanAt 1 49))
 
--- Qubit multiplicities and qualifiers (plan §5.5, spec §12, §41, §42)
-multiplicityTests : List ETest
-multiplicityTests = Test.do
-  test "let and type qualifiers give qubits their multiplicity" $
+-- Qubit quantum usage qualifiers and qualifiers (plan §5.5, spec §12, §41, §42)
+quantumUsageTests : List ETest
+quantumUsageTests = Test.do
+  test "let and type qualifiers give qubits their quantum usage" $
     typeCheckOutcome "fn f() { let linear a: qbit = qalloc(); let b: linear qbit = qalloc(); let affine c: qbit = qalloc(); let d: affine qbit = qalloc(); let e: [affine qbit; 2] = qalloc(2); let p: (affine qbit, affine qbit) = (qalloc(), qalloc()); discard(a); discard(b); }"
       `shouldBe` accepted
 
-  test "an affine let fixes an inferred qubit's multiplicity" $
+  test "an affine let fixes an inferred qubit's quantum usage" $
     typeCheckOutcome "fn f() { let affine q = qalloc(); }" `shouldBe` accepted
 
-  test "a gate preserves its argument's multiplicity" $
+  test "a gate preserves its argument's quantum usage" $
     typeCheckOutcome "fn f() { let affine q: qbit = qalloc(); let affine r = H(q); }" `shouldBe` accepted
 
   test "an affine let cannot hold a linear qubit" $
     typeCheckOutcome "fn f() { let q: qbit = qalloc(); let affine r = H(q); discard(r); }"
-      `shouldBe` rejectedWith (MultiplicityMismatch QuantumMultiplicityAffine QuantumMultiplicityLinear (spanAt 1 38))
+      `shouldBe` rejectedWith (QuantumUsageMismatch QuantumUsageAffine QuantumUsageLinear (spanAt 1 38))
 
   test "weaken makes qubits affine" $
     typeCheckOutcome "fn f() { let linear q: qbit = qalloc(); let affine q = weaken(q); let linear qs: [qbit; 3] = qalloc(3); let affine qs = weaken(qs); }"
@@ -1038,7 +1038,7 @@ gateTests = Test.do
     typeCheckOutcome "fn f(q: affine qbit) -> qbit { H(q) }"
       `shouldBe` rejectedWith (TypeMismatch linearQbit affineQbit (spanAt 1 32))
 
-  test "a two-qubit gate returns each argument's multiplicity" $
+  test "a two-qubit gate returns each argument's quantum usage" $
     typeCheckOutcome "fn f(a: affine qbit, b: qbit) -> (affine qbit, qbit) { CX(a, b) }" `shouldBe` accepted
 
   test "a gate angle cannot be an integer literal" $
@@ -1106,7 +1106,7 @@ builtinTests = Test.do
     typeCheckOutcome "fn f() -> usize { let a = [1, 2]; len(a, a) }"
       `shouldBe` rejectedWith (WrongArgumentCount 1 2 (spanAt 1 35))
 
-  test "reset preserves an affine argument's multiplicity" $
+  test "reset preserves an affine argument's quantum usage" $
     typeCheckOutcome "fn f(q: affine qbit) -> affine qbit { reset(q) }" `shouldBe` accepted
 
 -- ctrl (plan §5.6 Control forms, spec §15)
@@ -1667,7 +1667,7 @@ runBodyCheckTests =
     , patternTests
     , constantInitializerTests
     , qubitAllocationTests
-    , multiplicityTests
+    , quantumUsageTests
     , gateTests
     , builtinTests
     , controlTests

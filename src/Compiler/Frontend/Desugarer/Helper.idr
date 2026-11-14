@@ -33,46 +33,46 @@ incrementedAstInfo : AstInfo -> Nat -> AstInfo
 incrementedAstInfo astInfo inc =
   MkAstInfo (MkNodeId astInfo.nodeId.surfaceId (astInfo.nodeId.desugarId + inc)) astInfo.span
 
-||| A multiplicity qualifier to insert into a type, and where it came from.
+||| A quantum usage qualifier to insert into a type, and where it came from.
 public export
-record MultiplicityInsertion where
-  constructor MkMultiplicityInsertion
-  multiplicity : QuantumMultiplicityQualifier
+record QuantumUsageInsertion where
+  constructor MkQuantumUsageInsertion
+  quantumUsage : QuantumUsageQualifier
   provenance   : NodeProvenance
   keywordSpan  : Maybe SourceSpan  -- the `let` keyword it was moved from; Nothing for the default
 
-defaultLinearInsertion : MultiplicityInsertion
+defaultLinearInsertion : QuantumUsageInsertion
 defaultLinearInsertion =
-  MkMultiplicityInsertion QuantumMultiplicityLinear DesugaredDefaultQbitQualifier Nothing
+  MkQuantumUsageInsertion QuantumUsageLinear DesugaredDefaultQbitQualifier Nothing
 
 -- The wrapper and qualifier take the next two desugar ids of the wrapped type
 -- node. The wrapper spans the wrapped type; a qualifier moved from a `let`
 -- spans the keyword it was written as, so diagnostics point at that keyword
 -- (and so lies outside its wrapper's span), while a default one spans the type.
-wrapInMultiplicity : MultiplicityInsertion -> CanonicalTy -> CanonicalTy
-wrapInMultiplicity insertion qualifiedType@(MkAstNode typeInfo _ _) =
+wrapInQuantumUsage : QuantumUsageInsertion -> CanonicalTy -> CanonicalTy
+wrapInQuantumUsage insertion qualifiedType@(MkAstNode typeInfo _ _) =
   let qualifierInfo =
         { span := fromMaybe typeInfo.span insertion.keywordSpan } (incrementedAstInfo typeInfo 2)
   in canonicalAstNode (incrementedAstInfo typeInfo 1) insertion.provenance $
        TyQualified
-         (canonicalAstNode qualifierInfo insertion.provenance insertion.multiplicity)
+         (canonicalAstNode qualifierInfo insertion.provenance insertion.quantumUsage)
          qualifiedType
 
--- Qualifies every owned position of a type that has no multiplicity qualifier
+-- Qualifies every owned position of a type that has no quantum usage qualifier
 -- yet (see "Owned positions" in Compiler.Frontend.Syntax.Type).
-qualifyOwnedQbits : MultiplicityInsertion -> CanonicalTy -> CanonicalTy
+qualifyOwnedQbits : QuantumUsageInsertion -> CanonicalTy -> CanonicalTy
 qualifyOwnedQbits insertion = mapOwnedPositions qualify
   where
     qualify : CanonicalTy -> CanonicalTy
     qualify position =
       case positionQualifier position of
         Just _ => position
-        Nothing => wrapInMultiplicity insertion position
+        Nothing => wrapInQuantumUsage insertion position
 
 ||| Adds the default `linear` to every unqualified owned position of a type.
 export
-defaultQbitMultiplicity : CanonicalTy -> CanonicalTy
-defaultQbitMultiplicity = qualifyOwnedQbits defaultLinearInsertion
+defaultQbitQuantumUsage : CanonicalTy -> CanonicalTy
+defaultQbitQuantumUsage = qualifyOwnedQbits defaultLinearInsertion
 
 ||| Moves a `let` binding's `linear`/`affine` into the owned positions of its
 ||| annotation, or adds the default `linear` when none was written. Each moved
@@ -81,14 +81,14 @@ defaultQbitMultiplicity = qualifyOwnedQbits defaultLinearInsertion
 ||| no unqualified owned position (typechecking reports that case). `scratch`
 ||| always stays on the `let`.
 export
-moveLetMultiplicityIntoType :
+moveLetQuantumUsageIntoType :
      List (CanonicalAstNode QuantumStorageQualifier)
   -> Maybe CanonicalTy
   -> (List (CanonicalAstNode QuantumStorageQualifier), Maybe CanonicalTy)
-moveLetMultiplicityIntoType qualifiers Nothing = (qualifiers, Nothing)
-moveLetMultiplicityIntoType qualifiers (Just annotation) =
-  case mapMaybe writtenMultiplicity qualifiers of
-    [] => (qualifiers, Just (defaultQbitMultiplicity annotation))
+moveLetQuantumUsageIntoType qualifiers Nothing = (qualifiers, Nothing)
+moveLetQuantumUsageIntoType qualifiers (Just annotation) =
+  case mapMaybe writtenQuantumUsage qualifiers of
+    [] => (qualifiers, Just (defaultQbitQuantumUsage annotation))
     insertion :: _ =>
       if any (isNothing . positionQualifier) (ownedPositions annotation)
         then
@@ -97,10 +97,10 @@ moveLetMultiplicityIntoType qualifiers (Just annotation) =
           )
         else (qualifiers, Just annotation)
   where
-    writtenMultiplicity : CanonicalAstNode QuantumStorageQualifier -> Maybe MultiplicityInsertion
-    writtenMultiplicity (MkAstNode keywordInfo _ keyword) =
-      map (\multiplicity => MkMultiplicityInsertion multiplicity DesugaredMovedQbitQualifier (Just keywordInfo.span))
-          (storageMultiplicity keyword)
+    writtenQuantumUsage : CanonicalAstNode QuantumStorageQualifier -> Maybe QuantumUsageInsertion
+    writtenQuantumUsage (MkAstNode keywordInfo _ keyword) =
+      map (\quantumUsage => MkQuantumUsageInsertion quantumUsage DesugaredMovedQbitQualifier (Just keywordInfo.span))
+          (storageQuantumUsage keyword)
 
 export
 assignmentOperatorToBinary : AssignmentOperator -> Maybe BinaryOperator

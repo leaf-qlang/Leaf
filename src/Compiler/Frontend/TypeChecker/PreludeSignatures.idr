@@ -181,7 +181,7 @@ gateReturnType (S (S n)) qbitType = LeafTupleType (qbitType ::: replicate (S n) 
 gateFunctionType : (gateName : String) -> (angleArgs : Nat) -> (qbitArgs : Nat) -> LeafType
 gateFunctionType gateName angleArgs qbitArgs =
   let angleType = LeafPrimitiveType TypPrimAngle64
-      qbitType  = LeafQualifiedType QuantumMultiplicityLinear (LeafPrimitiveType TypPrimQbit)
+      qbitType  = LeafQualifiedType QuantumUsageLinear (LeafPrimitiveType TypPrimQbit)
       parameterTypes = replicate angleArgs angleType ++ replicate qbitArgs qbitType
   in LeafFunctionType (gateLeastEffect gateName) gateCapabilities parameterTypes
        (gateReturnType qbitArgs qbitType)

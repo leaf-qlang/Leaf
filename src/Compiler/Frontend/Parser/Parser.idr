@@ -307,14 +307,14 @@ parsePathType typeNodeId firstName firstBounds nodeId tokens acc =
                 (TyPath path)
            in Succ0 (ty, finalNodeId) finalTokens
 
-||| Parses the `qbit` following a multiplicity qualifier. A qualifier applies to
+||| Parses the `qbit` following a quantum usage qualifier. A qualifier applies to
 ||| a single qbit, so anything else is rejected at the token following it: a
 ||| second qualifier, and qbit collections, which qualify their elements.
 ||| Tested by: `fn qualified(q: affine qbit, pair: (linear qbit, affine qbit)) {}`.
 parseQualifiedQbit :
      SourceFileName
   => NodeId
-  -> SurfaceAstNode QuantumMultiplicityQualifier
+  -> SurfaceAstNode QuantumUsageQualifier
   -> (nextNodeId : Nat)
   -> (tokens : List (Bounded Token))
   -> Res True Token tokens CustomParseError (SurfaceTy, Nat)
@@ -402,14 +402,14 @@ mutual
       TokKw keyword =>
         case storageQualifierFromKeyword keyword of
           Just storageQualifier =>
-            case typeMultiplicityQualifier storageQualifier of
+            case typeQuantumUsageQualifier storageQualifier of
               Left message =>
                 failWithCustomError (ParseErrorWithMessage message) bounds
-              Right multiplicity =>
+              Right quantumUsage =>
                 let (qualifierNodeId, afterQualifierNodeId) =
                       reserveNodeId nextNodeId
                     located = surfaceAstNode
-                      (MkAstInfo qualifierNodeId (sourceSpan bounds)) multiplicity
+                      (MkAstInfo qualifierNodeId (sourceSpan bounds)) quantumUsage
                  in succT $
                       parseQualifiedQbit typeNodeId located
                         afterQualifierNodeId remaining
@@ -460,16 +460,16 @@ mutual
           parseReferentType afterBorrowNodeId tokens smaller acc
 
   ||| Parses the type a reference refers to. A reference borrows its referent
-  ||| without owning it, so a multiplicity qualifier written directly after `&`
+  ||| without owning it, so a quantum usage qualifier written directly after `&`
   ||| or `&mut` is rejected here; post-parse validation rejects one nested
   ||| deeper (`&[linear qbit]`).
   ||| Tested by: `fn bad(q: &affine qbit) {}`.
   parseReferentType : TypeRule True SurfaceTy
   parseReferentType nodeId ((B token bounds) :: remaining) smaller acc =
-    case multiplicityQualifierFromToken token of
-      Just multiplicity =>
+    case quantumUsageQualifierFromToken token of
+      Just quantumUsage =>
         failWithCustomError
-          (ParseErrorWithMessage (qualifierBehindReferenceMessage multiplicity))
+          (ParseErrorWithMessage (qualifierBehindReferenceMessage quantumUsage))
           bounds
       Nothing => parseTypeWithin nodeId ((B token bounds) :: remaining) smaller acc
   parseReferentType nodeId [] smaller acc = parseTypeWithin nodeId [] smaller acc

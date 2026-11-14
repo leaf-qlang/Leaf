@@ -39,7 +39,7 @@ firstParameterArrayLength inputProgram =
     _ => Nothing
 
 -- Whether the referent of a program's first parameter, a reference, holds an
--- multiplicity qualifier at an owned position.
+-- quantum usage qualifier at an owned position.
 firstParameterReferentIsQualified : String -> Maybe Bool
 firstParameterReferentIsQualified inputProgram =
   case firstParameterType inputProgram of
@@ -54,12 +54,12 @@ firstParameterReferentIsQualified inputProgram =
     qualified (LeafSliceType elementType) = qualified elementType
     qualified _ = False
 
--- The multiplicity of the qbit elements of a program's first parameter array.
-firstParameterElementMultiplicity : String -> Maybe QuantumMultiplicityQualifier
-firstParameterElementMultiplicity inputProgram =
+-- The quantum usage of the qbit elements of a program's first parameter array.
+firstParameterElementQuantumUsage : String -> Maybe QuantumUsageQualifier
+firstParameterElementQuantumUsage inputProgram =
   case firstParameterType inputProgram of
-    Just (ResolvedType (LeafArrayType (LeafQualifiedType multiplicity (LeafPrimitiveType TypPrimQbit)) _)) =>
-      Just multiplicity
+    Just (ResolvedType (LeafArrayType (LeafQualifiedType quantumUsage (LeafPrimitiveType TypPrimQbit)) _)) =>
+      Just quantumUsage
     _ => Nothing
 
 export
@@ -100,15 +100,15 @@ runTypeTranslationTests = runTests $ Test.do
     firstParameterArrayLength "fn f(xs: [(); 18446744073709551616]) {}" `shouldBe` Nothing
 
   test "the qbit elements of an array are linear by default" $
-    firstParameterElementMultiplicity "fn f(qs: [qbit; 2]) {}" `shouldBe` Just QuantumMultiplicityLinear
+    firstParameterElementQuantumUsage "fn f(qs: [qbit; 2]) {}" `shouldBe` Just QuantumUsageLinear
 
   test "the qbit elements of an array keep a written qualifier" $
-    firstParameterElementMultiplicity "fn f(qs: [affine qbit; 2]) {}" `shouldBe` Just QuantumMultiplicityAffine
+    firstParameterElementQuantumUsage "fn f(qs: [affine qbit; 2]) {}" `shouldBe` Just QuantumUsageAffine
 
-  test "a reference to qbits holds no multiplicity qualifier" $
+  test "a reference to qbits holds no quantum usage qualifier" $
     firstParameterReferentIsQualified "fn f(r: &(qbit, [qbit; 2])) {}" `shouldBe` Just False
 
   -- Validation rejects this annotation; translating it anyway shows that a
-  -- reference type holds no multiplicity qualifier by construction.
-  test "a multiplicity qualifier written behind a reference is not translated" $
+  -- reference type holds no quantum usage qualifier by construction.
+  test "a quantum usage qualifier written behind a reference is not translated" $
     firstParameterReferentIsQualified "fn f(r: &(i32, [affine qbit; 2])) {}" `shouldBe` Just False

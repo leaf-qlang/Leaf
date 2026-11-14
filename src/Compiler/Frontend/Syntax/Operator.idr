@@ -248,3 +248,24 @@ showRangeOperatorLeaf op =
 public export
 implementation Show RangeOperator where
   show = showRangeOperatorLeaf
+
+public export
+data RangeShape = BoundedRange RangeOperator   -- a..b, a..=b
+                | FromRange                    -- a..
+                | ToRange RangeOperator        -- ..b, ..=b
+                | FullRange
+
+%runElab derive "RangeShape" [Eq]
+
+public export
+showRangeShape : RangeShape -> String
+showRangeShape shape =
+  case shape of
+    BoundedRange op => "a" ++ showRangeOperatorLeaf op ++ "b"
+    FromRange => "a.."
+    ToRange op => showRangeOperatorLeaf op ++ "b"
+    FullRange => ".."
+
+public export
+implementation Show RangeShape where
+  show = showRangeShape

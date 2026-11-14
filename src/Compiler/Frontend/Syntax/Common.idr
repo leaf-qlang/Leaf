@@ -179,7 +179,7 @@ implementation Show QuantumStorageQualifier where
   show = showQuantumStorageQualifierLeaf
 
 --------------------------------------------------------------------------------
--- Quantum multiplicity qualifiers
+-- Quantum usage qualifiers
 --------------------------------------------------------------------------------
 -- The single qualifier that may be written inside a TYPE:
 --
@@ -188,34 +188,34 @@ implementation Show QuantumStorageQualifier where
 --
 -- `scratch` is deliberately absent: it describes cleanup at the end of a
 -- binding's scope, so it is only valid on `let` bindings (see
--- QuantumStorageQualifier above). At most one multiplicity qualifier can be
+-- QuantumStorageQualifier above). At most one quantum usage qualifier can be
 -- written, so a qualified type holds exactly one of these.
 --------------------------------------------------------------------------------
 
 public export
-data QuantumMultiplicityQualifier
-  = QuantumMultiplicityLinear   -- consume exactly once; discard must be explicit
-  | QuantumMultiplicityAffine   -- consume at most once; implicit discard allowed
+data QuantumUsageQualifier
+  = QuantumUsageLinear   -- consume exactly once; discard must be explicit
+  | QuantumUsageAffine   -- consume at most once; implicit discard allowed
 
-%runElab derive "QuantumMultiplicityQualifier" [Eq]
+%runElab derive "QuantumUsageQualifier" [Eq]
 
 public export
-showQuantumMultiplicityQualifierLeaf : QuantumMultiplicityQualifier -> String
-showQuantumMultiplicityQualifierLeaf q =
+showQuantumUsageQualifierLeaf : QuantumUsageQualifier -> String
+showQuantumUsageQualifierLeaf q =
   case q of
-    QuantumMultiplicityLinear => "linear"
-    QuantumMultiplicityAffine => "affine"
+    QuantumUsageLinear => "linear"
+    QuantumUsageAffine => "affine"
 
 public export
-implementation Show QuantumMultiplicityQualifier where
-  show = showQuantumMultiplicityQualifierLeaf
+implementation Show QuantumUsageQualifier where
+  show = showQuantumUsageQualifierLeaf
 
-||| The multiplicity a storage qualifier denotes; `scratch` denotes none.
+||| The quantum usage a storage qualifier denotes; `scratch` denotes none.
 public export
-storageMultiplicity : QuantumStorageQualifier -> Maybe QuantumMultiplicityQualifier
-storageMultiplicity QualifierLinear  = Just QuantumMultiplicityLinear
-storageMultiplicity QualifierAffine  = Just QuantumMultiplicityAffine
-storageMultiplicity QualifierScratch = Nothing
+storageQuantumUsage : QuantumStorageQualifier -> Maybe QuantumUsageQualifier
+storageQuantumUsage QualifierLinear  = Just QuantumUsageLinear
+storageQuantumUsage QualifierAffine  = Just QuantumUsageAffine
+storageQuantumUsage QualifierScratch = Nothing
 
 --------------------------------------------------------------------------------
 -- Initializer markers
