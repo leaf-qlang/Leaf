@@ -12,8 +12,8 @@ The Leaf source code is organized as follows:
 
 ```text
 src/
-├── Core/                       # Quantum lambda calculus high-level IR
-├── DSL/                        # Idris 2 DSL low-level IR
+├── Core/                       # Quantum lambda calculus high-level IR (PLANNED)
+├── DSL/                        # Idris 2 DSL low-level IR (PROTOTYPE)
 ├── Compiler/
 │   ├── Frontend/
 │   │   ├── Lexer/
