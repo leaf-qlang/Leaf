@@ -2109,10 +2109,11 @@ parseForExpression forBounds smaller nodeId
                   (ExprFor pattern iterable body),
                  finalNodeId)
                 finalTokens
-parseForExpression forBounds _ _ _ _ _ =
-  Fail0
-    (B (Expected ["for identifier in expression"] (describeToken (TokKw KwFor)))
-       forBounds)
+parseForExpression _ _ _ ((B (TokIdent _) _) :: (B token bounds) :: _) _ _ =
+  Fail0 (B (Expected ["in"] (describeToken token)) bounds)
+parseForExpression _ _ _ [B (TokIdent _) _] _ _ = Fail0 (B EOI NoBounds)
+parseForExpression _ _ _ ((B token bounds) :: _) _ _ =
+  Fail0 (B (Expected ["for loop binder name"] (describeToken token)) bounds)
 
 ||| Builds a `break` or `return` expression, parsing its optional value.
 parseOptionalExitExpression :
@@ -2198,6 +2199,9 @@ parseIfExpression ifBounds smaller nodeId tokens suffix (SA recur) =
                     failWithCustomError
                       (ParseErrorWithMessage "Expected `if` after `else`.")
                       elseBounds
+        (B (TokKw KwElse) _) :: (B unexpected unexpectedBounds) :: _ =>
+          Fail0 (B (Expected ["{", "if"] (describeToken unexpected)) unexpectedBounds)
+        [B (TokKw KwElse) _] => Fail0 (B EOI NoBounds)
         _ =>
           let expression = makeIfExpression Nothing thenBlock.astInfo.span
            in Succ0 (expression, afterThenNodeId) afterThen
@@ -2587,11 +2591,11 @@ parseConstantDeclaration :
   -> (attributes : List SurfaceAttribute)
   -> (visibility : Maybe (SurfaceAstNode VisibilityQualifier))
   -> Rule True SurfaceItem
-parseConstantDeclaration _ _ _ _ _ [] _ = Fail0 (B EOI NoBounds)
-parseConstantDeclaration _ _ (_ :: _) _ _ ((B _ tokenBounds) :: _) _ =
+parseConstantDeclaration _ declarationStart (_ :: _) _ _ _ _ =
   failWithCustomError
     (ParseErrorWithMessage "Attributes on const declarations are not yet supported.")
-    tokenBounds
+    declarationStart
+parseConstantDeclaration _ _ [] _ _ [] _ = Fail0 (B EOI NoBounds)
 parseConstantDeclaration itemNodeId declarationStart [] visibility nodeId
     ((B token tokenBounds) :: remaining) acc =
   let Succ0 (constName, afterNameNodeId) afterName :=

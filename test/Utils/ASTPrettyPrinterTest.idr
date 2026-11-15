@@ -1,4 +1,4 @@
-module Parser.ASTPrettyPrinterTest
+module Utils.ASTPrettyPrinterTest
 
 import Data.List1
 import Data.String
@@ -81,6 +81,12 @@ comparisonCases = do
   [ "fn f() { (a " ++ inner ++ " b) " ++ outer ++ " c }"
   , "fn f() { a " ++ outer ++ " (b " ++ inner ++ " c) }"
   ]
+
+||| The symbols a token rule classifies differently from the given set, in
+||| either direction. The result does not depend on the order of either.
+misclassified : (Token -> Bool) -> List Symbol -> List Symbol
+misclassified rule expected =
+  filter (\symbol => rule (TokSym symbol) /= elem symbol expected) (map snd symbolTable)
 
 --------------------------------------------------------------------------------
 -- Fixtures
@@ -218,9 +224,9 @@ runASTPrettyPrinterTests = runTests $ Test.do
   -- style's parentheses, trailing commas) and of open ranges in heads depends
   -- on these exact sets. If this fails, revisit those printer rules.
   test "the parser's terminator rules are the ones the printer is written for" $
-    let symbols = map snd symbolTable
-    in (filter (isOptionalValueTerminator . TokSym) symbols, filter (isOpenRangeTerminator . TokSym) symbols)
-      `shouldBe` ([SymRBrace, SymComma, SymSemi], [SymRParen, SymRBracket, SymRBrace, SymComma, SymSemi])
+    (misclassified isOptionalValueTerminator [SymSemi, SymComma, SymRBrace],
+     misclassified isOpenRangeTerminator [SymSemi, SymComma, SymRParen, SymRBracket, SymRBrace])
+      `shouldBe` ([], [])
 
   -- A `return` or `break` without a value can only precede `;`, `,` or `}`.
   test "strict style leaves out optional parentheses that would close after a valueless exit" $

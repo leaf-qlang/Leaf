@@ -84,6 +84,17 @@ parseErrorAt : (start : (Nat, Nat)) -> (end : (Nat, Nat)) -> (message : String) 
 parseErrorAt (line, column) end message =
   Right ("Parse error at: \{fixtureFile}:\{show line}:\{show column}, with message: \{message}", end)
 
+||| One test per source in which the name `z` stands where the parser expected
+||| something else: the source, the column of `z` on its first line, and what
+||| the message says was expected there.
+export
+misplacedNameTests : String -> List (String, Nat, String) -> List TestResult
+misplacedNameTests name = testEach name parseErrorDetails . map expectation
+  where
+    expectation : (String, Nat, String) -> (String, Either String (String, (Nat, Nat)))
+    expectation (source, column, expected) =
+      (source, parseErrorAt (1, column) (1, S column) "expected \{expected}, but got identifier \"z\"")
+
 --------------------------------------------------------------------------------
 -- Printing in both styles
 --------------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-module Parser.PostParseValidationTest
+module Validator.PostParseValidationTest
 
 import Expect
 
@@ -125,15 +125,17 @@ runPostParseValidationTests = runTests $ Test.do
       Right [messageAt (1, 17) ("the array length `18446744073709551616usize` does not fit in " ++
                                 "`usize`, whose largest value is 18446744073709551615")]
 
-  test "all fixed-width integer suffixes are rejected as array lengths" $
-    let suffixes = ["i8", "i16", "i32", "i64", "i128", "u8", "u16", "u32", "u64", "u128"]
-    in map (\suffix => validationMessages "fn f(xs: [(); 1\{suffix}]) {}") suffixes `shouldBe`
-      map (\suffix => Right [nonUsizeLengthAt (1, 15) suffix]) suffixes
+  testEach "every fixed-width integer suffix is rejected on an array length"
+    (\suffix => validationMessages "fn f(xs: [(); 1\{suffix}]) {}")
+    (map (\suffix => (suffix, Right [nonUsizeLengthAt (1, 15) suffix]))
+      ["i8", "i16", "i32", "i64", "i128", "u8", "u16", "u32", "u64", "u128"])
 
-  test "a non-usize suffix on a repeat count is rejected" $
-    let counts = [("0x2_i128", "i128"), ("0x1_0000_u16", "u16"), ("3u64", "u64")]
-    in map (\(count, _) => validationMessages "fn f() {let xs = [0; \{count}];}") counts `shouldBe`
-         map (\(_, suffix) => Right [nonUsizeLengthAt (1, 22) suffix]) counts
+  testEach "a non-usize suffix on a repeat count is rejected"
+    (\count => validationMessages "fn f() {let xs = [0; \{count}];}")
+    [ ("0x2_i128", Right [nonUsizeLengthAt (1, 22) "i128"])
+    , ("0x1_0000_u16", Right [nonUsizeLengthAt (1, 22) "u16"])
+    , ("3u64", Right [nonUsizeLengthAt (1, 22) "u64"])
+    ]
 
   test "an explicit cast to usize in a length is left for typing" $
     validationMessages "fn f(xs: [i32; 3u64 as usize]) {let ys = [0; 3u8 as usize];}" `shouldBe`
@@ -162,14 +164,13 @@ runPostParseValidationTests = runTests $ Test.do
                                "exclusive)")]
 
   -- Repeated names, constant patterns included, are reported by name resolution.
-  test "repeated names pass post-parse validation" $
-    let sources = [ "fn f(x: i32, x: i32) {}"
-                  , "fn f() {let (x, x) = pair;}"
-                  , "fn f() {let ((x, y), (z, x)) = value;}"
-                  , "fn f() {let (x, [y, x]) = value;}"
-                  , "const U: () = (); fn f(U: (), U: ()) {let (U, U) = ((), ());}"
-                  , "const U: () = (); fn f() {for U in [()] {} for U in [()] {}}" ]
-    in filter (\source => validationMessages source /= Right []) sources `shouldBe` []
+  testEach "repeated names pass post-parse validation" validationMessages $ map (\source => (source, Right []))
+    [ "fn f(x: i32, x: i32) {}"
+    , "fn f() {let (x, x) = pair;}"
+    , "fn f() {let ((x, y), (z, x)) = value;}"
+    , "fn f() {let (x, [y, x]) = value;}"
+    , "const U: () = (); fn f(U: (), U: ()) {let (U, U) = ((), ());}"
+    , "const U: () = (); fn f() {for U in [()] {} for U in [()] {}}" ]
 
   test "repeated parameter names do not skip type validation" $
     validationMessages "fn f(x: &mut qbit, x: &mut qbit) {}" `shouldBe`

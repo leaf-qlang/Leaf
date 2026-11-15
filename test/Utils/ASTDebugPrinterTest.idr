@@ -1,4 +1,4 @@
-module Parser.ASTDebugPrinterTest
+module Utils.ASTDebugPrinterTest
 
 import Data.List
 import Data.List1
@@ -43,6 +43,11 @@ missingFromParsed fragments source = map (missingLines fragments) (debugAstOf so
 ||| Lines of a parsed dump containing a fragment.
 parsedLinesWith : String -> String -> Either String (List String)
 parsedLinesWith fragment source = map (filter (isInfixOf fragment) . debugNodeLines) (debugAstOf source)
+
+||| Lines of a parsed dump containing a fragment, without node IDs, for tests
+||| that are about the rest of the line.
+parsedLinesWithoutIds : String -> String -> Either String (List String)
+parsedLinesWithoutIds fragment source = map (map withoutNodeIds) (parsedLinesWith fragment source)
 
 ||| The expected (ID, label) pairs with no node heading. Direct fixtures
 ||| exercise AST families intentionally rejected by today's parser. IDs
@@ -291,12 +296,12 @@ runASTDebugPrinterTests = runTests $ Test.do
       `shouldBe` ["#1 StatementLet", "#2 ExprName @1:1-9 `let a > #3`"]
 
   test "a final expression's snippet keeps its statement-position parentheses" $
-    parsedLinesWith "ExprMethodCall" "fn p() { let x = { (if a { 1 } else { 2 }).f() }; }"
-      `shouldBe` Right ["#20 ExprMethodCall @1:20-47 `(if a { 1 } else { 2 }).f()`"]
+    parsedLinesWithoutIds "ExprMethodCall" "fn p() { let x = { (if a { 1 } else { 2 }).f() }; }"
+      `shouldBe` Right ["ExprMethodCall @1:20-47 `(if a { 1 } else { 2 }).f()`"]
 
   test "an item's snippet starts at its head, after the attributes it lists as children" $
-    parsedLinesWith "ItemFunction" "#[qasm_gate]\nfn f() {}"
-      `shouldBe` Right ["#1 ItemFunction @1:1-2:10 `fn f() { }`"]
+    parsedLinesWithoutIds "ItemFunction" "#[qasm_gate]\nfn f() {}"
+      `shouldBe` Right ["ItemFunction @1:1-2:10 `fn f() { }`"]
 
   test "snippets use the same escaping as full payloads, the snippet delimiter included" $
     missingLines ["LiteralStringRaw \"a\\\\nb\\`\"", "`\"a\\\\nb\\`\"`"]
@@ -319,9 +324,9 @@ runASTDebugPrinterTests = runTests $ Test.do
       ])
 
   test "an only child with the same span shares its parent's line" $
-    (parsedLinesWith " > " "fn f() { let y = x; }", parsedLinesWith "Name" "fn f() { g(x) }")
-      `shouldBe` (Right ["#5 PatternName > #6 Name y @1:14-15", "#8 ExprName > #9 Name x @1:18-19"],
-                  Right ["#2 Name f @1:4-5", "#4 ExprName > #5 Name g @1:10-11", "#7 ExprName > #8 Name x @1:12-13"])
+    (parsedLinesWithoutIds " > " "fn f() { let y = x; }", parsedLinesWithoutIds "Name" "fn f() { g(x) }")
+      `shouldBe` (Right ["PatternName > Name y @1:14-15", "ExprName > Name x @1:18-19"],
+                  Right ["Name f @1:4-5", "ExprName > Name g @1:10-11", "ExprName > Name x @1:12-13"])
 
   test "repeated provenance on a shared line is marked as the same" $
     map (\ast => filter (isInfixOf "ExprReturn") (debugNodeLines (showAstDebug (desugarSurfaceSyntax ast))))
@@ -412,7 +417,7 @@ runASTDebugPrinterTests = runTests $ Test.do
       "#[qasm_gate(\"g\")] pub const unitary fn f(q: affine qbit, r: &mut i32) {}" `shouldBe` Right []
 
   test "attributes without an argument list are not marked" $
-    parsedLinesWith "MkAttributeNode" "#[qasm_gate]\nfn f() {}" `shouldBe` Right ["#2 MkAttributeNode @1:1-13"]
+    parsedLinesWithoutIds "MkAttributeNode" "#[qasm_gate]\nfn f() {}" `shouldBe` Right ["MkAttributeNode @1:1-13"]
 
   test "chained else-if is one node, not a repeated header" $
     map length (parsedLinesWith "MkClassicalIfNode" "fn f() { if a {1} else if b {2} else {3} }") `shouldBe` Right 1

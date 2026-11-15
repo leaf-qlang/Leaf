@@ -5,6 +5,48 @@ import Parser.Helper
 
 %default total
 
+--------------------------------------------------------------------------------
+-- Messages
+--------------------------------------------------------------------------------
+
+fnAfterEffect : (found : String) -> String
+fnAfterEffect found = "Expected `fn` after `general` effect modifier, found instead: `\{found}`."
+
+scratchInType : String
+scratchInType =
+  "The `scratch` qualifier is only allowed on `let` bindings, not in types: write `let scratch q: qbit = ...`."
+
+behindReference : (qualifier : String) -> String
+behindReference qualifier =
+  "The `\{qualifier}` qualifier cannot be written behind a reference: " ++
+  "a reference borrows its referent without owning it, so remove the qualifier."
+
+qualifiedArray : (qualifier : String) -> String
+qualifiedArray qualifier =
+  "The `\{qualifier}` qualifier cannot qualify an array or slice: " ++
+  "qualify the qbits of an array instead, e.g. `[\{qualifier} qbit; 2]`."
+
+qualifiedTuple : (qualifier : String) -> String
+qualifiedTuple qualifier =
+  "The `\{qualifier}` qualifier cannot qualify a parenthesized type or tuple: qualify each qbit " ++
+  "inside it instead, e.g. `\{qualifier} qbit` or `(\{qualifier} qbit, \{qualifier} qbit)`."
+
+--------------------------------------------------------------------------------
+-- Fixtures
+--------------------------------------------------------------------------------
+
+||| Each parameter or type list whose element may be followed only by a
+||| separator or by the list's closing token.
+misplacedNames : List (String, Nat, String)
+misplacedNames =
+  [ ("fn f(a: i32 z: i32) {}", 13, "',' or ')'")
+  , ("fn f(g: fn(a: i32 z: i32)) {}", 19, "',' or ')'")
+  , ("fn f(g: fn(a z)) {}", 14, "':'")
+  , ("fn f(p: (i32 z)) {}", 14, "',' or ')'")
+  , ("fn f(p: (i32, i32 z)) {}", 19, "',' or ')'")
+  , ("fn f(a: [i32 z]) {}", 14, "']' or ';'")
+  ]
+
 export
 runFunctionParseTests : IO Bool
 runFunctionParseTests = runTests $ Test.do
@@ -65,17 +107,12 @@ runFunctionParseTests = runTests $ Test.do
       parseErrorAt (1, 5) (1, 8) ("Expected function or constant declaration after `pub` " ++
                                   "visibility modifier, found instead: `let`.")
 
-  test "a function effect must be followed by fn" $
-    parseErrorDetails "pub general let i = 1;" `shouldBe`
-      parseErrorAt (1, 13) (1, 16) "Expected `fn` after `general` effect modifier, found instead: `let`."
-
-  test "a function effect followed by a non-keyword reports it" $
-    parseErrorDetails "general foo" `shouldBe`
-      parseErrorAt (1, 9) (1, 12) "Expected `fn` after `general` effect modifier, found instead: `foo`."
-
-  test "const and a function effect must be followed by fn" $
-    parseErrorDetails "const general let i = 1;" `shouldBe`
-      parseErrorAt (1, 15) (1, 18) "Expected `fn` after `general` effect modifier, found instead: `let`."
+  testEach "a function effect must be followed by fn" parseErrorDetails
+    [ ("general foo", parseErrorAt (1, 9) (1, 12) (fnAfterEffect "foo"))
+    , ("pub general let i = 1;", parseErrorAt (1, 13) (1, 16) (fnAfterEffect "let"))
+    , ("const general foo", parseErrorAt (1, 15) (1, 18) (fnAfterEffect "foo"))
+    , ("const general let i = 1;", parseErrorAt (1, 15) (1, 18) (fnAfterEffect "let"))
+    ]
 
   -- Attributes
 
@@ -99,7 +136,7 @@ runFunctionParseTests = runTests $ Test.do
 
   test "attributes on const declarations are not yet supported" $
     parseErrorDetails "#[qasm_gate]\nconst N: i64 = 4;" `shouldBe`
-      parseErrorAt (2, 7) (2, 8) "Attributes on const declarations are not yet supported."
+      parseErrorAt (1, 1) (1, 2) "Attributes on const declarations are not yet supported."
 
   test "an attribute without its closing bracket is malformed" $
     parseErrorDetails "#[qasm_gate \nfn empty() -> () {}" `shouldBe`
@@ -130,6 +167,8 @@ runFunctionParseTests = runTests $ Test.do
   test "function parameters reject a missing middle parameter" $
     parseErrorDetails "fn add(i: i32,, point: i32) {}" `shouldBe`
       parseErrorAt (1, 15) (1, 16) "expected 'parameter name', but got symbol ,"
+
+  misplacedNameTests "what may follow a parameter or a type is reported" misplacedNames
 
   test "a function parameter may be mutable" $
     printsUnchangedStrict "fn increment(mut x: i32) -> i32 { x += 1; x }"
@@ -172,6 +211,14 @@ runFunctionParseTests = runTests $ Test.do
   test "a function type needs no effect or result" $
     printsUnchangedStrict "fn callback(f: fn(value: i32)) { }"
 
+  test "a function type requires a parameter list" $
+    parseErrorDetails "fn f(g: fn i32) {}" `shouldBe`
+      parseErrorAt (1, 12) (1, 15) "expected '`(` after `fn`', but got primitive type i32"
+
+  test "an effect in a type must be followed by fn" $
+    parseErrorDetails "fn f(g: unitary i32) {}" `shouldBe`
+      parseErrorAt (1, 17) (1, 20) "expected '`fn` after `unitary`', but got primitive type i32"
+
   test "a qstate parameter type is rejected by the parser" $
     parseErrorDetails "fn f(s: qstate) {}" `shouldBe`
       parseErrorAt (1, 9) (1, 15) "The `qstate` type is not yet supported."
@@ -199,18 +246,15 @@ runFunctionParseTests = runTests $ Test.do
 
   test "scratch qualifier in a type is rejected" $
     parseErrorDetails "fn bad(q: scratch qbit) {}" `shouldBe`
-      parseErrorAt (1, 11) (1, 18) ("The `scratch` qualifier is only allowed on `let` bindings, " ++
-                                    "not in types: write `let scratch q: qbit = ...`.")
+      parseErrorAt (1, 11) (1, 18) scratchInType
 
   test "scratch qualifier after a quantum usage qualifier in a type is rejected" $
     parseErrorDetails "fn bad(q: linear scratch qbit) {}" `shouldBe`
-      parseErrorAt (1, 18) (1, 25) ("The `scratch` qualifier is only allowed on `let` bindings, " ++
-                                    "not in types: write `let scratch q: qbit = ...`.")
+      parseErrorAt (1, 18) (1, 25) scratchInType
 
   test "scratch qualifier in a nested type is rejected" $
     parseErrorDetails "fn bad(f: fn(value: qbit) -> (scratch qbit, qbit)) {}" `shouldBe`
-      parseErrorAt (1, 31) (1, 38) ("The `scratch` qualifier is only allowed on `let` bindings, " ++
-                                    "not in types: write `let scratch q: qbit = ...`.")
+      parseErrorAt (1, 31) (1, 38) scratchInType
 
   test "a qualifier followed by a non-type keyword is rejected" $
     parseErrorDetails "fn bad(q: linear if) {}" `shouldBe`
@@ -224,53 +268,38 @@ runFunctionParseTests = runTests $ Test.do
 
   test "a qualified array type is rejected" $
     parseErrorDetails "fn bad(qs: linear [qbit; 2]) {}" `shouldBe`
-      parseErrorAt (1, 19) (1, 20) ("The `linear` qualifier cannot qualify an array or slice: " ++
-                                    "qualify the qbits of an array instead, e.g. " ++
-                                    "`[linear qbit; 2]`.")
+      parseErrorAt (1, 19) (1, 20) (qualifiedArray "linear")
 
   test "a qualified array type in a let annotation is rejected" $
     parseErrorDetails "fn f() { let qs: affine [qbit; 2] = qalloc(2); }" `shouldBe`
-      parseErrorAt (1, 25) (1, 26) ("The `affine` qualifier cannot qualify an array or slice: " ++
-                                    "qualify the qbits of an array instead, e.g. " ++
-                                    "`[affine qbit; 2]`.")
+      parseErrorAt (1, 25) (1, 26) (qualifiedArray "affine")
 
   test "a qualifier directly behind a reference is rejected" $
     parseErrorDetails "fn bad(q: &affine qbit) {}" `shouldBe`
-      parseErrorAt (1, 12) (1, 18) ("The `affine` qualifier cannot be written behind a " ++
-                                    "reference: a reference borrows its referent without owning " ++
-                                    "it, so remove the qualifier.")
+      parseErrorAt (1, 12) (1, 18) (behindReference "affine")
 
   test "a qualifier directly behind a mutable reference is rejected" $
     parseErrorDetails "fn bad(q: &mut linear qbit) {}" `shouldBe`
-      parseErrorAt (1, 16) (1, 22) ("The `linear` qualifier cannot be written behind a " ++
-                                    "reference: a reference borrows its referent without owning " ++
-                                    "it, so remove the qualifier.")
+      parseErrorAt (1, 16) (1, 22) (behindReference "linear")
 
   test "a qualified slice behind a reference is rejected as behind a reference" $
     parseErrorDetails "fn bad(qs: &linear [qbit]) {}" `shouldBe`
-      parseErrorAt (1, 13) (1, 19) ("The `linear` qualifier cannot be written behind a " ++
-                                    "reference: a reference borrows its referent without owning " ++
-                                    "it, so remove the qualifier.")
+      parseErrorAt (1, 13) (1, 19) (behindReference "linear")
 
   test "scratch directly behind a reference is rejected as scratch in a type" $
     parseErrorDetails "fn bad(q: &scratch qbit) {}" `shouldBe`
-      parseErrorAt (1, 12) (1, 19) ("The `scratch` qualifier is only allowed on `let` bindings, " ++
-                                    "not in types: write `let scratch q: qbit = ...`.")
+      parseErrorAt (1, 12) (1, 19) scratchInType
 
   test "a qualifier nested behind a reference is left to post-parse validation" $
     printsUnchangedStrict "fn f(qs: &[linear qbit]) { }"
 
   test "a qualified tuple type is rejected" $
     parseErrorDetails "fn bad(p: affine (qbit, qbit)) {}" `shouldBe`
-      parseErrorAt (1, 18) (1, 19) ("The `affine` qualifier cannot qualify a parenthesized type " ++
-                                    "or tuple: qualify each qbit inside it instead, e.g. " ++
-                                    "`affine qbit` or `(affine qbit, affine qbit)`.")
+      parseErrorAt (1, 18) (1, 19) (qualifiedTuple "affine")
 
   test "a qualified parenthesized qbit is rejected" $
     parseErrorDetails "fn bad(q: linear (qbit)) {}" `shouldBe`
-      parseErrorAt (1, 18) (1, 19) ("The `linear` qualifier cannot qualify a parenthesized type " ++
-                                    "or tuple: qualify each qbit inside it instead, e.g. " ++
-                                    "`linear qbit` or `(linear qbit, linear qbit)`.")
+      parseErrorAt (1, 18) (1, 19) (qualifiedTuple "linear")
 
   test "a qualified function type is rejected" $
     parseErrorDetails "fn bad(f: linear fn(q: qbit)) {}" `shouldBe`

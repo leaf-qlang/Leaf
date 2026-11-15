@@ -7,17 +7,17 @@ import CompileCodeExamples
 import CompileCodeExamplesTest
 import Desugarer.DesugaringTest
 import Lexer.LexerTest
-import Parser.ASTDebugPrinterTest
-import Parser.ASTPrettyPrinterTest
 import Parser.ExpressionParseTest
 import Parser.FunctionParseTest
-import Parser.PostParseValidationTest
 import Parser.TopModuleParseTest
 import ScopeAndNameResolution.PreludeTest
 import ScopeAndNameResolution.ResolveTest
 import ScopeAndNameResolution.ValidationTest
 import TypeChecker.NumericTest
 import TypeChecker.TypeTranslationTest
+import Utils.ASTDebugPrinterTest
+import Utils.ASTPrettyPrinterTest
+import Validator.PostParseValidationTest
 
 ||| Each suite's module name and runner, in the order they run. A runner
 ||| reports whether all its tests passed. The `TypeChecker.Phases` suites and
@@ -27,11 +27,11 @@ suites : List (String, IO Bool)
 suites =
   [ ("Lexer.LexerTest", runLexerTests)
   , ("Parser.ExpressionParseTest", runExpressionParseTests)
-  , ("Parser.ASTDebugPrinterTest", runASTDebugPrinterTests)
-  , ("Parser.ASTPrettyPrinterTest", runASTPrettyPrinterTests)
+  , ("Utils.ASTDebugPrinterTest", runASTDebugPrinterTests)
+  , ("Utils.ASTPrettyPrinterTest", runASTPrettyPrinterTests)
   , ("Parser.FunctionParseTest", runFunctionParseTests)
   , ("Parser.TopModuleParseTest", runTopModuleParseTests)
-  , ("Parser.PostParseValidationTest", runPostParseValidationTests)
+  , ("Validator.PostParseValidationTest", runPostParseValidationTests)
   , ("Desugarer.DesugaringTest", runDesugaringTests)
   , ("ScopeAndNameResolution.ResolveTest", runSymbolAndScopeResolutionTests)
   , ("ScopeAndNameResolution.PreludeTest", runPreludeFunctionsResolutionTests)

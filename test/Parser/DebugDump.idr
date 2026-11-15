@@ -26,6 +26,15 @@ debugNodeHeaders = concatMap (map pack . splitChain [<] . unpack) . debugNodeLin
     splitChain current (c :: rest) = splitChain (current :< c) rest
     splitChain current [] = [current <>> []]
 
+||| A node line without the ID of any of its nodes, for tests about the rest of
+||| the line, which the parser's numbering should not break.
+export
+withoutNodeIds : String -> String
+withoutNodeIds = joinBy " > " . map withoutId . debugNodeHeaders
+  where
+    withoutId : String -> String
+    withoutId header = pack (drop 1 (dropWhile (/= ' ') (unpack header)))
+
 ||| The label after a heading's ID: the node's constructor or token type.
 export
 headerLabel : String -> String

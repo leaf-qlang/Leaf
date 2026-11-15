@@ -25,6 +25,17 @@ unsupportedItemTests = concatMap rejected unsupportedItems
       test "\{keyword}\{rest} is rejected: \{message}" $
         parseErrorDetails "\{keyword}\{rest}" `shouldBe` parseErrorAt (1, 1) (1, 1 + length keyword) message
 
+||| Declaration prefixes after which an unsupported item keeps its own message,
+||| with the column at which the item's keyword starts.
+itemPrefixes : List (String, Nat)
+itemPrefixes = [("pub ", 5), ("general ", 9), ("const general ", 15)]
+
+unsupportedAfterPrefixTests : List TestResult
+unsupportedAfterPrefixTests = testEach "an unsupported item after a prefix keeps its message" parseErrorDetails $ do
+  (itemPrefix, column) <- itemPrefixes
+  (keyword, rest, message) <- unsupportedItems
+  pure (itemPrefix ++ keyword ++ rest, parseErrorAt (1, column) (1, column + length keyword) message)
+
 export
 runTopModuleParseTests : IO Bool
 runTopModuleParseTests = runTests $ Test.do
@@ -62,46 +73,16 @@ runTopModuleParseTests = runTests $ Test.do
     parseErrorDetails "const N: i64 = 4 }" `shouldBe`
       parseErrorAt (1, 18) (1, 19) "Expected `;` after const declaration, found instead: `}`."
 
-  test "struct declarations after pub visibility are not yet supported" $
-    parseErrorDetails "pub struct Point {}" `shouldBe`
-      parseErrorAt (1, 5) (1, 11) "Structs are not yet supported."
+  unsupportedAfterPrefixTests
 
-  test "impl blocks after a function effect are not yet supported" $
-    parseErrorDetails "general impl Point {}" `shouldBe`
-      parseErrorAt (1, 9) (1, 13) "Impl blocks and structs are not yet supported."
-
-  test "impl blocks after const and a function effect are not yet supported" $
-    parseErrorDetails "const general impl Point {}" `shouldBe`
-      parseErrorAt (1, 15) (1, 19) "Impl blocks and structs are not yet supported."
-
-  test "unsupported top-level items after a function effect preserve their error" $
-    parseErrorDetails "general mod my_library;" `shouldBe`
-      parseErrorAt (1, 9) (1, 12) "Modules are not yet supported."
-
-  test "unsupported top-level items after const and a function effect preserve their error" $
-    parseErrorDetails "const general mod my_library;" `shouldBe`
-      parseErrorAt (1, 15) (1, 18) "Modules are not yet supported."
-
-  test "non-keyword items after const and a function effect report the effect" $
-    parseErrorDetails "const general foo" `shouldBe`
-      parseErrorAt (1, 15) (1, 18) "Expected `fn` after `general` effect modifier, found instead: `foo`."
-
-  test "node identifiers account for each declaration prefix modifier" $
-    map parseAndListNodeIds
-      [ "fn f() {}"
-      , "pub fn f() {}"
-      , "const fn f() {}"
-      , "pub const fn f() {}"
-      , "pub const unitary fn f() {}"
-      , "#[qasm_gate]\nfn f() {}"
-      ] `shouldBe`
-      [ Right [0, 1, 2, 3]
-      , Right [0, 1, 2, 3, 4]
-      , Right [0, 1, 2, 3, 4]
-      , Right [0, 1, 2, 3, 4, 5]
-      , Right [0, 1, 2, 3, 4, 5, 6]
-      , Right [0, 1, 2, 3, 4, 5]
-      ]
+  testEach "node identifiers account for each declaration prefix modifier" parseAndListNodeIds
+    [ ("fn f() {}", Right [0, 1, 2, 3])
+    , ("pub fn f() {}", Right [0, 1, 2, 3, 4])
+    , ("const fn f() {}", Right [0, 1, 2, 3, 4])
+    , ("pub const fn f() {}", Right [0, 1, 2, 3, 4, 5])
+    , ("pub const unitary fn f() {}", Right [0, 1, 2, 3, 4, 5, 6])
+    , ("#[qasm_gate]\nfn f() {}", Right [0, 1, 2, 3, 4, 5])
+    ]
 
   test "outer doc comments are not yet supported" $
     parseErrorDetails "/// docs\n" `shouldBe`

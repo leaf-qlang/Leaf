@@ -34,11 +34,11 @@ nonPatternTokenTests = concatMap describedByKind nonPatternTokens
 ||| each one, the rest of it, and the message, which spans the first token.
 unsupportedExpressions : List (String, String, String)
 unsupportedExpressions =
-  [ ("qif", " q {1} qelse {0}", "Quantum if expressions are not yet supported.")
+  [ ("qif", " &q {1} qelse {0}", "Quantum if expressions are not yet supported.")
   , ("match", " value {0 => false}", "Match expressions are not yet supported.")
-  , ("qmatch", " q {0 => false}", "Quantum match expressions are not yet supported.")
-  , ("sif", " state {1} else {0}", "State if expressions are not yet supported.")
-  , ("smatch", " state {0 => 1}", "State match expressions are not yet supported.")
+  , ("qmatch", " &q {0 => f(), 1 => g()}", "Quantum match expressions are not yet supported.")
+  , ("sif", " &q then zero selse one", "State if expressions are not yet supported.")
+  , ("smatch", " &q {0 => zero, 1 => one}", "State match expressions are not yet supported.")
   , ("Point", " {x: 1, y: 2}", "Struct literal expressions are not yet supported.")
   , ("self", ".field", "Self expressions are not yet supported.")
   , ("Data", "::Left", "Path expressions are not yet supported.")
@@ -56,6 +56,26 @@ unsupportedExpressionTests = concatMap rejected unsupportedExpressions
       test "\{token}\{rest} is rejected: \{message}" $
         parseErrorDetails "fn f() {\{token}\{rest}}" `shouldBe`
           parseErrorAt (1, 9) (1, 9 + length token) message
+
+||| Each form whose element may be followed only by a separator or by the
+||| form's closing token.
+misplacedNames : List (String, Nat, String)
+misplacedNames =
+  [ ("fn f() {g(a z)}", 13, "',' or ')'")
+  , ("fn f() {x.m(a z)}", 15, "',' or ')'")
+  , ("fn f() {ctrl(a z) {}}", 16, "',' or ')'")
+  , ("fn f() {ctrl(q).apply(H z)}", 25, "')'")
+  , ("fn f() {adjoint(g z)}", 19, "')'")
+  , ("fn f() {(a z)}", 12, "',' or ')'")
+  , ("fn f() {(a, b z)}", 15, "',' or ')'")
+  , ("fn f() {[a z]}", 12, "',', ';' or ']'")
+  , ("fn f() {[a, b z]}", 15, "',' or ']'")
+  , ("fn f() {[a; b z]}", 15, "']'")
+  , ("fn f() {a[i z]}", 13, "']'")
+  , ("fn f() {let (a z) = t;}", 16, "',' or ')'")
+  , ("fn f() {let (a, b z) = t;}", 19, "',' or ')'")
+  , ("fn f() {let [a z] = t;}", 16, "',' or ']'")
+  ]
 
 export
 runExpressionParseTests : IO Bool
@@ -87,6 +107,14 @@ runExpressionParseTests = runTests $ Test.do
 
   test "index and field expressions are assignment targets" $
     printsUnchangedStrict "fn assign() { a[i] = 1; p.x = 2; }"
+
+  test "a call is not an assignment target" $
+    parseErrorDetails "fn f() {f() = 1;}" `shouldBe`
+      parseErrorAt (1, 13) (1, 14) "Expression is not a valid assignment target."
+
+  test "an assignment must end in a semicolon" $
+    parseErrorDetails "fn f() {x = 1 y = 2;}" `shouldBe`
+      parseErrorAt (1, 15) (1, 16) "expected ';', but got identifier \"y\""
 
   -- Let bindings
 
@@ -127,6 +155,15 @@ runExpressionParseTests = runTests $ Test.do
   test "let bindings report the markers accepted after a type annotation" $
     parseErrorDetails "fn f() {let x: i32 + 1;}" `shouldBe`
       parseErrorAt (1, 20) (1, 21) "expected '=' or ':=', but got symbol +"
+
+  testEach "a let binding must end in a semicolon" parseErrorDetails
+    [ ("fn f() {let x = 1 let y = 2;}", parseErrorAt (1, 19) (1, 22) "expected ';', but got keyword let")
+    , ("fn f() {let x: i32 = 1 let y = 2;}", parseErrorAt (1, 24) (1, 27) "expected ';', but got keyword let")
+    ]
+
+  test "mut in a let pattern must be followed by a name" $
+    parseErrorDetails "fn f() {let mut 5 = 1;}" `shouldBe`
+      parseErrorAt (1, 13) (1, 16) "`mut` must be followed by a binder name."
 
   nonPatternTokenTests
 
@@ -270,9 +307,9 @@ runExpressionParseTests = runTests $ Test.do
     parseErrorDetails "fn f() {if ready}" `shouldBe`
       parseErrorAt (1, 17) (1, 18) "Expected a braced block starting with `{`, found instead: `}`."
 
-  test "else is left unconsumed when followed by neither a block nor an if" $
+  test "else must be followed by a block or an if" $
     parseErrorDetails "fn f() {if ready {1} else 2}" `shouldBe`
-      parseErrorAt (1, 22) (1, 26) "expected 'an expression', but got keyword else"
+      parseErrorAt (1, 27) (1, 28) "expected '{' or 'if', but got raw integer literal `2`"
 
   test "loop, while and for expressions parse" $
     printsUnchangedStrict "fn control() { loop { break }; while ready { continue }; for x in values { x } }"
@@ -287,22 +324,22 @@ runExpressionParseTests = runTests $ Test.do
 
   test "for expressions require in after their binder" $
     parseErrorDetails "fn f() {for x y {}}" `shouldBe`
-      parseErrorAt (1, 9) (1, 12) "expected 'for identifier in expression', but got keyword for"
+      parseErrorAt (1, 15) (1, 16) "expected 'in', but got identifier \"y\""
 
   test "for expressions require a binder before in" $
     parseErrorDetails "fn f() {for in values {}}" `shouldBe`
-      parseErrorAt (1, 9) (1, 12) "expected 'for identifier in expression', but got keyword for"
+      parseErrorAt (1, 13) (1, 15) "expected 'for loop binder name', but got keyword in"
 
   test "non-final block-like expression statements need no semicolon" $
     printsUnchangedStrict ("fn control() { if ready { work(); } loop { break; " ++
                            "} while ready { continue; } for x in values { use_value(x); " ++
                            "} finish() }")
 
-  test "block recursion terminates across every recursive continuation" $
+  test "a block may mix calls, ifs, lets, assignments and loops before its value" $
     printsUnchangedStrict ("fn progress() { first(); if ready { second(); } let x = third(); " ++
                            "target.field = fourth(); loop { break; } last() }")
 
-  test "block recursion terminates when a later statement is malformed" $
+  test "a missing semicolon is reported after several well-formed statements" $
     parseErrorDetails ("fn progress() {first(); if ready {second();} let x = third(); " ++
                        "fourth() let y = fifth();}") `shouldBe`
       parseErrorAt (1, 72) (1, 75) "Expected `;` or `}`, found instead: `let`."
@@ -327,17 +364,17 @@ runExpressionParseTests = runTests $ Test.do
 
   -- As in Rust, the head of `if`, `while` or `for` does not allow struct
   -- literals, so a constant directly before the block is just a name.
-  test "an uppercase name directly before a head's block is a name" $
-    map parseAndPrettyPrintLax
-      [ "fn f() {if FLAG {} else if FLAG {}}", "fn f() {while i < N {}}"
-      , "fn f() {for i in 0..N {}}", "fn f() {if !FLAG {}}" ] `shouldBe`
-      [ Right "fn f() { if FLAG { } else if FLAG { } }", Right "fn f() { while i < N { } }"
-      , Right "fn f() { for i in 0..N { } }", Right "fn f() { if !FLAG { } }" ]
+  testEach "an uppercase name directly before a head's block is a name" parseAndPrettyPrintLax
+    [ ("fn f() {if FLAG {} else if FLAG {}}", Right "fn f() { if FLAG { } else if FLAG { } }")
+    , ("fn f() {while i < N {}}", Right "fn f() { while i < N { } }")
+    , ("fn f() {for i in 0..N {}}", Right "fn f() { for i in 0..N { } }")
+    , ("fn f() {if !FLAG {}}", Right "fn f() { if !FLAG { } }")
+    ]
 
-  test "struct literals stay unsupported inside a head's nested expressions" $
-    map parseErrorDetails ["fn f() {if g(X {}) {}}", "fn f() {if (X {}) {}}"] `shouldBe`
-      [ parseErrorAt (1, 14) (1, 15) "Struct literal expressions are not yet supported."
-      , parseErrorAt (1, 13) (1, 14) "Struct literal expressions are not yet supported." ]
+  testEach "struct literals stay unsupported inside a head's nested expressions" parseErrorDetails
+    [ ("fn f() {if g(X {}) {}}", parseErrorAt (1, 14) (1, 15) "Struct literal expressions are not yet supported.")
+    , ("fn f() {if (X {}) {}}", parseErrorAt (1, 13) (1, 14) "Struct literal expressions are not yet supported.")
+    ]
 
   -- Quantum control and adjoint
 
@@ -363,6 +400,18 @@ runExpressionParseTests = runTests $ Test.do
     parseErrorDetails "fn f() {ctrl().apply(H)(q)}" `shouldBe`
       parseErrorAt (1, 9) (1, 15) "`ctrl` requires at least one control qbit."
 
+  test "a control expression accepts only one basis" $
+    parseErrorDetails "fn f() {ctrl(q).on(bs\"1\").on(bs\"0\").apply(H)(r)}" `shouldBe`
+      parseErrorAt (1, 27) (1, 29) "A control expression can contain only one `.on(...)` clause."
+
+  test "ctrl must be followed by its controls" $
+    parseErrorDetails "fn f() {ctrl q}" `shouldBe`
+      parseErrorAt (1, 14) (1, 15) "expected '`(` after `ctrl`', but got identifier \"q\""
+
+  test "controls must be followed by apply or a block" $
+    parseErrorDetails "fn f() {ctrl(q) + 1}" `shouldBe`
+      parseErrorAt (1, 17) (1, 18) "expected '`.apply(...)` or a controlled block', but got symbol +"
+
   test "adjoint makes a higher-order callable" $
     printsUnchangedLax "fn use_adjoint() { let f_adjoint = adjoint(f); }"
 
@@ -376,22 +425,28 @@ runExpressionParseTests = runTests $ Test.do
     parseErrorDetails "fn f() {adjoint()}" `shouldBe`
       parseErrorAt (1, 16) (1, 18) "`adjoint(...)` requires one callable expression."
 
+  test "adjoint must be followed by a callable or a block" $
+    parseErrorDetails "fn f() {adjoint q}" `shouldBe`
+      parseErrorAt (1, 17) (1, 18) "expected '`(` or `{` after `adjoint`', but got identifier \"q\""
+
   -- Postfix expressions and comma lists
 
-  test "postfix recursion terminates through a deep mixed chain" $
+  test "calls, indexing, fields, methods and tuple indices chain in any order" $
     printsUnchangedStrict "fn postfix() { factory(a, b)[i].field.method(c)[j].0.next().value }"
 
-  test "postfix recursion terminates on an incomplete suffix" $
+  test "an unclosed index ending a postfix chain is reported at end of input" $
     parseErrorDetails "fn postfix() {factory(a)[i].field.method(c)[j" `shouldBe`
       parseErrorAt (1, 46) (1, 47) "expected ']', but got end of input"
 
-  test "comma-list recursion terminates for nested trailing commas" $
+  test "nested comma lists each accept a trailing comma" $
     parseAndPrettyPrintStrict "fn commas() {outer(inner(a, b,), [first(), second(),], (x, y,),)}" `shouldBe`
       Right "fn commas() { outer(inner(a, b), [first(), second()], (x, y)) }"
 
-  test "comma-list recursion terminates on a missing middle element" $
+  test "a comma list rejects a missing middle element" $
     parseErrorDetails "fn commas() {outer(first(),, third())}" `shouldBe`
       parseErrorAt (1, 28) (1, 29) "expected 'an expression', but got symbol ,"
+
+  misplacedNameTests "what may follow an element is reported" misplacedNames
 
   -- Not yet supported
 
@@ -399,11 +454,8 @@ runExpressionParseTests = runTests $ Test.do
 
   -- Node identifiers
 
-  test "node identifiers follow source order through nested control flow" $
-    map parseAndListNodeIds
-      [ "fn f() { if a {1} else if b {2} else {3} }"
-      , "fn f() { for x in v { x } }"
-      ] `shouldBe`
-      [ Right [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
-      , Right [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-      ]
+  testEach "node identifiers follow source order through nested control flow" parseAndListNodeIds
+    [ ("fn f() { if a {1} else if b {2} else {3} }",
+       Right [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])
+    , ("fn f() { for x in v { x } }", Right [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    ]

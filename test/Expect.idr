@@ -38,6 +38,19 @@ test name (MkExpectation actual expected) =
     report : String
     report = "    expected: \{show expected}\n    actual:   \{show actual}"
 
+||| One test per case: `run` applied to each input should give the value paired
+||| with it. Each test is named after `name` and its input.
+|||
+||| Independent cases get a test each, through this or a table of their own, so
+||| a failure names the case. One test holds several values only when they are
+||| asserted together, as a contrast or as parts of one source.
+export
+testEach : Eq b => Show b => String -> (String -> b) -> List (String, b) -> List TestResult
+testEach name run = concatMap check
+  where
+    check : (String, b) -> List TestResult
+    check (input, expected) = test "\{name}: \{input}" (run input `shouldBe` expected)
+
 namespace Test
   export
   (>>) : List TestResult -> List TestResult -> List TestResult
