@@ -1,6 +1,6 @@
 module TypeChecker.Phases.ConstEvalTest
 
-import Test.Simple
+import Expect
 
 import Compiler.Frontend.TypeChecker.Data
 import TypeChecker.Helper
@@ -20,7 +20,7 @@ import TypeChecker.Helper
 --------------------------------------------------------------------------------
 
 -- Constant values (plan §3.1, §3.5)
-constantValueTests : List ETest
+constantValueTests : List TestResult
 constantValueTests = Test.do
   test "a constant's value is its initializer's value" $
     typeCheckOutcome "const N: u32 = 2 + 2; fn f() { let a: [i32; N as usize] = [0; 4]; }" `shouldBe` accepted
@@ -66,7 +66,7 @@ constantValueTests = Test.do
       `shouldBe` accepted
 
 -- Statements and control flow in constants (plan §3.2)
-constantControlFlowTests : List ETest
+constantControlFlowTests : List TestResult
 constantControlFlowTests = Test.do
   test "blocks and lets are evaluated" $
     typeCheckOutcome "const N: u32 = { let a = 2; let b = 3; a * b }; fn f() { let a: [i32; N as usize] = [0; 6]; }"
@@ -126,7 +126,7 @@ constantControlFlowTests = Test.do
 
 -- Interpreter storage, frames and exported constants (plan §3.2, §3.5;
 -- spec §9 slices, §34 tuple projection, §46 const functions and §51 references).
-constantStorageTests : List ETest
+constantStorageTests : List TestResult
 constantStorageTests = Test.do
   test "each const function call gets fresh parameter and local storage" $
     typeCheckOutcome "const fn bump(n: u32) -> u32 { let mut x = n; x += 1; x } const N: u32 = bump(1) + bump(4); fn f() { let a: [i32; N as usize] = [0; 7]; }"
@@ -182,7 +182,7 @@ constantStorageTests = Test.do
 -- Sequencing is observable through mutations (plan §3.2, §5.6 Assignment).
 -- The Rust convention evaluates ordinary operands left-to-right, but an
 -- assignment's value before its target; primitive compound assignments do too.
-constantEvaluationOrderTests : List ETest
+constantEvaluationOrderTests : List TestResult
 constantEvaluationOrderTests = Test.do
   test "const call arguments are evaluated left-to-right" $
     typeCheckOutcome "const fn bump(c: &mut [u32; 1]) -> u32 { c[0] += 1; c[0] } const fn pair(a: u32, b: u32) -> u32 { a * 10 + b } const fn count() -> u32 { let mut c = [0]; pair(bump(&mut c), bump(&mut c)) } fn f() { let a: [i32; count() as usize] = [0; 12]; }"
@@ -201,7 +201,7 @@ constantEvaluationOrderTests = Test.do
       `shouldBe` accepted
 
 -- Integer arithmetic follows each operation's checked type (plan §3.2)
-constantArithmeticTests : List ETest
+constantArithmeticTests : List TestResult
 constantArithmeticTests = Test.do
   test "integer division truncates toward zero" $
     typeCheckOutcome "const N: u32 = (-7 / 2 + 5) as u32; fn f() { let a: [i32; N as usize] = [0; 2]; }"
@@ -292,7 +292,7 @@ constantArithmeticTests = Test.do
       `shouldBe` accepted
 
 -- Casts in constants (plan §3.2, §5.6 Casts)
-constantCastTests : List ETest
+constantCastTests : List TestResult
 constantCastTests = Test.do
   test "an integer narrowing cast truncates" $
     typeCheckOutcome "const N: u32 = 300 as u8 as u32; fn f() { let a: [i32; N as usize] = [0; 44]; }"
@@ -336,7 +336,7 @@ constantCastTests = Test.do
 
 -- Observe each prelude result, not only that the call is const-eligible
 -- (plan §3.2, §4.2; spec §3, §14).
-constantMathValueTests : List ETest
+constantMathValueTests : List TestResult
 constantMathValueTests = Test.do
   test "integer abs computes negative, positive and zero magnitudes" $
     typeCheckOutcome "const N: u32 = if abs(-7i16) == 7i16 && abs(7i16) == 7i16 && abs(0i16) == 0i16 { 1 } else { 0 }; fn f() { let a: [i32; N as usize] = [0; 1]; }"
@@ -375,7 +375,7 @@ constantMathValueTests = Test.do
       `shouldBe` accepted
 
 -- Static const eligibility (plan §3.2, §7.4)
-constEligibilityTests : List ETest
+constEligibilityTests : List TestResult
 constEligibilityTests = Test.do
   test "a non-const function cannot be called in a constant" $
     typeCheckOutcome "fn g() -> u32 { 3 } const N: u32 = g();"
@@ -448,7 +448,7 @@ constEligibilityTests = Test.do
       `shouldBe` rejectedWith (NotAConstantExpression (spanAt 1 33))
 
 -- Evaluation limits and runtime errors (plan §3.2, §3.3)
-constantLimitTests : List ETest
+constantLimitTests : List TestResult
 constantLimitTests = Test.do
   test "a nonterminating loop exhausts the evaluation budget" $
     typeCheckOutcome "const fn spin() -> u32 { loop { } } const N: u32 = spin();"
@@ -479,7 +479,7 @@ constantLimitTests = Test.do
       `shouldBe` rejectedWith (ConstEvaluationLimitExceeded (spanAt 1 173))
 
 -- usize constant operations and casts use the target width, never host Int.
-usizeConstantTests : List ETest
+usizeConstantTests : List TestResult
 usizeConstantTests = Test.do
   test "usize addition at the upper bound overflows" $
     typeCheckOutcome "const N: usize = 18446744073709551615usize + 1;"
@@ -578,7 +578,7 @@ usizeConstantTests = Test.do
       `shouldBe` accepted
 
 export
-runConstEvalTests : IO ()
+runConstEvalTests : IO Bool
 runConstEvalTests =
   runTests $ concat
     [ constantValueTests

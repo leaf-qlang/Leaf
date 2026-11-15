@@ -1,6 +1,6 @@
 module TypeChecker.TypeTranslationTest
 
-import Test.Simple
+import Expect
 
 import Compiler.Frontend.TypeChecker.Data
 import Compiler.Frontend.TypeChecker.Helper
@@ -63,7 +63,7 @@ firstParameterElementQuantumUsage inputProgram =
     _ => Nothing
 
 export
-runTypeTranslationTests : IO ()
+runTypeTranslationTests : IO Bool
 runTypeTranslationTests = runTests $ Test.do
 
   test "a decimal array length with digit separators is evaluated" $

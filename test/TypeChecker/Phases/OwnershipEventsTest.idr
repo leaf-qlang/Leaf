@@ -1,6 +1,6 @@
 module TypeChecker.Phases.OwnershipEventsTest
 
-import Test.Simple
+import Expect
 
 import Compiler.Frontend.TypeChecker.Data
 import TypeChecker.Helper
@@ -20,7 +20,7 @@ import TypeChecker.Helper
 --------------------------------------------------------------------------------
 
 -- Copies, moves and borrows (plan §8.1)
-copyAndMoveTests : List ETest
+copyAndMoveTests : List TestResult
 copyAndMoveTests = Test.do
   test "a classical value is copied, so it can be used again" $
     typeCheckOutcome "fn f() -> i32 { let x = 5; let y = x; x + y }" `shouldBe` accepted
@@ -63,7 +63,7 @@ copyAndMoveTests = Test.do
       `shouldBe` rejectedWith (UseAfterMove "q" (spanAt 1 47))
 
 -- Temporaries (plan §8.1, §8.2 rule 2)
-temporaryTests : List ETest
+temporaryTests : List TestResult
 temporaryTests = Test.do
   test "an unused owned gate result is a live linear temporary" $
     typeCheckOutcome "fn f(q: qbit) { H(q); }"
@@ -85,7 +85,7 @@ temporaryTests = Test.do
     typeCheckOutcome "fn f(q: affine qbit) { H(q); }" `shouldBe` accepted
 
 -- Controls, repetition and iteration (plan §5.6, §8.1)
-controlAndRepetitionTests : List ETest
+controlAndRepetitionTests : List TestResult
 controlAndRepetitionTests = Test.do
   test "owned controls are moved into the call and returned" $
     typeCheckOutcome "fn f(c: qbit, t: qbit) -> (qbit, qbit) { ctrl(c).apply(X)(t) }" `shouldBe` accepted
@@ -119,7 +119,7 @@ controlAndRepetitionTests = Test.do
       `shouldBe` rejectedWith (UseAfterMove "qs" (spanAt 1 66))
 
 -- Moves along control flow (plan §8.2)
-moveFlowTests : List ETest
+moveFlowTests : List TestResult
 moveFlowTests = Test.do
   test "a move inside a loop body happens again on the next iteration" $
     typeCheckOutcome "fn f() { let q = qalloc(); for i in 0..3 { discard(q); } }"
@@ -145,7 +145,7 @@ moveFlowTests = Test.do
     typeCheckOutcome "fn f() { let q = loop { break qalloc(); }; discard(q); }" `shouldBe` accepted
 
 -- Aggregate copies, exclusive references and conditional transfers (plan §8.1–§8.2).
-additionalEventTests : List ETest
+additionalEventTests : List TestResult
 additionalEventTests = Test.do
   test "an array of classical values is copied as a whole" $
     typeCheckOutcome "fn f() -> i32 { let a = [1, 2]; let b = a; a[0] + b[1] }" `shouldBe` accepted
@@ -185,7 +185,7 @@ additionalEventTests = Test.do
 
 -- Early exits retain obligations for elements still owned by the iterator
 -- (plan §8.1, §8.2). Temporary arrays have no local binding to report instead.
-iterationExitTests : List ETest
+iterationExitTests : List TestResult
 iterationExitTests = Test.do
   test "breaking from owned iteration leaves the remaining linear elements live" $
     typeCheckOutcome "fn f() { for q in qalloc(2) { discard(q); break; } }"
@@ -217,7 +217,7 @@ iterationExitTests = Test.do
 -- Repetition evaluates its operand once and copies it (plan §5.6, §8.2). Owned
 -- qubits and exclusive references are not Copy, and the plan names no
 -- diagnostic for duplicating them, so those tests require only a reported error.
-repetitionCopyTests : List ETest
+repetitionCopyTests : List TestResult
 repetitionCopyTests = Test.do
   test "repeating a linear qubit more than once is rejected" $
     rejected (typeCheckOutcome "fn f() { let qs = [qalloc(); 2]; discard(qs); }")
@@ -239,7 +239,7 @@ repetitionCopyTests = Test.do
     typeCheckOutcome "fn f() -> i32 { let x = 1; let rs = [&x; 2]; rs[0] + rs[1] }" `shouldBe` accepted
 
 export
-runOwnershipEventsTests : IO ()
+runOwnershipEventsTests : IO Bool
 runOwnershipEventsTests =
   runTests $ concat
     [ copyAndMoveTests

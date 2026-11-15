@@ -12,7 +12,7 @@ import ScopeAndNameResolution.Helper
 import Data.List
 import Data.SnocList
 import Data.SortedMap
-import Test.Simple
+import Expect
 
 %default total
 
@@ -185,7 +185,7 @@ withMemberOwnerKind kind =
                                     (MkSymbolId 2) memberModule.tables.symbols } memberModule
 
 export
-runResolutionValidationTests : IO ()
+runResolutionValidationTests : IO Bool
 runResolutionValidationTests = runTests $ Test.do
 
   test "consistent resolution tables and a reused root ModuleScope are accepted" $

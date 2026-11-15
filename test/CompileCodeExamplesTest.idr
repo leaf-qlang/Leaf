@@ -1,6 +1,6 @@
 module CompileCodeExamplesTest
 
-import Test.Simple
+import Expect
 
 import Compiler.Frontend.ScopeAndNameResolver.Data
 import Main
@@ -16,7 +16,7 @@ isFailure (Left _)  = True
 isFailure (Right _) = False
 
 export
-runCompileCodeExamplesTests : IO ()
+runCompileCodeExamplesTests : IO Bool
 runCompileCodeExamplesTests = runTests $ Test.do
 
   test "the source compilation pipeline accepts a valid program" $

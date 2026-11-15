@@ -1,6 +1,6 @@
 module TypeChecker.Phases.TypedAstTranslationTest
 
-import Test.Simple
+import Expect
 
 import Compiler.Frontend.TypeChecker.Data
 import TypeChecker.Helper
@@ -20,7 +20,7 @@ import TypeChecker.Helper
 --------------------------------------------------------------------------------
 
 -- Items and generated nodes (plan §6.1, §6.2)
-itemTranslationTests : List ETest
+itemTranslationTests : List TestResult
 itemTranslationTests = Test.do
   test "an empty function keeps its generated effect, result type and return" $
     printedTypedAst "fn f() {}"
@@ -59,7 +59,7 @@ itemTranslationTests = Test.do
       `shouldBe` Right "const N: usize = 2;\ngeneral fn f(a: [i32; (N + 1)]) -> [i32; (N + 1)] { return a; }"
 
 -- Statements and patterns (plan §6.2)
-statementTranslationTests : List ETest
+statementTranslationTests : List TestResult
 statementTranslationTests = Test.do
   test "let bindings, assignments and compound assignments are translated" $
     printedTypedAst "fn f() -> i32 { let mut x: i32 = 0; x = 2; x += 1; x }"
@@ -90,7 +90,7 @@ statementTranslationTests = Test.do
       `shouldBe` Right "const UNIT: () = ();\ngeneral fn f() -> () { return for UNIT in [(), ()] { }; }"
 
 -- Expressions (plan §6.2)
-expressionTranslationTests : List ETest
+expressionTranslationTests : List TestResult
 expressionTranslationTests = Test.do
   test "blocks, if and else-if chains are translated" $
     printedTypedAst "fn f(c: bool, x: i32) -> i32 { let y = { let a = 1; a + x }; if c { y } else if x == 0 { 0 } else { -y } }"
@@ -121,7 +121,7 @@ expressionTranslationTests = Test.do
       `shouldBe` Right "general fn f() -> param { return Param(\"theta\"); }"
 
 -- Named members are rejected before translation (plan §6.1)
-memberTranslationTests : List ETest
+memberTranslationTests : List TestResult
 memberTranslationTests = Test.do
   test "a named field read is rejected before translation" $
     printedTypedAst "fn f() { let t = (1, 2); let x = t.first; }"
@@ -136,7 +136,7 @@ memberTranslationTests = Test.do
       `shouldBe` Left (show (UnknownMember "first" (spanAt 1 32)))
 
 export
-runTypedAstTranslationTests : IO ()
+runTypedAstTranslationTests : IO Bool
 runTypedAstTranslationTests =
   runTests $ concat
     [ itemTranslationTests

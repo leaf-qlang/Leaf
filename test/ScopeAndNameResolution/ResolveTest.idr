@@ -18,12 +18,12 @@ import Data.List1
 import Data.Maybe
 import Data.SnocList
 import Data.SortedMap
-import Test.Simple
+import Expect
 
 %default total
 
 export
-runSymbolAndScopeResolutionTests : IO ()
+runSymbolAndScopeResolutionTests : IO Bool
 runSymbolAndScopeResolutionTests = runTests $ Test.do
   -- Rendered from real resolution, so the spans are the ones the resolver recorded.
   -- InaccessibleSymbol is not covered: visibility is not checked yet.

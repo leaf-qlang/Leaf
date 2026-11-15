@@ -1,7 +1,7 @@
 module Lexer.LexerTest
 
 import Text.Bounds
-import Test.Simple
+import Expect
 
 import Compiler.Frontend.Token
 import Compiler.Frontend.Lexer.Error
@@ -77,7 +77,7 @@ spaceSeparated (name :: remainingNames) =
   name ++ " " ++ spaceSeparated remainingNames
 
 export
-runLexerTests : IO ()
+runLexerTests : IO Bool
 runLexerTests = runTests $ Test.do
   ------------------------------------------------------------
   -- Whitespace, comments, and documentation comments.

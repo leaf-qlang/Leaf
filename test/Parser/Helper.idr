@@ -2,112 +2,115 @@ module Parser.Helper
 
 import Data.String
 import Text.Bounds
-import Test.Simple
 
+import Compiler.Frontend.ASTPhases
 import Compiler.Frontend.Lexer.Error
 import Compiler.Frontend.Lexer.Lexer
-import Compiler.Frontend.ASTPhases
 import Compiler.Frontend.Parser.Error
 import Compiler.Frontend.Parser.Parser
 import Compiler.Frontend.Source
 import Compiler.Frontend.Syntax.AST
+import Compiler.Frontend.Token
 import Compiler.Frontend.Utils.ASTDebugPrinter
 import Compiler.Frontend.Utils.ASTPrettyPrinter
-import Compiler.Frontend.Token
+import Expect
+import public Parser.DebugDump
+import public Parser.FixtureSource
 
 %default total
 
+--------------------------------------------------------------------------------
+-- Parsing fixtures
+--
+-- Every helper that takes source returns `Left` with the reason when the
+-- source does not get as far as the helper needs, so a failing test reports
+-- why instead of a bare `Nothing`.
+--------------------------------------------------------------------------------
+
+lexBounded : String -> Either String (List (Bounded Token))
+lexBounded source = case lexFile source of
+  Left located => Left "lexer error: \{located.val}"
+  Right tokens => Right tokens
+
+||| The fixture's tokens, without their bounds.
 export
-lexThenParse : String -> String -> Maybe SurfaceSourceFile
-lexThenParse fileName inputProgram =
-  case lexFile inputProgram of
-      Left _ => Nothing
-      Right tokens => case parseFile fileName tokens of
-        Left _ => Nothing
-        Right ast => Just ast
+lexFixture : String -> Either String (List Token)
+lexFixture = map (map val) . lexBounded
 
-export
-parseAndPrettyPrint : String -> Maybe String
-parseAndPrettyPrint inputProgram =
-  case lexThenParse "test-fixture.rs" inputProgram of
-    Nothing => Nothing
-    Just sourceFile => Just (showSourceFileStrict sourceFile)
-
-||| Starts collecting digits when a node identifier marker is seen.
-startNodeIdMarker : Char -> Maybe (SnocList Char)
-startNodeIdMarker '#' = Just [<]
-startNodeIdMarker _ = Nothing
-
-||| Emits one collected identifier, if any, ahead of the remaining identifiers.
-emitNodeId : SnocList Char -> List Nat -> List Nat
-emitNodeId [<] remaining = remaining
-emitNodeId digits remaining =
-  stringToNatOrZ (pack (digits <>> [])) :: remaining
-
-||| Scans a debug rendering for the `#<digits>` node identifiers it prints.
-||| `collecting` holds the digits seen since the last `#`, which keeps the scan
-||| structurally recursive on the remaining characters. A `#` that is not
-||| followed by digits, such as an attribute's `#[`, collects nothing.
-scanNodeIds :
-     (remaining : List Char)
-  -> (collecting : Maybe (SnocList Char))
-  -> List Nat
-scanNodeIds [] Nothing = []
-scanNodeIds [] (Just digits) = emitNodeId digits []
-scanNodeIds (character :: rest) (Just digits) =
-  if isDigit character
-    then scanNodeIds rest (Just (digits :< character))
-    else emitNodeId digits (scanNodeIds rest (startNodeIdMarker character))
-scanNodeIds (character :: rest) Nothing =
-  scanNodeIds rest (startNodeIdMarker character)
-
-||| The AST node identifiers in the order the debug traversal emits them, which
-||| is source-tree pre-order. Identifier allocation is part of the parser's
-||| contract but is invisible to the pretty printer, so tests that need to pin
-||| it use this instead of `parseAndPrettyPrint`.
-||| Covering rather than total because the debug traversal it reads is itself
-||| declared `%default covering`.
-export
-covering
-debugAstOf : String -> Maybe String
-debugAstOf inputProgram =
-  case lexThenParse "test-fixture.rs" inputProgram of
-    Nothing => Nothing
-    Just sourceFile => Just (showAstDebug sourceFile)
+||| The parser's verdict, once the fixture lexes.
+parseFixture : String -> Either String (Either (Located ParseError) SurfaceSourceFile)
+parseFixture = map (parseFile fixtureFile) . lexBounded
 
 export
-covering
-parseAndListNodeIds : String -> Maybe (List Nat)
-parseAndListNodeIds inputProgram =
-  case lexThenParse "test-fixture.rs" inputProgram of
-    Nothing => Nothing
-    Just sourceFile =>
-      Just (scanNodeIds (unpack (showAstDebug sourceFile)) Nothing)
+lexThenParse : String -> Either String SurfaceSourceFile
+lexThenParse source = parseFixture source >>= either (Left . showParseError) Right
+
+export
+parseAndPrettyPrintStrict : String -> Either String String
+parseAndPrettyPrintStrict = map showSourceFileStrict . lexThenParse
+
+export
+parseAndPrettyPrintLax : String -> Either String String
+parseAndPrettyPrintLax = map showSourceFileLax . lexThenParse
+
+||| A source already in the printer's spacing, which strict style prints back
+||| exactly as written.
+export
+printsUnchangedStrict : String -> Expectation (Either String String)
+printsUnchangedStrict source = parseAndPrettyPrintStrict source `shouldBe` Right source
+
+||| A source already in the printer's spacing, which lax style prints back
+||| exactly as written.
+export
+printsUnchangedLax : String -> Expectation (Either String String)
+printsUnchangedLax source = parseAndPrettyPrintLax source `shouldBe` Right source
 
 ||| The message the user is shown, which carries the file and the error's start,
 ||| paired with the span's end, which no message shows.
 export
-parseErrorDetails : String -> Maybe (String, (Nat, Nat))
-parseErrorDetails inputProgram =
-  case lexFile inputProgram of
-    Left _ => Nothing
-    Right tokens =>
-      case parseFile "test-fixture.rs" tokens of
-        Left located =>
-          let errorEnd = located.span.end
-          in Just (showParseError located, (errorEnd.line, errorEnd.column))
-        Right _ => Nothing
+parseErrorDetails : String -> Either String (String, (Nat, Nat))
+parseErrorDetails source = parseFixture source >>= either (Right . details) parsed
+  where
+    details : Located ParseError -> (String, (Nat, Nat))
+    details located = (showParseError located, (located.span.end.line, located.span.end.column))
+
+    parsed : SurfaceSourceFile -> Either String (String, (Nat, Nat))
+    parsed sourceFile = Left "parsed without error as: \{showSourceFileStrict sourceFile}"
+
+||| What `parseErrorDetails` gives for an error that starts at `start`, ends at
+||| `end` and carries `message`.
+export
+parseErrorAt : (start : (Nat, Nat)) -> (end : (Nat, Nat)) -> (message : String) -> Either String (String, (Nat, Nat))
+parseErrorAt (line, column) end message =
+  Right ("Parse error at: \{fixtureFile}:\{show line}:\{show column}, with message: \{message}", end)
+
+--------------------------------------------------------------------------------
+-- Printing in both styles
+--------------------------------------------------------------------------------
 
 export
-debugTestParseError : String -> List ETest
-debugTestParseError code =
-  let actual = parseErrorDetails code
-      name = "error details actually returned: " ++ show actual
-  in test name $ actual `shouldBe` Nothing
+inBothStyles : (PrettyStyle -> a) -> List a
+inBothStyles render = map render [PrettyLax, PrettyStrict]
 
 export
-debugTestParseSuccess : String -> List ETest
-debugTestParseSuccess code =
-  let actual = parseAndPrettyPrint code
-      name = "actually returned: " ++ show actual
-  in test name $ actual `shouldBe` Just "expected output"
+sameInBothStyles : (PrettyStyle -> a) -> a -> Expectation (List a)
+sameInBothStyles render expected = inBothStyles render `shouldBe` [expected, expected]
+
+--------------------------------------------------------------------------------
+-- Dumping parsed fixtures
+--------------------------------------------------------------------------------
+
+||| Covering because the debug traversal is itself declared covering.
+export
+covering
+debugAstOf : String -> Either String String
+debugAstOf = map showAstDebug . lexThenParse
+
+||| Surface IDs in structural pre-order, including names, tokens and literals.
+export
+covering
+parseAndListNodeIds : String -> Either String (List Nat)
+parseAndListNodeIds source = debugAstOf source >>= withIds
+  where
+    withIds : String -> Either String (List Nat)
+    withIds dump = maybe (Left "a node heading has no ID in:\n\{dump}") Right (debugNodeSurfaceIds dump)

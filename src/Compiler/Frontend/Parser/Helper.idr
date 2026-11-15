@@ -15,6 +15,7 @@ import Compiler.Frontend.Syntax.Doc
 import Compiler.Frontend.Syntax.Literal
 import Compiler.Frontend.Syntax.Name
 import Compiler.Frontend.Syntax.Operator
+import public Compiler.Frontend.Syntax.ParseRules
 import Compiler.Frontend.Syntax.Pattern
 import Compiler.Frontend.Syntax.Type
 
@@ -75,6 +76,9 @@ sourceFileInfo nodeId (first :: rest) =
 ||| Each constructor represents one accepted modifier sequence and retains the
 ||| visibility that may precede it. `PrefixConstEffect` represents
 ||| `const <effect> fn`; the reverse order is deliberately not constructible.
+||| A lone `const` keeps only its bounds: it may still start a const item, which
+||| has no constness node. `const <effect>` can only continue as a function, so
+||| its constness node is created then, keeping node IDs in source order.
 public export
 data ItemPrefixState
   = PrefixOrdinary (Maybe (SurfaceAstNode VisibilityQualifier))
@@ -84,25 +88,33 @@ data ItemPrefixState
       (SurfaceAstNode FunctionEffect)
   | PrefixConstEffect
       (Maybe (SurfaceAstNode VisibilityQualifier))
-      Bounds
+      (SurfaceAstNode FunctionConstness)
       (SurfaceAstNode FunctionEffect)
 
-||| Decomposes an accumulated prefix state into its visibility, `const`
-||| bounds, and effect components for uniform `fn` dispatch.
+||| The `const` of a function prefix: absent, seen but not yet given a node,
+||| or already located.
+public export
+data PrefixConstness
+  = NoPrefixConstness
+  | PendingPrefixConstness Bounds
+  | LocatedPrefixConstness (SurfaceAstNode FunctionConstness)
+
+||| Decomposes an accumulated prefix state into its visibility, `const`, and
+||| effect components for uniform `fn` dispatch.
 public export
 prefixComponents :
      ItemPrefixState
   -> ( Maybe (SurfaceAstNode VisibilityQualifier)
-     , Maybe Bounds
+     , PrefixConstness
      , Maybe (SurfaceAstNode FunctionEffect))
 prefixComponents (PrefixOrdinary visibility) =
-  (visibility, Nothing, Nothing)
+  (visibility, NoPrefixConstness, Nothing)
 prefixComponents (PrefixConst visibility constBounds) =
-  (visibility, Just constBounds, Nothing)
+  (visibility, PendingPrefixConstness constBounds, Nothing)
 prefixComponents (PrefixEffect visibility effect) =
-  (visibility, Nothing, Just effect)
-prefixComponents (PrefixConstEffect visibility constBounds effect) =
-  (visibility, Just constBounds, Just effect)
+  (visibility, NoPrefixConstness, Just effect)
+prefixComponents (PrefixConstEffect visibility constness effect) =
+  (visibility, LocatedPrefixConstness constness, Just effect)
 
 public export
 record CommaList a where
@@ -241,13 +253,6 @@ unsupportedTopLevelItem KwStruct =
 unsupportedTopLevelItem _ = Nothing
 
 public export
-startsWithUppercase : String -> Bool
-startsWithUppercase text =
-  case unpack text of
-    character :: _ => character >= 'A' && character <= 'Z'
-    [] => False
-
-public export
 makeLiteralExpression : SourceFileName => LiteralNode -> Bounds -> Nat -> (SurfaceExpr, Nat)
 makeLiteralExpression literalValue bounds nodeId =
   let (expressionNodeId, afterExpressionNodeId) = reserveNodeId nodeId
@@ -294,24 +299,6 @@ assignmentTargetFromExpression (MkAstNode _ _ expression) =
     _ => Nothing
 
 public export
-isBlockLikeExpression : SurfaceExpr -> Bool
-isBlockLikeExpression (MkAstNode _ _ expression) =
-  case expression of
-    ExprBlock _ => True
-    ExprIf _ => True
-    ExprQIf _ => True
-    ExprSIf _ => True
-    ExprMatch _ => True
-    ExprQMatch _ => True
-    ExprSMatch _ => True
-    ExprLoop _ => True
-    ExprWhile _ _ => True
-    ExprFor _ _ _ => True
-    ExprCtrl (ControlledBlock _ _ _) => True
-    ExprAdjoint (AdjointBlock _) => True
-    _ => False
-
-public export
 isComparisonOperator : BinaryOperator -> Bool
 isComparisonOperator BinaryEqual = True
 isComparisonOperator BinaryNotEqual = True
@@ -326,22 +313,6 @@ isUnparenthesizedComparison : SurfaceExpr -> Bool
 isUnparenthesizedComparison (MkAstNode _ _ (ExprBinary operator _ _)) =
   isComparisonOperator operator.nodeValue
 isUnparenthesizedComparison _ = False
-
-public export
-isOpenRangeTerminator : Token -> Bool
-isOpenRangeTerminator (TokSym SymSemi) = True
-isOpenRangeTerminator (TokSym SymComma) = True
-isOpenRangeTerminator (TokSym SymRParen) = True
-isOpenRangeTerminator (TokSym SymRBracket) = True
-isOpenRangeTerminator (TokSym SymRBrace) = True
-isOpenRangeTerminator _ = False
-
-public export
-isOptionalValueTerminator : Token -> Bool
-isOptionalValueTerminator (TokSym SymSemi) = True
-isOptionalValueTerminator (TokSym SymComma) = True
-isOptionalValueTerminator (TokSym SymRBrace) = True
-isOptionalValueTerminator _ = False
 
 public export
 nextTokenSatisfies :

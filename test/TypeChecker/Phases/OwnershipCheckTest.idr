@@ -1,6 +1,6 @@
 module TypeChecker.Phases.OwnershipCheckTest
 
-import Test.Simple
+import Expect
 
 import Compiler.Frontend.TypeChecker.Data
 import Compiler.Frontend.Syntax.Common
@@ -21,7 +21,7 @@ import TypeChecker.Helper
 --------------------------------------------------------------------------------
 
 -- Initialization and mutability (plan §8.2 rule 1)
-initializationTests : List ETest
+initializationTests : List TestResult
 initializationTests = Test.do
   test "a local may be initialized once after its declaration" $
     typeCheckOutcome "fn f() -> i32 { let x: i32; x = 1; x }" `shouldBe` accepted
@@ -100,7 +100,7 @@ initializationTests = Test.do
       `shouldBe` rejectedWith (ImmutableAssignment "N" (spanAt 1 28))
 
 -- Linearity and affine drops (plan §8.2 rule 2)
-linearityTests : List ETest
+linearityTests : List TestResult
 linearityTests = Test.do
   test "a linear qubit must be consumed" $
     typeCheckOutcome "fn f() { let q = qalloc(); }"
@@ -136,7 +136,7 @@ linearityTests = Test.do
       `shouldBe` rejectedWith (LinearQbitNotConsumed (spanAt 1 20))
 
 -- Partial moves (plan §8.2 rule 3)
-partialMoveTests : List ETest
+partialMoveTests : List TestResult
 partialMoveTests = Test.do
   test "tuple components can be moved separately" $
     typeCheckOutcome "fn f() { let p = (qalloc(), qalloc()); discard(p.0); discard(p.1); }"
@@ -174,7 +174,7 @@ partialMoveTests = Test.do
       `shouldBe` accepted
 
 -- Exclusive loans and non-lexical lifetimes (plan §8.2 rule 4)
-loanTests : List ETest
+loanTests : List TestResult
 loanTests = Test.do
   test "a qubit cannot be borrowed twice in one call" $
     typeCheckOutcome "fn f(q: &qbit) { CX(q, q); }"
@@ -243,7 +243,7 @@ loanTests = Test.do
     typeCheckOutcome "fn g(a: &[i32], b: &[i32]) {} fn f() { let x = [1]; g(&x, &x); }" `shouldBe` accepted
 
 -- Reference lifetimes (plan §8.2 rule 5)
-referenceLifetimeTests : List ETest
+referenceLifetimeTests : List TestResult
 referenceLifetimeTests = Test.do
   test "a reference into a parameter may be returned" $
     typeCheckOutcome "fn first(xs: &[i32]) -> &i32 { &xs[0] }" `shouldBe` accepted
@@ -264,7 +264,7 @@ referenceLifetimeTests = Test.do
     typeCheckOutcome "const A: [i32; 2] = [1, 2]; fn f() -> &[i32] { &A }" `shouldBe` accepted
 
 -- scratch, := and uncompute (plan §8.3)
-cleanupTests : List ETest
+cleanupTests : List TestResult
 cleanupTests = Test.do
   test "a scratch qubit computed reversibly is reclaimed at scope exit" $
     typeCheckOutcome "fn f(q: &qbit) { let scratch a = qalloc(); CX(q, &a); }" `shouldBe` accepted
@@ -335,7 +335,7 @@ cleanupTests = Test.do
       `shouldBe` accepted
 
 -- Adjoint and control transformations (plan §7.2, §8.2 rule 6)
-transformationTests : List ETest
+transformationTests : List TestResult
 transformationTests = Test.do
   test "an adjoint block of gates can be transformed" $
     typeCheckOutcome "fn f(q1: &qbit, q2: &qbit) { adjoint { H(q1); CT(q1, q2); } }" `shouldBe` accepted
@@ -360,7 +360,7 @@ transformationTests = Test.do
       `shouldBe` accepted
 
 -- Joins, reference provenance and cleanup transfers (plan §8.1–§8.3; spec §9, §12, §42).
-provenanceAndFlowTests : List ETest
+provenanceAndFlowTests : List TestResult
 provenanceAndFlowTests = Test.do
   test "a divergent branch does not invalidate initialization on the continuing branch" $
     typeCheckOutcome "fn f(c: bool) -> i32 { let x: i32; if c { return 0; } else { x = 1; } x }" `shouldBe` accepted
@@ -428,7 +428,7 @@ provenanceAndFlowTests = Test.do
 -- elision to fail (§5.6, §8.2), but does not prescribe a diagnostic
 -- constructor. Require a reported type error for that boundary without
 -- classifying it as a dangling-reference error.
-returnedReferenceTests : List ETest
+returnedReferenceTests : List TestResult
 returnedReferenceTests = Test.do
   test "a returned qubit reference conflicts with access to its original element" $
     typeCheckOutcome "fn first(qs: &[qbit]) -> &qbit { &qs[0] } fn f(qs: &[qbit]) { let r = first(qs); H(&qs[0]); H(r); }"
@@ -460,7 +460,7 @@ returnedReferenceTests = Test.do
 
 -- Modifier blocks need transformation evidence, independently of the callee's
 -- declared effect (plan §7.2, §8.2 rule 6).
-indirectTransformationTests : List ETest
+indirectTransformationTests : List TestResult
 indirectTransformationTests = Test.do
   test "an opaque unitary callee does not prove an adjoint block transformable" $
     typeCheckOutcome "fn f(g: unitary fn(q: &qbit), q: &qbit) { adjoint { g(q); } }"
@@ -478,7 +478,7 @@ indirectTransformationTests = Test.do
 
 
 export
-runOwnershipCheckTests : IO ()
+runOwnershipCheckTests : IO Bool
 runOwnershipCheckTests =
   runTests $ concat
     [ initializationTests

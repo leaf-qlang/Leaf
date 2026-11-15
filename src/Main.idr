@@ -34,12 +34,17 @@ isValidLeafFileName fileName =
   isOneWord fileName &&
   (isSuffixOf ".lf" fileName || isSuffixOf ".rs" fileName)
 
-printAstAndProgram : PhasePretty phase => SourceFile phase -> IO ()
+printAstAndProgram : PhaseDebug phase => SourceFile phase -> IO ()
 printAstAndProgram astTree = do
-  putStrLn "AST Nodes:"
+  putStrLn "AST Tree:"
   putStrLn $ assert_total showAstDebug astTree
-  putStrLn "Pretty Printed Program:"
-  putStrLn $ "Parsed program:\n" ++ showSourceFileStrict astTree
+  putStrLn ""
+  putStrLn "Pretty Parsed then Printed Program (strict):"
+  putStrLn $ showSourceFileStrict astTree
+  putStrLn ""
+  putStrLn "Pretty Parsed then Printed Program (lax):"
+  putStrLn $ showSourceFileLax astTree
+  putStrLn ""
 
 export
 compileSource : (fileName : String) -> (source : String) -> Either String ResolvedModule
@@ -68,7 +73,7 @@ compileSource fileName source =
 
 main : IO ()
 main = do
-    putStrLn "Hello from Leaf!"
+    putStrLn "Hello from Leaf!\n"
     (program :: args) <- getArgs
       | [] => putStrLn "impossible: empty argv"
     case args of
@@ -81,6 +86,6 @@ main = do
             Right sampleProgram =>
               case compileSource fileName sampleProgram of
                 Left message => putStrLn message
-                Right _ => pure ()
+                Right resolvedModule => printAstAndProgram resolvedModule.ast
 
       _ => putStrLn "Please provide exactly one input .lf or .rs file."

@@ -11,12 +11,12 @@ import ScopeAndNameResolution.PreludeTestHelper
 import Data.List
 import Data.Maybe
 import Data.SortedMap
-import Test.Simple
+import Expect
 
 %default total
 
 export
-runPreludeFunctionsResolutionTests : IO ()
+runPreludeFunctionsResolutionTests : IO Bool
 runPreludeFunctionsResolutionTests = runTests $ Test.do
   test "prelude ownership, bindings and declaration order are complete" $
     (resolvedSource "fn f() { sin(0.0); }" >>= preludeLayout) `shouldBe` Just True

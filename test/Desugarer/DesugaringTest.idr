@@ -1,13 +1,13 @@
 module Desugarer.DesugaringTest
 
-import Test.Simple
+import Expect
 
 import Desugarer.Helper
 
 %default total
 
 export
-runDesugaringTests : IO ()
+runDesugaringTests : IO Bool
 runDesugaringTests = runTests $ Test.do
 
   test "missing return type is filled in with -> ()" $

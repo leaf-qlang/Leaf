@@ -1,7 +1,7 @@
 module TypeChecker.NumericTest
 
 import Data.Maybe
-import Test.Simple
+import Expect
 
 import Compiler.Frontend.Prelude
 import Compiler.Frontend.TypeChecker.Data
@@ -50,7 +50,7 @@ layoutResult (Left (LayoutSizeTooLarge _)) = Left "size"
 layoutResult (Right bytes) = Right bytes
 
 export
-runNumericTests : IO ()
+runNumericTests : IO Bool
 runNumericTests = runTests $ Test.do
 
   test "usize has the fixed 64-bit target range" $

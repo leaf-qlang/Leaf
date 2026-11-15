@@ -1,6 +1,6 @@
 module TypeChecker.Phases.SignatureCheckTest
 
-import Test.Simple
+import Expect
 
 import Compiler.Frontend.TypeChecker.Data
 import Compiler.Frontend.TypeChecker.Type
@@ -23,7 +23,7 @@ import TypeChecker.Helper
 --------------------------------------------------------------------------------
 
 -- Function signatures
-functionSignatureTests : List ETest
+functionSignatureTests : List TestResult
 functionSignatureTests = Test.do
   test "a function with primitive parameters and result type-checks" $
     typeCheckOutcome "fn add(x: i32, y: i32) -> i32 { x + y }" `shouldBe` accepted
@@ -82,7 +82,7 @@ functionSignatureTests = Test.do
       `shouldBe` rejectedWith (UnsizedValue (slice i32) (spanAt 1 11))
 
 -- Forward references and recursion
-forwardReferenceTests : List ETest
+forwardReferenceTests : List TestResult
 forwardReferenceTests = Test.do
   test "a function may call a function declared later" $
     typeCheckOutcome "fn f() -> i32 { g() } fn g() -> i32 { 1 }" `shouldBe` accepted
@@ -115,7 +115,7 @@ forwardReferenceTests = Test.do
 
 -- Retry boundaries and independently checked lengths.
 -- Each fixture makes a demand whose producer occurs later in source order.
-signatureRetryTests : List ETest
+signatureRetryTests : List TestResult
 signatureRetryTests = Test.do
   test "mutually recursive const functions can produce a finite signature length" $
     typeCheckOutcome "fn f(a: [i32; even(4) as usize]) {} const fn even(n: u32) -> u32 { if n == 0 { 1 } else { odd(n - 1) } } const fn odd(n: u32) -> u32 { if n == 0 { 0 } else { even(n - 1) } } fn g() { f([0; 1]); }"
@@ -142,7 +142,7 @@ signatureRetryTests = Test.do
       `shouldBe` accepted
 
 -- Array lengths in signatures
-signatureLengthTests : List ETest
+signatureLengthTests : List TestResult
 signatureLengthTests = Test.do
   test "a literal length in a signature type-checks" $
     typeCheckOutcome "fn f(qs: [qbit; 2]) -> [qbit; 2] { qs }" `shouldBe` accepted
@@ -179,7 +179,7 @@ signatureLengthTests = Test.do
       `shouldBe` rejectedWith (TypeMismatch (array i32 2) (array i32 3) (spanAt 1 22))
 
 -- Constant items
-constantItemTests : List ETest
+constantItemTests : List TestResult
 constantItemTests = Test.do
   test "a constant has its written type" $
     typeCheckOutcome "const FIVE: i32 = 5; fn f() -> i32 { FIVE }" `shouldBe` accepted
@@ -195,7 +195,7 @@ constantItemTests = Test.do
     typeCheckOutcome "const T: (u32, bool) = (3, true); fn f() -> bool { T.1 }" `shouldBe` accepted
 
 -- Parameter names that resolve to constants
-constantParameterTests : List ETest
+constantParameterTests : List TestResult
 constantParameterTests = Test.do
   test "a parameter named like a unit constant is an irrefutable pattern" $
     typeCheckOutcome "const UNIT: () = (); fn f(UNIT: ()) {} fn g() { f(()); }" `shouldBe` accepted
@@ -212,7 +212,7 @@ constantParameterTests = Test.do
       `shouldBe` rejectedWith (TypeMismatch i32 unit (spanAt 1 27))
 
 -- Const functions are classical
-constFunctionTests : List ETest
+constFunctionTests : List TestResult
 constFunctionTests = Test.do
   test "a const fn without an effect is recorded as classical" $
     typeCheckOutcome "const fn square(x: i32) -> i32 { x * x } classical fn f() -> i32 { square(3) }"
@@ -236,7 +236,7 @@ constFunctionTests = Test.do
 
 -- Declaration cycles: the error names the symbols on the cycle and
 -- points at the name of the first item that is still waiting
-declarationCycleTests : List ETest
+declarationCycleTests : List TestResult
 declarationCycleTests = Test.do
   test "a constant defined by itself is a cycle" $
     typeCheckOutcome "const A: i32 = A;"
@@ -264,7 +264,7 @@ declarationCycleTests = Test.do
 
 -- Only evaluated constant reads create value dependencies.
 -- The references still have to be resolved and type-checked in every branch.
-lazyDependencyTests : List ETest
+lazyDependencyTests : List TestResult
 lazyDependencyTests = Test.do
   test "a constant reference in an unselected else branch does not create a cycle" $
     typeCheckOutcome "const A: u32 = if true { 1 } else { B }; const B: u32 = A; fn f() { let a: [i32; B as usize] = [0; 1]; }"
@@ -291,7 +291,7 @@ lazyDependencyTests = Test.do
       `shouldBe` rejectedWith (CyclicDeclaration ["B", "A"] (spanAt 1 7))
 
 -- Prelude functions used as values
-preludeValueTests : List ETest
+preludeValueTests : List TestResult
 preludeValueTests = Test.do
   test "a gate can be passed where a unitary function type is expected" $
     typeCheckOutcome "fn run(g: unitary fn(q: qbit) -> qbit, q: qbit) -> qbit { g(q) } fn main() -> qbit { let q = qalloc(); run(H, q) }"
@@ -331,7 +331,7 @@ preludeValueTests = Test.do
       `shouldBe` accepted
 
 -- Length typing precedes value conversion; usize is distinct from every uN.
-usizeSignatureTests : List ETest
+usizeSignatureTests : List TestResult
 usizeSignatureTests = Test.do
   test "a u8 constant cannot size a signature without a cast" $
     typeCheckOutcome "const N: u8 = 3; fn f(a: [i32; N]) {}"
@@ -366,7 +366,7 @@ usizeSignatureTests = Test.do
       `shouldBe` accepted
 
 export
-runSignatureCheckTests : IO ()
+runSignatureCheckTests : IO Bool
 runSignatureCheckTests =
   runTests $ concat
     [ functionSignatureTests

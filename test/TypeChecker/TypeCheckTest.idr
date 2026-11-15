@@ -1,7 +1,7 @@
 module TypeChecker.TypeCheckTest
 
 import System.File
-import Test.Simple
+import Expect
 
 import Compiler.Frontend.TypeChecker.Data
 import TypeChecker.Helper
@@ -840,7 +840,7 @@ recursionProgram = """
   """
 
 -- Language specification sections (plan §1.4, §9 item 4)
-specificationTests : List ETest
+specificationTests : List TestResult
 specificationTests = Test.do
   test "spec §5 every primitive type except qstate type-checks" $
     typeCheckOutcome primitiveTypesProgram `shouldBe` accepted
@@ -953,11 +953,11 @@ exampleOutcome (fileName, testName) = do
     | Left err => pure (testName, Left ("Failed to read examples/" ++ fileName ++ ": " ++ show err))
   pure (testName, typeCheckOutcome source)
 
-exampleTests : List (String, Either String ()) -> List ETest
+exampleTests : List (String, Either String ()) -> List TestResult
 exampleTests = concatMap (\(testName, outcome) => test testName (outcome `shouldBe` accepted))
 
 export covering
-runTypeCheckTests : IO ()
+runTypeCheckTests : IO Bool
 runTypeCheckTests = do
   outcomes <- traverse exampleOutcome examples
   runTests (exampleTests outcomes ++ specificationTests)

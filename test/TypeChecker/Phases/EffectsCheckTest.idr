@@ -1,6 +1,6 @@
 module TypeChecker.Phases.EffectsCheckTest
 
-import Test.Simple
+import Expect
 
 import Compiler.Frontend.TypeChecker.Data
 import Compiler.Frontend.Syntax.Common
@@ -23,7 +23,7 @@ import TypeChecker.Helper
 --------------------------------------------------------------------------------
 
 -- Signature claims (plan §7.1)
-signatureClaimTests : List ETest
+signatureClaimTests : List TestResult
 signatureClaimTests = Test.do
   test "a unitary function returns as many owned qubits as it takes" $
     typeCheckOutcome "unitary fn f(q: qbit) -> qbit { H(q) }" `shouldBe` accepted
@@ -82,7 +82,7 @@ signatureClaimTests = Test.do
       `shouldBe` rejectedWith (QuantumWidthMismatch "unitary" 2 3 (spanAt 1 30))
 
 -- Operation effects under the declared ceiling (plan §7.2, §7.3)
-operationEffectTests : List ETest
+operationEffectTests : List TestResult
 operationEffectTests = Test.do
   test "a classical function cannot allocate qubits" $
     typeCheckOutcome "classical fn f() { let q = qalloc(); discard(q); }"
@@ -154,7 +154,7 @@ operationEffectTests = Test.do
       `shouldBe` rejectedWith (EffectViolation EffectCoisometry EffectGeneral (spanAt 1 45))
 
 -- Callable modifiers and modifier blocks (plan §7.2, §7.3)
-modifierTests : List ETest
+modifierTests : List TestResult
 modifierTests = Test.do
   test "the adjoint of a gate is permitted in unitary code" $
     typeCheckOutcome "unitary fn f(q: &qbit) { adjoint(H)(q); adjoint(S)(q); }" `shouldBe` accepted
@@ -221,7 +221,7 @@ modifierTests = Test.do
     typeCheckOutcome "uncompsafe fn f(c: &qbit, t: &qbit) { ctrl(c) { X(t); } }" `shouldBe` accepted
 
 -- Leaving modifier blocks (plan §7.2)
-jumpTests : List ETest
+jumpTests : List TestResult
 jumpTests = Test.do
   test "a return cannot leave a control block" $
     typeCheckOutcome "fn f(c: &qbit, t: &qbit) { ctrl(c) { X(t); return; } }"
@@ -239,7 +239,7 @@ jumpTests = Test.do
     typeCheckOutcome "fn f(q: &qbit) { adjoint { for i in 0..3 { H(q); } } }" `shouldBe` accepted
 
 -- Attributes (plan §7.5): only cases on which both documented rules agree
-attributeTests : List ETest
+attributeTests : List TestResult
 attributeTests = Test.do
   test "qasm_gate is allowed on a unitary function" $
     typeCheckOutcome "#[qasm_gate] unitary fn myfun(q: qbit) -> qbit { let q = X(q); let q = H(q); q }"
@@ -269,7 +269,7 @@ attributeTests = Test.do
     typeCheckOutcome "#[qasm_def] unitary fn f(q: qbit) -> qbit { H(q) }" `shouldBe` accepted
 
 -- Recursive signature checks and nested ceilings (plan §7.1–§7.5; spec §53, §64).
-nestedEffectTests : List ETest
+nestedEffectTests : List TestResult
 nestedEffectTests = Test.do
   test "owned width traverses nested tuples and arrays" $
     typeCheckOutcome "unitary fn f(qs: ([qbit; 2], qbit)) -> [qbit; 3] { [qs.0[0], qs.0[1], qs.1] }" `shouldBe` accepted
@@ -324,7 +324,7 @@ nestedEffectTests = Test.do
 
 
 export
-runEffectsCheckTests : IO ()
+runEffectsCheckTests : IO Bool
 runEffectsCheckTests =
   runTests $ concat
     [ signatureClaimTests

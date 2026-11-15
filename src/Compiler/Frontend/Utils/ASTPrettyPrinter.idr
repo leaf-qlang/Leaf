@@ -1,6 +1,9 @@
 module Compiler.Frontend.Utils.ASTPrettyPrinter
 
 import Data.List1
+import Data.String
+import Data.Maybe
+import Compiler.Frontend.Utils.SourceText
 
 import Compiler.Frontend.Token
 import Compiler.Frontend.ASTPhases
@@ -12,58 +15,55 @@ import Compiler.Frontend.Syntax.Doc
 import Compiler.Frontend.Syntax.Literal
 import Compiler.Frontend.Syntax.Name
 import Compiler.Frontend.Syntax.Operator
+import Compiler.Frontend.Syntax.ParseRules
 import Compiler.Frontend.Syntax.Pattern
 import Compiler.Frontend.Syntax.Type
 
+%hide Prelude.Ops.infixl.(<+>)
 %default total
 
 --------------------------------------------------------------------------------
--- Pretty-printing for the AST (Compiler.Frontend.Syntax.AST and friends).
+-- Pretty-printing the AST back to Leaf source.
 --------------------------------------------------------------------------------
--- Two styles, selected by PrettyStyle:
+-- STYLES
+--   PrettyLax     parentheses only where the output would otherwise re-parse
+--                 differently (minimal parenthesization).
+--   PrettyStrict  additionally every OPTIONAL parenthesis, around each unary,
+--                 binary, cast and range expression, except one ending in a
+--                 `return` or `break` without a value (see `needsParens`).
 --
---   PrettyLax    (default) -- parentheses are printed only where the source
---                              would otherwise re-parse differently, i.e. the
---                              usual "minimal parenthesization" pretty-printer
---   PrettyStrict            -- every syntactically OPTIONAL parenthesis
---                              (around unary/binary/cast/range operands) is
---                              printed explicitly, regardless of precedence
+-- Both styles print the MANDATORY parentheses the output needs to re-parse to
+-- the same tree:
+--   * operator precedence and associativity (see "Precedence");
+--   * a block-like expression that starts a longer expression in statement
+--     position, where the parser would end the statement after it
+--     (see "Statement position");
+--   * the head of if/while/for/match/qmatch/smatch when the `{` that follows
+--     would be read as part of it, as by an open range (see "Head position");
+--   * a qif condition with those hazards, or ending in a qif without qelse,
+--     which would take the then-branch (see "Quantum if branches");
+--   * an integer base or nested tuple index before `.<digits>`;
+--   * an expression ending in an open range `a..` before a keyword (`then`,
+--     `selse`, `=>`): a range ends without an upper bound only before a
+--     delimiter (see "Right edge").
+-- A qif branch that parentheses cannot protect is printed as a block instead
+-- (see "Quantum if branches").
 --
--- Both styles still print MANDATORY parentheses -- e.g. around a block-like
--- expression (if/match/loop/...) used as the base of a postfix operation --
--- since those are not "optional", they are required for the output to
--- re-parse to the same tree.
+-- PHASES: every printer is generic over `phase`. Only names, member names and
+-- paths differ between phases; the `PhasePretty` interface renders them as
+-- their written text, dropping any resolved SymbolId.
 --
--- TOTALITY: this module follows the discipline documented at the top of
--- Compiler.Frontend.Validator.PostParseValidation ("learned the hard way"): Idris 2's size-change checker
--- credits CONSTRUCTOR PATTERNS ONLY. Every record is destructured via its
--- constructor in the pattern head (never through a `.field` projection) when
--- the projected value feeds a recursive call, and every List/List1 that is
--- walked with a function from the same recursive group is walked with a
--- hand-written recursive helper (never `map`/`concatMap`/`maybe`, which hide
--- the recursive call behind a higher-order function the checker cannot see
--- through). Expressions and types are mutually recursive (casts embed types,
--- array-size positions embed expressions), while blocks and statements close
--- that recursive core. Downstream declaration printers are kept in smaller
--- groups; modules and items form a second genuine recursive group. One
--- `assert_total` boundary breaks the otherwise global cycle while keeping
--- every printer entry point total.
+-- RENDERING: internal helpers build lazy SourceText documents. The public
+-- String printers consume the complete document; the debug printer consumes
+-- only a bounded prefix, without constructing full strings for its subtrees.
 --
--- Patterns (Compiler.Frontend.Syntax.Pattern) do not depend on expressions, so they
--- get their own, smaller mutual block, checked independently and reused
--- freely (via ordinary, non-recursive calls) from the core block below.
---
--- PHASE POLYMORPHISM: every renderer is generic over `phase : AstPhase`
--- ("trees that grow": surface -> canonical -> resolved -> typed). The ONLY
--- payloads that differ across phases are names, member names and paths --
--- `NameFor phase` (a bare `NameNode` until resolution attaches a `SymbolId`),
--- `MemberNameFor phase` (a bare `NameNode` until typechecking) and
--- `PathFor phase` (a segment list until resolution collapses it). Those three
--- are the whole content of the `PhasePretty` interface below; the rendered
--- form is always just the written text (a pretty-printer reproduces source
--- syntax, so a resolved name's `SymbolId` is intentionally dropped).
--- Everything else in the AST is uniformly phase-parametric, so the bodies
--- are shared verbatim by all four phases.
+-- TOTALITY: Idris's size-change checker only credits constructor patterns,
+-- so printers that are genuinely mutually recursive destructure records in
+-- the pattern head and walk lists with hand-written recursive helpers rather
+-- than `map`. Three groups are: patterns, types (tuples, function types), and
+-- items (inline module bodies). Everything else reaches itself only through
+-- `showExprAtDoc`, whose single `assert_total` in `wrapExprDoc` breaks the
+-- cycle, so it can walk lists with the generic `mapDocs`.
 --------------------------------------------------------------------------------
 
 public export
@@ -76,70 +76,81 @@ isPrettyStrict PrettyStrict = True
 isPrettyStrict PrettyLax    = False
 
 --------------------------------------------------------------------------------
--- Generic string helpers
+-- Text helpers
 --------------------------------------------------------------------------------
 
-joinWith : String -> List String -> String
-joinWith _   []        = ""
-joinWith _   [x]       = x
-joinWith sep (x :: xs) = x ++ sep ++ joinWith sep xs
+-- Delay both each child document and the remainder of the collection. A
+-- normal `map render children` evaluates later children before a preview can
+-- stop, even when concatenation inside each document is lazy.
+data SourceDocs = NoDocs | MoreDocs (Lazy SourceText) (Lazy SourceDocs)
 
-parens : String -> String
-parens s = "(" ++ s ++ ")"
+mapDocs : (a -> SourceText) -> List a -> SourceDocs
+mapDocs _ [] = NoDocs
+mapDocs render (value :: rest) = MoreDocs (render value) (mapDocs render rest)
 
-brackets : String -> String
-brackets s = "[" ++ s ++ "]"
+appendDocs : SourceDocs -> Lazy SourceDocs -> SourceDocs
+appendDocs NoDocs suffix = suffix
+appendDocs (MoreDocs value rest) suffix = MoreDocs value (appendDocs rest suffix)
 
-braces : String -> String
-braces s = "{ " ++ s ++ " }"
+joinRest : SourceText -> SourceDocs -> SourceText
+joinRest _ NoDocs = ""
+joinRest separator (MoreDocs value rest) = separator <+> value <+> joinRest separator rest
 
--- "" stays "", anything else gets a trailing space -- for optional keyword
--- prefixes such as `pub `/`mut ` whose Show instance prints "" when absent.
-prefixSpace : String -> String
-prefixSpace ""  = ""
-prefixSpace str = str ++ " "
+joinWith : SourceText -> SourceDocs -> SourceText
+joinWith _ NoDocs = ""
+joinWith separator (MoreDocs value rest) = value <+> joinRest separator rest
 
-showBoolLower : Bool -> String
-showBoolLower True  = "true"
-showBoolLower False = "false"
+concatDocs : (a -> SourceText) -> List a -> SourceText
+concatDocs _ [] = ""
+concatDocs render (value :: rest) = render value <+> concatDocs render rest
 
--- Whether a rendered fragment starts with `&`. A bare `&` prefix (SharedBorrow,
--- no trailing space) glued directly onto a fragment that itself starts with
--- `&` would re-lex as the single `&&` token instead of two `&` tokens, so
--- callers use this to decide whether a defensive space is needed.
-startsWithAmp : String -> Bool
-startsWithAmp s =
-  case unpack s of
-    ('&' :: _) => True
-    _          => False
+commaList : SourceDocs -> SourceText
+commaList = joinWith ", "
 
--- `&`/`&mut` prefixed onto an already-rendered body, safe against the `&&`
--- collision above. `&mut` already carries its own trailing space (a word
--- boundary is required regardless), so only the bare `&` case needs the check.
-showBorrowPrefixed : BorrowKind -> String -> String
-showBorrowPrefixed SharedBorrow  body = "&" ++ (if startsWithAmp body then " " else "") ++ body
-showBorrowPrefixed MutableBorrow body = "&mut " ++ body
+parens : Lazy SourceText -> SourceText
+parens body = "(" <+> body <+> ")"
 
--- (), (x,), (x, y, ...) -- the shared tuple-printing shape used by
--- expression tuples, type tuples, and pattern tuples alike.
-showTupleLike : List String -> String
-showTupleLike []  = "()"
-showTupleLike [x] = "(" ++ x ++ ",)"
-showTupleLike xs  = "(" ++ joinWith ", " xs ++ ")"
+brackets : Lazy SourceText -> SourceText
+brackets body = "[" <+> body <+> "]"
+
+braces : Lazy SourceText -> SourceText
+braces body = "{ " <+> (if sourceIsEmpty body then "}" else body <+> " }")
+
+argumentList : Lazy SourceDocs -> SourceText
+argumentList values = parens (commaList values)
+
+optionalText : SourceText -> (a -> SourceText) -> Maybe a -> SourceText
+optionalText _ _ Nothing = ""
+optionalText leading render (Just value) = leading <+> render value
+
+modifier : Show a => Maybe a -> SourceText
+modifier = optionalText "" (\value => text (show value) <+> " ")
+
+locatedModifier : Show a => Maybe (AstNode phase a) -> SourceText
+locatedModifier = modifier . map nodeValue
+
+-- A one-character prefix operator, spaced from an operand that starts with
+-- the same character: `& &x` must not lex as `&&x`, and `- -x` would read
+-- like a decrement.
+prefixOperator : Char -> Lazy SourceText -> SourceText
+prefixOperator op body = text (singleton op) <+> (if sourceStartsWith op body then " " else "") <+> body
+
+showBorrowPrefixed : BorrowKind -> Lazy SourceText -> SourceText
+showBorrowPrefixed SharedBorrow body = prefixOperator '&' body
+showBorrowPrefixed MutableBorrow body = "&mut " <+> body
+
+showTupleLike : SourceDocs -> SourceText
+showTupleLike NoDocs = "()"
+showTupleLike (MoreDocs value NoDocs) = "(" <+> value <+> ",)"
+showTupleLike values = argumentList values
 
 --------------------------------------------------------------------------------
--- Names and paths (Compiler.Frontend.Syntax.Name)
---------------------------------------------------------------------------------
--- Path segments are phase-invariant text (`self` or an identifier), so this
--- one is a plain generic function. Names and whole paths are what the
--- `PhasePretty` interface abstracts -- see the module header.
+-- Names and paths
 --------------------------------------------------------------------------------
 
-showPathSegment : PathSegment phase -> String
-showPathSegment (MkAstNode _ _ seg) =
-  case seg of
-    PathSegmentName s => s
-    PathSegmentSelf   => "self"
+showPathSegmentDoc : PathSegment phase -> SourceText
+showPathSegmentDoc (MkAstNode _ _ (PathSegmentName spelling)) = text spelling
+showPathSegmentDoc (MkAstNode _ _ PathSegmentSelf)        = "self"
 
 prettyNameNode : NameNode -> String
 prettyNameNode (MkNameNode text) = text
@@ -147,239 +158,178 @@ prettyNameNode (MkNameNode text) = text
 prettyResolvedNameNode : ResolvedNameNode -> String
 prettyResolvedNameNode (MkResolvedNameNode text _) = text
 
-prettyPathNode : PathNode phase -> String
-prettyPathNode (MkPathNode first rest) =
-  joinWith "::" (showPathSegment first :: map showPathSegment rest)
+prettyPathNodeDoc : PathNode phase -> SourceText
+prettyPathNodeDoc (MkPathNode first rest) = joinWith "::" (mapDocs showPathSegmentDoc (first :: rest))
 
-prettyResolvedPathNode : ResolvedPathNode -> String
-prettyResolvedPathNode (MkResolvedPathNode first rest _) =
-  joinWith "::" (first :: rest)
+prettyResolvedPathNodeDoc : ResolvedPathNode -> SourceText
+prettyResolvedPathNodeDoc (MkResolvedPathNode first rest _) = joinWith "::" (mapDocs text (first :: rest))
 
--- Rendering the three payloads that "grow" across phases. The interface
--- methods take raw payloads; the located wrappers below unwrap AstNode first.
+-- The three payloads that differ between phases, rendered as written.
 public export
 interface PhasePretty phase where
   prettyName : NameFor phase -> String
   prettyMemberName : MemberNameFor phase -> String
+  -- Keep segments lazy for previews; full payloads explicitly render them.
+  prettyPathDoc : PathFor phase -> SourceText
   prettyPath : PathFor phase -> String
+  prettyPath path = renderSource (prettyPathDoc path)
 
 public export
 PhasePretty SurfaceAstPhase where
   prettyName = prettyNameNode
   prettyMemberName = prettyNameNode
-  prettyPath = prettyPathNode
+  prettyPathDoc = prettyPathNodeDoc
 
 public export
 PhasePretty CanonicalAstPhase where
   prettyName = prettyNameNode
   prettyMemberName = prettyNameNode
-  prettyPath = prettyPathNode
+  prettyPathDoc = prettyPathNodeDoc
 
 public export
 PhasePretty ResolvedAstPhase where
   prettyName = prettyResolvedNameNode
   prettyMemberName = prettyNameNode
-  prettyPath = prettyResolvedPathNode
+  prettyPathDoc = prettyResolvedPathNodeDoc
 
 public export
 PhasePretty TypedAstPhase where
   prettyName = prettyResolvedNameNode
   prettyMemberName = prettyResolvedNameNode
-  prettyPath = prettyResolvedPathNode
+  prettyPathDoc = prettyResolvedPathNodeDoc
 
-showName : PhasePretty phase => Name phase -> String
-showName (MkAstNode _ _ n) = prettyName n
+showNameDoc : PhasePretty phase => Name phase -> SourceText
+showNameDoc (MkAstNode _ _ name) = text (prettyName name)
 
-showMemberName : PhasePretty phase => MemberName phase -> String
-showMemberName (MkAstNode _ _ n) = prettyMemberName n
+showMemberNameDoc : PhasePretty phase => MemberName phase -> SourceText
+showMemberNameDoc (MkAstNode _ _ name) = text (prettyMemberName name)
 
-showPath : PhasePretty phase => Path phase -> String
-showPath (MkAstNode _ _ p) = prettyPath p
+showPathDoc : PhasePretty phase => Path phase -> SourceText
+showPathDoc (MkAstNode _ _ path) = prettyPathDoc path
 
--- Attribute names and import aliases retain plain spelling at every phase,
--- so they are rendered directly, with no `PhasePretty` constraint.
-showPlainName : AstNode phase NameNode -> String
-showPlainName (MkAstNode _ _ (MkNameNode text)) = text
-
---------------------------------------------------------------------------------
--- Literals (Compiler.Frontend.Syntax.Literal) -- every payload is already the raw
--- source spelling (or a value with exactly one spelling), so this is a flat
--- lookup, no recursion.
---------------------------------------------------------------------------------
-
-showLiteral : Literal phase -> String
-showLiteral (MkAstNode _ _ lit) =
-  case lit of
-    LiteralIntegerRaw s     => s
-    LiteralFloatRaw s       => s
-    LiteralStringRaw s      => s
-    LiteralByteRaw s        => s
-    LiteralByteStringRaw s  => s
-    LiteralBasisStringRaw s => s
-    LiteralBoolean b        => showBoolLower b
-    LiteralUnit             => "()"
-    LiteralQuantumState st  => show st
+-- Attribute names, import aliases and function-type parameter names keep their
+-- plain spelling at every phase.
+showPlainNameDoc : AstNode phase NameNode -> SourceText
+showPlainNameDoc (MkAstNode _ _ (MkNameNode spelling)) = text spelling
 
 --------------------------------------------------------------------------------
--- Doc comments (Compiler.Frontend.Syntax.Doc) -- the raw spelling already includes
--- delimiters, so printing one back out is verbatim.
+-- Leaves: literals, doc comments, attributes, modifiers, Pauli strings
 --------------------------------------------------------------------------------
 
-showDocComment : DocComment phase -> String
-showDocComment (MkAstNode _ _ (MkDocCommentNode _ _ rawText)) = rawText
+-- Every literal payload is its raw source spelling or has exactly one spelling.
+showLiteralDoc : Literal phase -> SourceText
+showLiteralDoc (MkAstNode _ _ literal) =
+  case literal of
+    LiteralIntegerRaw raw     => text raw
+    LiteralFloatRaw raw       => text raw
+    LiteralStringRaw raw      => text raw
+    LiteralByteRaw raw        => text raw
+    LiteralByteStringRaw raw  => text raw
+    LiteralBasisStringRaw raw => text raw
+    LiteralBoolean value      => if value then "true" else "false"
+    LiteralUnit               => "()"
+    LiteralQuantumState state => text (show state)
 
--- A block of doc comments, one per line, immediately preceding whatever
--- follows -- "" when there are none.
-docsPrefix : List (DocComment phase) -> String
-docsPrefix docs = concatMap (\d => showDocComment d ++ "\n") docs
+-- The raw spelling of a doc comment includes its delimiters.
+showDocCommentDoc : DocComment phase -> SourceText
+showDocCommentDoc (MkAstNode _ _ (MkDocCommentNode _ _ rawText)) = text rawText
 
---------------------------------------------------------------------------------
--- Attributes (Compiler.Frontend.Syntax.Attribute)
---------------------------------------------------------------------------------
+-- Doc comments, each ending its own line so that a line doc cannot swallow
+-- the code or closing brace that follows.
+docsPrefix : List (DocComment phase) -> SourceText
+docsPrefix = concatDocs (\doc => showDocCommentDoc doc <+> "\n")
 
-showAttributeArgument : AttributeArgument phase -> String
-showAttributeArgument (MkAstNode _ _ (AttributeArgumentStringLit s)) = s
+showAttributeDoc : Attribute phase -> SourceText
+showAttributeDoc (MkAstNode _ _ (MkAttributeNode name arguments)) =
+  "#[" <+> showPlainNameDoc name <+>
+    optionalText "" (\arguments => argumentList (mapDocs showArgumentDoc arguments)) arguments <+> "]"
+  where
+    showArgumentDoc : AttributeArgument phase -> SourceText
+    showArgumentDoc (MkAstNode _ _ (AttributeArgumentStringLit raw)) = text raw
 
-showAttribute : Attribute phase -> String
-showAttribute (MkAstNode _ _ (MkAttributeNode nm margs)) =
-  "#[" ++ showPlainName nm ++
-    (case margs of
-       Nothing   => ""
-       Just args => "(" ++ joinWith ", " (map showAttributeArgument args) ++ ")") ++
-  "]"
+attrsPrefix : List (Attribute phase) -> SourceText
+attrsPrefix = concatDocs (\attribute => showAttributeDoc attribute <+> "\n")
 
-attrsPrefix : List (Attribute phase) -> String
-attrsPrefix attrs = concatMap (\a => showAttribute a ++ "\n") attrs
+showQualifiersPrefixDoc : List (AstNode phase QuantumStorageQualifier) -> SourceText
+showQualifiersPrefixDoc = concatDocs (\qualifier => text (show qualifier.nodeValue) <+> " ")
 
---------------------------------------------------------------------------------
--- Small leaf-list helpers shared by later sections. None of these walk a
--- structure that is part of the big mutual block, so `map` is safe here.
---------------------------------------------------------------------------------
+showOnBasisDoc : Maybe (AstNode phase String) -> SourceText
+showOnBasisDoc = optionalText ".on" (\basis => parens (text basis.nodeValue))
 
-visPrefix : VisibilityQualifier -> String
-visPrefix v = prefixSpace (show v)
+showPauliStringDoc : PauliString phase -> SourceText
+showPauliStringDoc (MkAstNode _ _ (MkPauliStringNode operators)) = concatDocs (text . show) (forget operators)
 
-optionalVisPrefix : Maybe (AstNode phase VisibilityQualifier) -> String
-optionalVisPrefix Nothing = ""
-optionalVisPrefix (Just (MkAstNode _ _ visibility)) = visPrefix visibility
-
-showQualifiersPrefix : List (AstNode phase QuantumStorageQualifier) -> String
-showQualifiersPrefix []    = ""
-showQualifiersPrefix quals =
-  joinWith " " (map (\(MkAstNode _ _ q) => show q) quals) ++ " "
-
-showOnBasis : Maybe (AstNode phase String) -> String
-showOnBasis Nothing                    = ""
-showOnBasis (Just (MkAstNode _ _ raw)) = ".on(" ++ raw ++ ")"
-
-showMutabilityPrefix : Maybe (AstNode phase Mutability) -> String
-showMutabilityPrefix Nothing = ""
-showMutabilityPrefix (Just (MkAstNode _ _ mutability)) =
-  prefixSpace (show mutability)
+showSignedPauliTermDoc : SignedPauliTerm phase -> SourceText
+showSignedPauliTermDoc (MkAstNode _ _ (MkSignedPauliTermNode sign pauli)) =
+  (case sign of StabilizerPlus => "+"; StabilizerMinus => "-") <+> showPauliStringDoc pauli
 
 --------------------------------------------------------------------------------
--- Patterns (Compiler.Frontend.Syntax.Pattern) -- self-recursive, but independent of
--- expressions, so this is its own mutual block.
+-- Patterns (recursive group)
 --------------------------------------------------------------------------------
 
 mutual
+  showPatternDoc : PhasePretty phase => Pattern phase -> SourceText
+  showPatternDoc (MkAstNode _ _ pattern) = showPatternNodeDoc pattern
 
-  public export
-  showPattern : PhasePretty phase => Pattern phase -> String
-  showPattern (MkAstNode _ _ pat) = showPatternNode pat
+  showPatternNodeDoc : PhasePretty phase => PatternNode phase -> SourceText
+  showPatternNodeDoc pattern =
+    case pattern of
+      PatternWildcard                => "_"
+      PatternName mutability name    => modifier mutability <+> showNameDoc name
+      PatternPath path               => showPathDoc path
+      PatternLiteral literal         => showLiteralDoc literal
+      PatternParenthesized inner     => parens (showPatternDoc inner)
+      PatternTuple (first ::: rest)  => showTupleLike (MoreDocs (showPatternDoc first) (showPatternListDoc rest))
+      PatternArray elements          => brackets (commaList (showPatternListDoc elements))
+      PatternStruct path fields      =>
+        showPathDoc path <+> " " <+> braces (commaList (showStructPatternFieldsDoc fields))
+      PatternEnumTuple path elements => showPathDoc path <+> argumentList (showPatternListDoc elements)
 
-  showPatternNode : PhasePretty phase => PatternNode phase -> String
-  showPatternNode pat =
-    case pat of
-      PatternWildcard          => "_"
-      PatternName mutability nm =>
-        maybe "" (\m => prefixSpace (show m)) mutability ++ showName nm
-      PatternPath p             => showPath p
-      PatternLiteral lit        => showLiteral lit
-      PatternParenthesized inner => parens (showPattern inner)
-      PatternTuple elems         => showTupleLike (showPatternList1 elems)
-      PatternArray elems         => brackets (joinWith ", " (showPatternList elems))
-      PatternStruct p fields     =>
-        showPath p ++ " " ++ braces (joinWith ", " (showStructPatternFieldList fields))
-      PatternEnumTuple p args    =>
-        showPath p ++ parens (joinWith ", " (showPatternList args))
+  showPatternListDoc : PhasePretty phase => List (Pattern phase) -> SourceDocs
+  showPatternListDoc []                    = NoDocs
+  showPatternListDoc (pattern :: patterns) = MoreDocs (showPatternDoc pattern) (showPatternListDoc patterns)
 
-  showPatternList : PhasePretty phase => List (Pattern phase) -> List String
-  showPatternList []        = []
-  showPatternList (p :: ps) = showPattern p :: showPatternList ps
+  showStructPatternFieldsDoc : PhasePretty phase => List (StructPatternField phase) -> SourceDocs
+  showStructPatternFieldsDoc [] = NoDocs
+  showStructPatternFieldsDoc (MkAstNode _ _ field :: fields) =
+    MoreDocs (case field of
+       StructPatternFieldShorthand mutability name => modifier mutability <+> showNameDoc name
+       StructPatternFieldExplicit name pattern     => showNameDoc name <+> ": " <+> showPatternDoc pattern)
+    (showStructPatternFieldsDoc fields)
 
-  showPatternList1 : PhasePretty phase => List1 (Pattern phase) -> List String
-  showPatternList1 (p ::: ps) = showPattern p :: showPatternList ps
-
-  showStructPatternField : PhasePretty phase => StructPatternField phase -> String
-  showStructPatternField (MkAstNode _ _ f) =
-    case f of
-      StructPatternFieldShorthand mutability nm =>
-        maybe "" (\m => prefixSpace (show m)) mutability ++ showName nm
-      StructPatternFieldExplicit nm pat =>
-        showName nm ++ ": " ++ showPattern pat
-
-  showStructPatternFieldList : PhasePretty phase => List (StructPatternField phase) -> List String
-  showStructPatternFieldList []        = []
-  showStructPatternFieldList (f :: fs) =
-    showStructPatternField f :: showStructPatternFieldList fs
-
--- Quantum match patterns: flat, not self-recursive.
-public export
-showQuantumMatchPattern : PhasePretty phase => QuantumMatchPattern phase -> String
-showQuantumMatchPattern (MkAstNode _ _ pat) =
-  case pat of
-    QuantumPatternBasisStringRaw s => s
-    QuantumPatternIntegerRaw s     => s
-    QuantumPatternWildcard         => "_"
-    QuantumPatternQenumVariant p names =>
-      showPath p ++ parens (joinWith ", " (map showName names))
+showQuantumMatchPatternDoc : PhasePretty phase => QuantumMatchPattern phase -> SourceText
+showQuantumMatchPatternDoc (MkAstNode _ _ pattern) =
+  case pattern of
+    QuantumPatternBasisStringRaw raw        => text raw
+    QuantumPatternIntegerRaw raw            => text raw
+    QuantumPatternWildcard                  => "_"
+    QuantumPatternQenumVariant path binders => showPathDoc path <+> argumentList (mapDocs showNameDoc binders)
 
 --------------------------------------------------------------------------------
--- Pauli strings and stabilizer terms (Compiler.Frontend.Syntax.Contract) -- these do
--- not mention expressions or names, so they too sit outside the big mutual
--- block and need no phase dictionary.
+-- Precedence
+--------------------------------------------------------------------------------
+-- Higher binds tighter; the binary levels match the parser's table.
+-- An expression is parenthesized when its own precedence is below what its
+-- position requires, and in strict style whenever it is operator class.
+-- Forms ending in an open expression (return, break, sif, and qif with an
+-- expression branch) have the lowest precedence because they absorb
+-- whatever follows them, so they need parentheses only where something that
+-- could continue them does follow: `a + return b`, but `(return b) * c`.
 --------------------------------------------------------------------------------
 
-showPauliString : PauliString phase -> String
-showPauliString (MkAstNode _ _ (MkPauliStringNode ops)) =
-  joinWith "" (map show (forget ops))
-
-showStabilizerSign : StabilizerSign -> String
-showStabilizerSign StabilizerPlus  = "+"
-showStabilizerSign StabilizerMinus = "-"
-
-showSignedPauliTerm : SignedPauliTerm phase -> String
-showSignedPauliTerm (MkAstNode _ _ (MkSignedPauliTermNode sign pauli)) =
-  showStabilizerSign sign ++ showPauliString pauli
-
---------------------------------------------------------------------------------
--- Expression precedence table
---------------------------------------------------------------------------------
--- Higher binds tighter. Only Unary/Cast/Binary/Range are "operator class":
--- these are the constructs with OPTIONAL parentheses, the ones PrettyStrict
--- forces open. Everything else either never needs parenthesizing (atoms,
--- postfix forms, ctrl/adjoint -- all self-delimited by their own syntax) or
--- always needs it when a mandatory position demands higher precedence than
--- it has (block-like control flow used as a postfix base), independent of
--- style.
---------------------------------------------------------------------------------
-
-precAtomic, precPostfix, precUnary, precCast : Nat
+precAtomic, precPostfix, precUnary, precCast, precMul, precAdd, precShift : Nat
 precAtomic  = 110
 precPostfix = 100
 precUnary   = 90
 precCast    = 85
+precMul     = 80
+precAdd     = 75
+precShift   = 70
 
-precMul, precAdd, precShift, precBitAnd, precBitXor, precBitOr : Nat
-precMul    = 80
-precAdd    = 75
-precShift  = 70
-precBitAnd = 65
-precBitXor = 60
-precBitOr  = 55
-
-precCompare, precLogicalAnd, precLogicalOr, precRange, precLowest : Nat
+precBitAnd, precBitXor, precBitOr, precCompare, precLogicalAnd, precLogicalOr, precRange, precLowest : Nat
+precBitAnd     = 65
+precBitXor     = 60
+precBitOr      = 55
 precCompare    = 50
 precLogicalAnd = 45
 precLogicalOr  = 40
@@ -408,712 +358,948 @@ binaryOperatorPrecedence op =
     BinaryLogicalAnd   => precLogicalAnd
     BinaryLogicalOr    => precLogicalOr
 
+-- The right operand always needs a tighter level, which makes binary operators
+-- left-associative. Comparisons are non-associative, so their left operand
+-- needs one too.
+binaryLeftPrecedence : BinaryOperator -> Nat
+binaryLeftPrecedence op =
+  let p = binaryOperatorPrecedence op in
+  if p == precCompare then S p else p
+
+binaryRightPrecedence : BinaryOperator -> Nat
+binaryRightPrecedence op = S (binaryOperatorPrecedence op)
+
+isBlockBranch : QuantumBranchNode phase -> Bool
+isBlockBranch (QuantumBranchBlock _)      = True
+isBlockBranch (QuantumBranchExpression _) = False
+
 exprOwnPrecedence : ExpressionNode phase -> Nat
 exprOwnPrecedence e =
   case e of
+    -- Postfix forms
+    ExprCall _ _         => precPostfix
+    ExprMethodCall _ _ _ => precPostfix
+    ExprField _ _        => precPostfix
+    ExprTupleIndex _ _   => precPostfix
+    ExprIndex _ _        => precPostfix
+    -- Operators
+    ExprUnary _ _                     => precUnary
+    ExprCast _ _                      => precCast
+    ExprBinary (MkAstNode _ _ op) _ _ => binaryOperatorPrecedence op
+    ExprRange _ _ _                   => precRange
+    -- Forms ending in an expression, which would absorb a following operator.
+    -- A qif ends with its last branch: the then-branch is followed by any
+    -- `qelse`, so a block else-branch closes the qif.
+    ExprBreak _    => precLowest
+    ExprReturn _   => precLowest
+    ExprSIf _      => precLowest
+    ExprQIf (MkQuantumIfNode _ thenBranch elseBranch) =>
+      if maybe (isBlockBranch thenBranch) isBlockBranch elseBranch
+        then precAtomic
+        else precLowest
+    -- Self-delimited forms: atoms, brackets, and forms ending in their own `}`
     ExprLiteral _         => precAtomic
-    ExprName _             => precAtomic
-    ExprPath _              => precAtomic
-    ExprBuiltin _            => precAtomic
-    ExprSelf _                 => precAtomic
-    ExprParenthesized _        => precAtomic
-    ExprTuple _                 => precAtomic
-    ExprArray _                  => precAtomic
-    ExprRepeatedArray _ _         => precAtomic
-    ExprStructLiteral _ _          => precAtomic
-    ExprCtrl _                      => precAtomic
-    ExprAdjoint _                    => precAtomic
-    ExprCall _ _                      => precPostfix
-    ExprMethodCall _ _ _                => precPostfix
-    ExprField _ _                         => precPostfix
-    ExprTupleIndex _ _                      => precPostfix
-    ExprIndex _ _                             => precPostfix
-    ExprUnary _ _                               => precUnary
-    ExprCast _ _                                  => precCast
-    ExprBinary (MkAstNode _ _ op) _ _               => binaryOperatorPrecedence op
-    ExprRange _ _ _                                   => precRange
-    ExprBlock _                                         => precLowest
-    ExprIf _                                              => precLowest
-    ExprQIf _                                               => precLowest
-    ExprSIf _                                                 => precLowest
-    ExprMatch _                                                 => precLowest
-    ExprQMatch _                                                  => precLowest
-    ExprSMatch _                                                    => precLowest
-    ExprLoop _                                                        => precLowest
-    ExprWhile _ _                                                       => precLowest
-    ExprFor _ _ _                                                         => precLowest
-    ExprBreak _                                                             => precLowest
-    ExprContinue                                                              => precLowest
-    ExprReturn _                                                                => precLowest
+    ExprName _            => precAtomic
+    ExprPath _            => precAtomic
+    ExprBuiltin _         => precAtomic
+    ExprSelf _            => precAtomic
+    ExprContinue          => precAtomic
+    ExprParenthesized _   => precAtomic
+    ExprTuple _           => precAtomic
+    ExprArray _           => precAtomic
+    ExprRepeatedArray _ _ => precAtomic
+    ExprStructLiteral _ _ => precAtomic
+    ExprBlock _           => precAtomic
+    ExprIf _              => precAtomic
+    ExprMatch _           => precAtomic
+    ExprQMatch _          => precAtomic
+    ExprSMatch _          => precAtomic
+    ExprLoop _            => precAtomic
+    ExprWhile _ _         => precAtomic
+    ExprFor _ _ _         => precAtomic
+    ExprCtrl _            => precAtomic
+    ExprAdjoint _         => precAtomic
+
+-- A digit after the dot can merge with an integer base or the previous tuple
+-- index into a float token: `(1).0` must not become `1.0`, and `(t.0).1`
+-- must not become `t.0.1`. A float base is safe: `1.5.0` lexes as `1.5`, `.`,
+-- `0`.
+tupleIndexBasePrecedence : ExpressionNode phase -> Nat
+tupleIndexBasePrecedence (ExprLiteral (MkAstNode _ _ (LiteralIntegerRaw _))) = S precAtomic
+tupleIndexBasePrecedence (ExprTupleIndex _ _) = S precPostfix
+tupleIndexBasePrecedence _ = precPostfix
+
+-- `(object.field)(args)` calls the value stored in a field. Without the
+-- parentheses the parser constructs a method call, `object.field(args)`.
+callCalleePrecedence : ExpressionNode phase -> Nat
+callCalleePrecedence (ExprField _ _) = S precPostfix
+callCalleePrecedence _ = precPostfix
 
 isOperatorClassExpr : ExpressionNode phase -> Bool
 isOperatorClassExpr e =
   case e of
-    ExprUnary _ _   => True
-    ExprCast _ _    => True
+    ExprUnary _ _    => True
+    ExprCast _ _     => True
     ExprBinary _ _ _ => True
     ExprRange _ _ _  => True
     _                => False
 
 --------------------------------------------------------------------------------
--- The recursive core: casts embed types, array-size positions embed
--- expressions, and expressions embed blocks whose statements contain more
--- expressions and types.
+-- Edges: the child a rendering begins or ends with
+--------------------------------------------------------------------------------
+-- What precedes a rendering can join its first child, and what follows it its
+-- last. The checks below walk these edges, one child deeper per step, which
+-- `assert_smaller` records for the totality checker.
 --------------------------------------------------------------------------------
 
--- Declaring the two cross-group entry points up front lets Idris elaborate
--- the type, expression, and block renderers separately. Their definitions
--- remain total while the internal covering boundary keeps the global cycle
--- out of a single size-change analysis.
-public export
-showExprAt : PhasePretty phase => PrettyStyle -> Nat -> Expr phase -> String
+-- The child an expression's rendering begins with, when the rest of the
+-- rendering follows it, and the precedence that child is printed at.
+leftEdge : ExpressionNode phase -> Maybe (Nat, Expr phase)
+leftEdge value =
+  case value of
+    ExprCall callee _                            => Just (callCalleePrecedence callee.nodeValue, callee)
+    ExprMethodCall receiver _ _                  => Just (precPostfix, receiver)
+    ExprField object _                           => Just (precPostfix, object)
+    ExprIndex object _                           => Just (precPostfix, object)
+    ExprTupleIndex object@(MkAstNode _ _ base) _ => Just (tupleIndexBasePrecedence base, object)
+    ExprCast operand _                           => Just (precCast, operand)
+    ExprBinary (MkAstNode _ _ op) lhs _          => Just (binaryLeftPrecedence op, lhs)
+    ExprRange start _ _                          => map (\first => (S precRange, first)) start
+    _                                            => Nothing
 
+-- `value` with `child` in place of the child its rendering begins with.
+withLeftEdge : ExpressionNode phase -> Expr phase -> ExpressionNode phase
+withLeftEdge value child =
+  case value of
+    ExprCall _ args              => ExprCall child args
+    ExprMethodCall _ method args => ExprMethodCall child method args
+    ExprField _ field            => ExprField child field
+    ExprIndex _ index            => ExprIndex child index
+    ExprTupleIndex _ index       => ExprTupleIndex child index
+    ExprCast _ ty                => ExprCast child ty
+    ExprBinary operator _ rhs    => ExprBinary operator child rhs
+    ExprRange (Just _) op end    => ExprRange (Just child) op end
+    _                            => value
+
+-- The child an expression's rendering ends with, and the precedence that
+-- child is printed at.
+rightEdge : ExpressionNode phase -> Maybe (Nat, Expr phase)
+rightEdge value =
+  case value of
+    ExprUnary _ operand                  => Just (precUnary, operand)
+    ExprBinary (MkAstNode _ _ op) _ rhs  => Just (binaryRightPrecedence op, rhs)
+    ExprRange _ _ end                    => map (\last => (S precRange, last)) end
+    ExprReturn returned                  => map (\last => (precLowest, last)) returned
+    ExprBreak breakValue                 => map (\last => (precLowest, last)) breakValue
+    ExprSIf (MkStateIfNode _ _ elseExpr) => Just (precLowest, elseExpr)
+    ExprQIf (MkQuantumIfNode _ (QuantumBranchExpression thenExpr) Nothing) => Just (precLowest, thenExpr)
+    ExprQIf (MkQuantumIfNode _ _ (Just (QuantumBranchExpression elseExpr))) => Just (precLowest, elseExpr)
+    _                                    => Nothing
+
+-- A `return` or `break` without a value can only be followed by `;`, `,` or
+-- `}` (`isOptionalValueTerminator`): before any other token the parser reads
+-- a value, so `(a || return)` does not parse.
+isValuelessExit : ExpressionNode phase -> Bool
+isValuelessExit (ExprReturn Nothing) = True
+isValuelessExit (ExprBreak Nothing)  = True
+isValuelessExit _                    = False
+
+-- Whether the right edge ends in a valueless exit at any depth. It decides on
+-- parentheses itself, so unlike `endsWith` it cannot ask which are printed.
+endsInValuelessExit : ExpressionNode phase -> Bool
+endsInValuelessExit value =
+  isValuelessExit value ||
+  case rightEdge value of
+    Nothing         => False
+    Just (_, child) => endsInValuelessExit (assert_smaller value child.nodeValue)
+
+-- A qif without qelse takes a following `qelse`.
+isQIfWithoutElse : ExpressionNode phase -> Bool
+isQIfWithoutElse (ExprQIf (MkQuantumIfNode _ _ Nothing)) = True
+isQIfWithoutElse _                                       = False
+
+-- An open range `a..` reads the next token as its upper bound unless it is a
+-- delimiter (`isOpenRangeTerminator`).
+isRangeWithoutEnd : ExpressionNode phase -> Bool
+isRangeWithoutEnd (ExprRange _ _ Nothing) = True
+isRangeWithoutEnd _                       = False
+
+--------------------------------------------------------------------------------
+-- Parentheses
+--------------------------------------------------------------------------------
+
+-- Whether a token that could continue an expression comes after it: an
+-- operator, a postfix, `as`, `..`, or the `{` after a head. Delimiters and
+-- keywords such as `,`, `;`, `)`, `then` and `qelse` cannot continue it.
+data Follows = Followed | Delimited
+
+isFollowed : Follows -> Bool
+isFollowed Followed  = True
+isFollowed Delimited = False
+
+-- Forms of the lowest precedence end in an open expression, which absorbs
+-- whatever follows them.
+absorbsFollowing : ExpressionNode phase -> Bool
+absorbsFollowing value = exprOwnPrecedence value == precLowest
+
+-- Whether an expression is parenthesized in a position requiring `outerReq`
+-- where `follows` holds. Strict style's optional parentheses are left out
+-- where they cannot parse.
+needsParens : PrettyStyle -> Nat -> Follows -> ExpressionNode phase -> Bool
+needsParens style outerReq follows value =
+  (exprOwnPrecedence value < outerReq && (isFollowed follows || not (absorbsFollowing value))) ||
+  (isPrettyStrict style && isOperatorClassExpr value && not (endsInValuelessExit value))
+
+-- Whether the rendering of an expression, printed in a position requiring
+-- `outerReq` where `follows` holds, ends with a node for which `isLast` holds.
+-- The right edge inherits `follows`; a parenthesized node ends the walk.
+endsWith : (ExpressionNode phase -> Bool) -> PrettyStyle -> Nat -> Follows -> Expr phase -> Bool
+endsWith isLast style outerReq follows ast@(MkAstNode _ _ value) =
+  not (needsParens style outerReq follows value) &&
+  (isLast value ||
+   case rightEdge value of
+     Nothing                   => False
+     Just (requirement, child) => endsWith isLast style requirement follows (assert_smaller ast child))
+
+--------------------------------------------------------------------------------
+-- Statement position
+--------------------------------------------------------------------------------
+-- At the start of a statement, a block's final expression or a match arm
+-- body, the parser ends the statement after a leading block-like expression
+-- (`isBlockLikeExpression`): `{ 1 } + 2;` is a block statement followed by
+-- `+2`. A block-like expression that starts a longer expression there is
+-- wrapped in an ExprParenthesized node before printing, at the first position
+-- on the left edge whose rendering would begin with it.
+--------------------------------------------------------------------------------
+
+-- Walks the left edge of an expression printed in a position requiring
+-- `outerReq`; a node printed in parentheses already starts with `(`. Below the
+-- root every node is followed; at the root the flag never changes the result.
+parenthesizeLeadingBlock : PrettyStyle -> Nat -> Expr phase -> Expr phase
+parenthesizeLeadingBlock style outerReq ast@(MkAstNode info metadata value) =
+  if needsParens style outerReq Followed value then ast else
+  case leftEdge value of
+    Just (requirement, child) =>
+      MkAstNode info metadata
+        (withLeftEdge value (parenthesizeLeadingBlock style requirement (assert_smaller ast child)))
+    Nothing =>
+      if isBlockLikeExpression value then MkAstNode info metadata (ExprParenthesized ast) else ast
+
+-- A block-like expression on its own is the statement and stays bare.
+statementPositionExpr : PrettyStyle -> Expr phase -> Expr phase
+statementPositionExpr style ast@(MkAstNode _ _ value) =
+  if isBlockLikeExpression value then ast else parenthesizeLeadingBlock style precLowest ast
+
+--------------------------------------------------------------------------------
+-- Head position: the expression directly before the `{` of a control construct
+--------------------------------------------------------------------------------
+-- As in Rust, a head does not allow struct literals, so a name directly before
+-- the `{` ends it, but a struct literal in it must be parenthesized. A nested
+-- expression the parser starts afresh, such as a `return` value, allows them
+-- again, and there an uppercase name (`readsAsStructLiteralName`) or a path
+-- before `{` would start one. An open range or a bare `return`/`break` takes
+-- the block as its operand: `{` is neither an `isOpenRangeTerminator` nor an
+-- `isOptionalValueTerminator`. A head with such a shape outside brackets it
+-- prints itself is printed in parentheses.
+--------------------------------------------------------------------------------
+
+-- Whether the child on an expression's right edge is parsed as a new
+-- expression, which allows struct literals again: a `return` or `break`
+-- value, or a `sif` or `qif` branch.
+startsNewExpression : ExpressionNode phase -> Bool
+startsNewExpression value =
+  case value of
+    ExprReturn _ => True
+    ExprBreak _  => True
+    ExprSIf _    => True
+    ExprQIf _    => True
+    _            => False
+
+-- Whether an expression's own shape would take the `{` after a head, when its
+-- rendering ends the head, or break the head wherever struct literals are not
+-- allowed. Paths do not parse yet, so one before `{` is always guarded.
+ownHeadHazard :
+  PhasePretty phase => (endsHead : Bool) -> (structLiteralsAllowed : Bool) -> ExpressionNode phase -> Bool
+ownHeadHazard endsHead structLiteralsAllowed value =
+  case value of
+    ExprName name         => endsHead && structLiteralsAllowed && readsAsStructLiteralName (prettyName name.nodeValue)
+    ExprPath _            => endsHead
+    ExprStructLiteral _ _ => not structLiteralsAllowed
+    _                     => endsHead && (isRangeWithoutEnd value || isValuelessExit value)
+
+-- Whether a head has a hazard outside brackets it prints itself. `endsHead`
+-- holds for the part whose rendering ends the head. A head is followed by its
+-- `{`, and so is every node in it.
+headHazard :
+     PhasePretty phase
+  => PrettyStyle -> Nat -> (endsHead : Bool) -> (structLiteralsAllowed : Bool) -> Expr phase -> Bool
+headHazard style outerReq endsHead structLiteralsAllowed ast@(MkAstNode _ _ value) =
+  not (needsParens style outerReq Followed value) &&
+  (ownHeadHazard endsHead structLiteralsAllowed value ||
+   inEdge False structLiteralsAllowed (leftEdge value) ||
+   inEdge endsHead (structLiteralsAllowed || startsNewExpression value) (rightEdge value))
+  where
+    inEdge : Bool -> Bool -> Maybe (Nat, Expr phase) -> Bool
+    inEdge _ _ Nothing = False
+    inEdge childEndsHead childAllows (Just (requirement, child)) =
+      headHazard style requirement childEndsHead childAllows (assert_smaller ast child)
+
+-- Whether a head must be printed in parentheses: it ends where the head does,
+-- and does not allow struct literals.
+headNeedsParens : PhasePretty phase => PrettyStyle -> Expr phase -> Bool
+headNeedsParens style = headHazard style precLowest True False
+
+--------------------------------------------------------------------------------
+-- Quantum if branches
+--------------------------------------------------------------------------------
+-- The parser reads the longest condition it can, so a then-branch starting
+-- with a token that continues an expression would join the condition:
+-- `qif a -b` is the condition `a - b`, and `qif a (b)` the call `a(b)`.
+-- And `qelse` attaches to the nearest qif without one, so a then-branch
+-- ending in such a qif would take the outer `qelse`, and one ending in an open
+-- range would read `qelse` as its bound. After `qelse`, a leading
+-- `{` is read as a block branch: `qelse { 2 } + 3` adds 3 to the whole qif.
+-- Parentheses cannot fix the first case, so an expression branch at risk is
+-- printed as a block, which has the same value: `qif a { -b }`,
+-- `qif a { qif b x } qelse y`, `qif a x qelse { ({ 2 }) + 3 }`.
+--------------------------------------------------------------------------------
+
+-- First characters of the tokens that can continue an expression: `(`, `[`,
+-- a block's `{`, `-`, `&`, and the `.` of `..`.
+continuesExpression : Char -> Bool
+continuesExpression c = c `elem` ['(', '[', '{', '-', '&', '.']
+
+-- Whether a then-branch, given its rendering's first character, would join
+-- the condition or, when `qelse` follows, take it or read it as the bound of
+-- an open range. Before `qelse` the branch is delimited: a keyword cannot
+-- continue it.
+thenBranchAtRisk : PrettyStyle -> (hasElse : Bool) -> Expr phase -> Maybe Char -> Bool
+thenBranchAtRisk style hasElse expr first =
+  maybe False continuesExpression first ||
+  (hasElse && endsWith (\value => isQIfWithoutElse value || isRangeWithoutEnd value) style precLowest Delimited expr)
+
+--------------------------------------------------------------------------------
+-- The recursive core: types, expressions, blocks and statements
+--------------------------------------------------------------------------------
+-- Declared up front so the printers below can be defined in dependency order:
+-- types and expressions embed blocks, blocks embed expressions and types.
+--------------------------------------------------------------------------------
+
+||| Renders an expression in a position requiring precedence `outerReq` where
+||| `follows` holds, parenthesizing it when it binds more loosely.
+showExprAtDoc : PhasePretty phase => PrettyStyle -> Nat -> Follows -> Expr phase -> SourceText
+
+showBlockDoc : PhasePretty phase => PrettyStyle -> Block phase -> SourceText
+
+||| Renders an expression in a delimited position: no precedence requirement,
+||| and nothing that could continue it follows.
 public export
-showBlock : PhasePretty phase => PrettyStyle -> Block phase -> String
+showExprDoc : PhasePretty phase => PrettyStyle -> Expr phase -> SourceText
+showExprDoc style = showExprAtDoc style precLowest Delimited
+
+-- A whole expression where `follows` holds, in parentheses when `hazard` says
+-- that what follows would join it.
+showGuardedExprDoc : PhasePretty phase => PrettyStyle -> Follows -> (hazard : Bool) -> Expr phase -> SourceText
+showGuardedExprDoc style follows hazard e =
+  if hazard then parens (showExprDoc style e) else showExprAtDoc style precLowest follows e
+
+-- The head of if/while/for/match/qmatch/smatch, directly before a `{`. A qif
+-- condition adds its own rule (see `showQuantumConditionDoc`).
+showHeadExprDoc : PhasePretty phase => PrettyStyle -> Expr phase -> SourceText
+showHeadExprDoc style e = showGuardedExprDoc style Followed (headNeedsParens style e) e
+
+-- An expression starting a statement, a block's final expression or an arm body.
+public export
+showStatementPositionExprDoc : PhasePretty phase => PrettyStyle -> Expr phase -> SourceText
+showStatementPositionExprDoc style e = showExprDoc style (statementPositionExpr style e)
+
+-- An expression followed by a keyword (`then`, `selse`, `=>`), which cannot
+-- continue it, except as the upper bound of an open range.
+showBeforeKeywordDoc : PhasePretty phase => PrettyStyle -> Expr phase -> SourceText
+showBeforeKeywordDoc style e =
+  showGuardedExprDoc style Delimited (endsWith isRangeWithoutEnd style precLowest Delimited e) e
+
+------------------------------------------------------------------------------
+-- Types (recursive group)
+------------------------------------------------------------------------------
 
 mutual
-
-  ------------------------------------------------------------------
-  -- Types (Compiler.Frontend.Syntax.Type)
-  ------------------------------------------------------------------
-
-  showTyNode : PhasePretty phase => PrettyStyle -> TyNode phase (Expr phase) -> String
-  showTyNode style ty =
+  showTyNodeDoc : PhasePretty phase => PrettyStyle -> TyNode phase (Expr phase) -> SourceText
+  showTyNodeDoc style ty =
     case ty of
-      TyPrimitive p         => showTypPrimLeaf p
-      TyPath p               => showPath p
-      TyUnit                   => "()"
-      TyParenthesized inner      => parens (showTy style inner)
-      TyTuple elems                => showTupleLike (showTyList1 style elems)
-      TyArray elemTy sizeE           =>
-        brackets (showTy style elemTy ++ "; " ++ showExprAt style 0 sizeE)
-      TySlice elemTy                   => brackets (showTy style elemTy)
-      TyReference (MkAstNode _ _ borrow) innerTy =>
-        showBorrowPrefixed borrow (showTy style innerTy)
-      TyQualified (MkAstNode _ _ qualifier) innerTy =>
-        show qualifier ++ " " ++ showTy style innerTy
-      TyFunction effect params retTy =>
-        (case effect of
-           Nothing                     => ""
-           Just (MkAstNode _ _ eff) => show eff ++ " ") ++
-        "fn(" ++ joinWith ", " (showFunctionTypeParameterList style params) ++ ")" ++
-        (case retTy of
-           Nothing => ""
-           Just t  => " -> " ++ showTy style t)
+      TyPrimitive primitive          => text (showTypPrimLeaf primitive)
+      TyPath path                    => showPathDoc path
+      TyUnit                         => "()"
+      TyParenthesized inner          => parens (showTyDoc style inner)
+      TyTuple (first ::: rest)       => showTupleLike (MoreDocs (showTyDoc style first) (showTyListDoc style rest))
+      TyArray element size           => brackets (showTyDoc style element <+> "; " <+> showExprDoc style size)
+      TySlice element                => brackets (showTyDoc style element)
+      TyReference (MkAstNode _ _ borrow) inner => showBorrowPrefixed borrow (showTyDoc style inner)
+      TyQualified (MkAstNode _ _ qualifier) inner => text (show qualifier) <+> " " <+> showTyDoc style inner
+      TyFunction effect params result =>
+        locatedModifier effect <+> "fn" <+> argumentList (showFunctionTypeParametersDoc style params) <+>
+          -- An explicit case: passing showTyDoc to a helper would hide the recursion.
+          (case result of
+             Nothing       => ""
+             Just resultTy => " -> " <+> showTyDoc style resultTy)
 
-  public export
-  showTy : PhasePretty phase => PrettyStyle -> Ty phase (Expr phase) -> String
-  showTy style (MkAstNode _ _ ty) = showTyNode style ty
+  showTyDoc : PhasePretty phase => PrettyStyle -> Ty phase (Expr phase) -> SourceText
+  showTyDoc style (MkAstNode _ _ ty) = showTyNodeDoc style ty
 
-  showTyList : PhasePretty phase => PrettyStyle -> List (Ty phase (Expr phase)) -> List String
-  showTyList style []        = []
-  showTyList style (t :: ts) = showTy style t :: showTyList style ts
+  showTyListDoc : PhasePretty phase => PrettyStyle -> List (Ty phase (Expr phase)) -> SourceDocs
+  showTyListDoc style []          = NoDocs
+  showTyListDoc style (ty :: tys) = MoreDocs (showTyDoc style ty) (showTyListDoc style tys)
 
-  showTyList1 : PhasePretty phase => PrettyStyle -> List1 (Ty phase (Expr phase)) -> List String
-  showTyList1 style (t ::: ts) = showTy style t :: showTyList style ts
-
-  showFunctionTypeParameterList :
+  showFunctionTypeParametersDoc :
        PhasePretty phase
     => PrettyStyle
     -> List (AstNode phase (FunctionTypeParameterNode phase (Expr phase)))
-    -> List String
-  showFunctionTypeParameterList style [] = []
-  showFunctionTypeParameterList style (MkAstNode _ _ (MkFunctionTypeParameterNode nm ty) :: rest) =
-    -- Not showName: a function-type parameter name is plain NameNode at
-    -- every phase (never resolved), so no PhasePretty dispatch is needed.
-    (prettyNameNode nm.nodeValue ++ ": " ++ showTy style ty) :: showFunctionTypeParameterList style rest
+    -> SourceDocs
+  showFunctionTypeParametersDoc style [] = NoDocs
+  showFunctionTypeParametersDoc style (MkAstNode _ _ (MkFunctionTypeParameterNode name ty) :: rest) =
+    MoreDocs (showPlainNameDoc name <+> ": " <+> showTyDoc style ty) (showFunctionTypeParametersDoc style rest)
 
---------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+-- Expression parts
+------------------------------------------------------------------------------
+
+-- Comma-separated expressions, with a trailing comma when the last one ends in
+-- a `return` or `break` without a value: only `;`, `,` or `}` may follow it.
+showExprListDoc : PhasePretty phase => PrettyStyle -> List (Expr phase) -> SourceText
+showExprListDoc style values =
+  commaList (mapDocs (showExprDoc style) values) <+>
+    (if maybe False (endsInValuelessExit . nodeValue) (last' values) then "," else "")
+
+showFieldInitializerDoc : PhasePretty phase => PrettyStyle -> AstNode phase (FieldInitializerNode phase) -> SourceText
+showFieldInitializerDoc style (MkAstNode _ _ field) =
+  case field of
+    FieldInitShorthand name      => showNameDoc name
+    FieldInitExplicit name value => showNameDoc name <+> ": " <+> showExprDoc style value
+
+showClassicalIfNodeDoc : PhasePretty phase => PrettyStyle -> ClassicalIfNode phase -> SourceText
+showClassicalIfNodeDoc style (MkClassicalIfNode condition thenBlock elseBranch) =
+  "if " <+> showHeadExprDoc style condition <+> " " <+> showBlockDoc style thenBlock <+>
+    (case elseBranch of
+       Nothing                                      => ""
+       Just (ElseBlock elseBlock)                   => " else " <+> showBlockDoc style elseBlock
+       Just (ElseChainedIf (MkAstNode _ _ chained)) => " else " <+> showClassicalIfNodeDoc style chained)
+
+-- See "Quantum if branches": an expression branch for which `atRisk` holds,
+-- given the first character of its bare rendering, is printed as a block. A
+-- block expression is printed as it is: it reads back as the equivalent block
+-- branch.
+showQuantumBranchDoc :
+     PhasePretty phase
+  => PrettyStyle -> Follows -> (atRisk : Expr phase -> Maybe Char -> Bool)
+  -> QuantumBranchNode phase -> SourceText
+showQuantumBranchDoc style _ _ (QuantumBranchBlock block) = showBlockDoc style block
+showQuantumBranchDoc style _ _ (QuantumBranchExpression (MkAstNode _ _ (ExprBlock block))) = showBlockDoc style block
+showQuantumBranchDoc style follows atRisk (QuantumBranchExpression expr) =
+  let bare : Lazy SourceText = showExprAtDoc style precLowest follows expr in
+  if atRisk expr (sourceFirstChar bare)
+    then braces (showStatementPositionExprDoc style expr)
+    else bare
+
+-- Any `qelse` delimits the then-branch; without one, the branch ends the qif.
+showQuantumThenBranchDoc :
+     PhasePretty phase
+  => PrettyStyle -> Follows -> (elseBranch : Maybe (QuantumBranchNode phase))
+  -> QuantumBranchNode phase -> SourceText
+showQuantumThenBranchDoc style follows elseBranch =
+  showQuantumBranchDoc style (if isJust elseBranch then Delimited else follows)
+    (thenBranchAtRisk style (isJust elseBranch))
+
+-- After `qelse`, a leading `{` would be read as a block branch on its own.
+showQuantumElseBranchDoc : PhasePretty phase => PrettyStyle -> Follows -> QuantumBranchNode phase -> SourceText
+showQuantumElseBranchDoc style follows = showQuantumBranchDoc style follows (\_, first => first == Just '{')
+
+-- The head rules, and a condition ending in a qif without qelse would take
+-- the then-branch as its own. The then-branch follows the condition.
+showQuantumConditionDoc : PhasePretty phase => PrettyStyle -> Expr phase -> SourceText
+showQuantumConditionDoc style condition =
+  showGuardedExprDoc style Followed
+    (headNeedsParens style condition || endsWith isQIfWithoutElse style precLowest Followed condition)
+    condition
+
+showClassicalMatchArmNodeDoc : PhasePretty phase => PrettyStyle -> ClassicalMatchArmNode phase -> SourceText
+showClassicalMatchArmNodeDoc style (MkClassicalMatchArmNode pattern guard body) =
+  showPatternDoc pattern <+> optionalText " if " (showBeforeKeywordDoc style) guard <+>
+    " => " <+> showStatementPositionExprDoc style body
+
+showClassicalMatchArmDoc : PhasePretty phase => PrettyStyle -> ClassicalMatchArm phase -> SourceText
+showClassicalMatchArmDoc style (MkAstNode _ _ arm) = showClassicalMatchArmNodeDoc style arm
+
+showQuantumMatchArmNodeDoc : PhasePretty phase => PrettyStyle -> QuantumMatchArmNode phase -> SourceText
+showQuantumMatchArmNodeDoc style (MkQuantumMatchArmNode pattern body) =
+  showQuantumMatchPatternDoc pattern <+> " => " <+> showStatementPositionExprDoc style body
+
+showQuantumMatchArmDoc : PhasePretty phase => PrettyStyle -> QuantumMatchArm phase -> SourceText
+showQuantumMatchArmDoc style (MkAstNode _ _ arm) = showQuantumMatchArmNodeDoc style arm
+
+-- `<keyword> <head> { arm, arm }` for match, qmatch and smatch.
+showMatchLikeDoc : PhasePretty phase => PrettyStyle -> SourceText -> Expr phase -> SourceDocs -> SourceText
+showMatchLikeDoc style keyword scrutinee arms =
+  keyword <+> " " <+> showHeadExprDoc style scrutinee <+> " " <+> braces (commaList arms)
+
+showControlExprDoc : PhasePretty phase => PrettyStyle -> ControlExpressionNode phase -> SourceText
+showControlExprDoc style control =
+  case control of
+    ControlledCallable controls basis callable =>
+      controlPrefix controls basis <+> ".apply" <+> parens (showExprDoc style callable)
+    ControlledBlock controls basis body =>
+      controlPrefix controls basis <+> " " <+> showBlockDoc style body
+  where
+    controlPrefix : List1 (Expr phase) -> Maybe (AstNode phase String) -> SourceText
+    controlPrefix controls basis =
+      "ctrl" <+> parens (showExprListDoc style (forget controls)) <+> showOnBasisDoc basis
+
+showAdjointExprDoc : PhasePretty phase => PrettyStyle -> AdjointExpressionNode phase -> SourceText
+showAdjointExprDoc style (AdjointOfCallable callable) = "adjoint" <+> parens (showExprDoc style callable)
+showAdjointExprDoc style (AdjointBlock body)          = "adjoint " <+> showBlockDoc style body
+
+------------------------------------------------------------------------------
 -- Expressions
---------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 
-showExprList : PhasePretty phase => PrettyStyle -> List (Expr phase) -> List String
-showExprList1 : PhasePretty phase => PrettyStyle -> List1 (Expr phase) -> List String
-wrapExpr : PhasePretty phase => PrettyStyle -> Nat -> ExpressionNode phase -> String
-showExpressionNodeBody :
-     PhasePretty phase
-  => PrettyStyle
-  -> ExpressionNode phase
-  -> String
-showFieldInitList :
-     PhasePretty phase
-  => PrettyStyle
-  -> List (AstNode phase (FieldInitializerNode phase))
-  -> List String
-showClassicalIfNode : PhasePretty phase => PrettyStyle -> ClassicalIfNode phase -> String
-showQuantumBranch : PhasePretty phase => PrettyStyle -> QuantumBranchNode phase -> String
-showClassicalMatchArmList :
-     PhasePretty phase
-  => PrettyStyle
-  -> List (ClassicalMatchArm phase)
-  -> List String
-showQuantumMatchArmList :
-     PhasePretty phase
-  => PrettyStyle
-  -> List (QuantumMatchArm phase)
-  -> List String
-showControlExpr : PhasePretty phase => PrettyStyle -> ControlExpressionNode phase -> String
-showAdjointExpr : PhasePretty phase => PrettyStyle -> AdjointExpressionNode phase -> String
+-- `follows`: whether something that could continue this rendering follows it,
+-- inside any parentheses of its own. Its right edge inherits it; its other
+-- children are followed by the rest of the rendering, or are delimited.
+showExpressionNodeBodyDoc : PhasePretty phase => PrettyStyle -> Follows -> ExpressionNode phase -> SourceText
+showExpressionNodeBodyDoc style follows value =
+  case value of
+    ExprLiteral literal => showLiteralDoc literal
+    ExprName name       => showNameDoc name
+    ExprPath path       => showPathDoc path
+    ExprBuiltin builtin => text (show builtin)
+    ExprSelf _          => "self"
 
-mutual
+    ExprParenthesized inner      => parens (showExprDoc style inner)
+    ExprTuple (only ::: [])      => showTupleLike (MoreDocs (showExprDoc style only) NoDocs)
+    ExprTuple (first ::: rest)   => parens (showExprListDoc style (first :: rest))
+    ExprArray elements           => brackets (showExprListDoc style elements)
+    ExprRepeatedArray element count =>
+      brackets (showExprDoc style element <+> "; " <+> showExprDoc style count)
+    ExprStructLiteral path fields =>
+      showPathDoc path <+> " " <+> braces (commaList (mapDocs (showFieldInitializerDoc style) fields))
 
-  -- The single entry point that decides whether a child expression needs to
-  -- be parenthesized, given the precedence its syntactic position requires.
-  -- Exported for callers that need explicit control over the ambient
-  -- precedence; `showExpr` below is the common case (no ambient requirement).
-  showExprAt style outerReq (MkAstNode _ _ value) = wrapExpr style outerReq value
+    ExprCall callee args =>
+      showExprAtDoc style (callCalleePrecedence callee.nodeValue) Followed callee <+>
+        parens (showExprListDoc style args)
+    ExprMethodCall receiver method args =>
+      showExprAtDoc style precPostfix Followed receiver <+> "." <+> showMemberNameDoc method <+>
+        parens (showExprListDoc style args)
+    ExprField object field =>
+      showExprAtDoc style precPostfix Followed object <+> "." <+> showMemberNameDoc field
+    ExprTupleIndex object@(MkAstNode _ _ base) index =>
+      showExprAtDoc style (tupleIndexBasePrecedence base) Followed object <+> "." <+> text index
+    ExprIndex object index =>
+      showExprAtDoc style precPostfix Followed object <+> brackets (showExprDoc style index)
 
-  public export
-  showExpr : PhasePretty phase => PrettyStyle -> Expr phase -> String
-  showExpr style = showExprAt style 0
+    ExprUnary (MkAstNode _ _ op) operand =>
+      let operandText : Lazy SourceText = showExprAtDoc style precUnary follows operand in
+      case op of
+        UnaryNegate     => prefixOperator '-' operandText
+        UnaryLogicalNot => "!" <+> operandText
+        UnaryBorrow b   => showBorrowPrefixed b operandText
+    ExprBinary (MkAstNode _ _ op) lhs rhs =>
+      showExprAtDoc style (binaryLeftPrecedence op) Followed lhs <+> " " <+> text (show op) <+> " " <+>
+        showExprAtDoc style (binaryRightPrecedence op) follows rhs
+    ExprRange start (MkAstNode _ _ op) end =>
+      optionalText "" (showExprAtDoc style (S precRange) Followed) start <+> text (show op) <+>
+        optionalText "" (showExprAtDoc style (S precRange) follows) end
+    ExprCast operand ty =>
+      showExprAtDoc style precCast Followed operand <+> " as " <+> showTyDoc style ty
 
---------------------------------------------------------------------------------
--- Expression precedence wrapper
---------------------------------------------------------------------------------
+    ExprBlock block   => showBlockDoc style block
+    ExprIf ifNode     => showClassicalIfNodeDoc style ifNode
+    ExprQIf (MkQuantumIfNode condition thenBranch elseBranch) =>
+      "qif " <+> showQuantumConditionDoc style condition <+> " " <+>
+        showQuantumThenBranchDoc style follows elseBranch thenBranch <+>
+        optionalText " qelse " (showQuantumElseBranchDoc style follows) elseBranch
+    ExprSIf (MkStateIfNode condition thenExpr elseExpr) =>
+      "sif " <+> showBeforeKeywordDoc style condition <+> " then " <+> showBeforeKeywordDoc style thenExpr <+>
+        " selse " <+> showExprAtDoc style precLowest follows elseExpr
+    ExprMatch (MkClassicalMatchNode scrutinee arms) =>
+      showMatchLikeDoc style "match" scrutinee (mapDocs (showClassicalMatchArmDoc style) arms)
+    ExprQMatch (MkQuantumMatchNode scrutinee arms) =>
+      showMatchLikeDoc style "qmatch" scrutinee (mapDocs (showQuantumMatchArmDoc style) arms)
+    ExprSMatch (MkStateMatchNode scrutinee arms) =>
+      showMatchLikeDoc style "smatch" scrutinee (mapDocs (showQuantumMatchArmDoc style) arms)
+    ExprLoop body => "loop " <+> showBlockDoc style body
+    ExprWhile condition body =>
+      "while " <+> showHeadExprDoc style condition <+> " " <+> showBlockDoc style body
+    ExprFor pattern iterable body =>
+      "for " <+> showPatternDoc pattern <+> " in " <+> showHeadExprDoc style iterable <+> " " <+>
+        showBlockDoc style body
 
-mutual
+    ExprBreak breakValue => "break" <+> optionalText " " (showExprAtDoc style precLowest follows) breakValue
+    ExprContinue       => "continue"
+    ExprReturn returned  => "return" <+> optionalText " " (showExprAtDoc style precLowest follows) returned
 
-  wrapExpr style outerReq value =
-    let body     = assert_total $ showExpressionNodeBody style value
-        own      = exprOwnPrecedence value
-        mustWrap = (own < outerReq) || (isPrettyStrict style && isOperatorClassExpr value)
-    in if mustWrap then parens body else body
+    ExprCtrl control   => showControlExprDoc style control
+    ExprAdjoint adjoint => showAdjointExprDoc style adjoint
 
-  -- Top-level (unconstrained) rendering of a raw ExpressionNode -- used by
-  -- the Show instance further down.
-  showExpressionNode : PhasePretty phase => PrettyStyle -> ExpressionNode phase -> String
-  showExpressionNode style value = wrapExpr style 0 value
+-- Decides on an expression's parentheses from its precedence and what follows
+-- it. The `assert_total` breaks the cycle expression -> sub-expression; every
+-- recursive call is on a subterm.
+wrapExprDoc : PhasePretty phase => PrettyStyle -> Nat -> Follows -> ExpressionNode phase -> SourceText
+wrapExprDoc style outerReq follows value =
+  let parenthesized = needsParens style outerReq follows value
+      -- Inside parentheses, the closing `)` ends the expression.
+      inside = if parenthesized then Delimited else follows
+      body : Lazy SourceText = assert_total $ showExpressionNodeBodyDoc style inside value
+  in if parenthesized then parens body else body
 
---------------------------------------------------------------------------------
--- Expression bodies
---------------------------------------------------------------------------------
+showExprAtDoc style outerReq follows (MkAstNode _ _ value) = wrapExprDoc style outerReq follows value
 
-mutual
+-- Unconstrained rendering of a raw ExpressionNode, for the Show instance.
+showExpressionNodeDoc : PhasePretty phase => PrettyStyle -> ExpressionNode phase -> SourceText
+showExpressionNodeDoc style = wrapExprDoc style precLowest Delimited
 
-  showExpressionNodeBody style value =
-    case value of
-      ExprLiteral lit => showLiteral lit
-      ExprName nm     => showName nm
-      ExprPath p      => showPath p
-      ExprBuiltin b   => show b
-      ExprSelf _      => "self"
-
-      ExprParenthesized inner => parens (showExprAt style 0 inner)
-      ExprTuple elems          => showTupleLike (showExprList1 style elems)
-      ExprArray elems           => brackets (joinWith ", " (showExprList style elems))
-      ExprRepeatedArray elemE countE =>
-        brackets (showExprAt style 0 elemE ++ "; " ++ showExprAt style 0 countE)
-
-      ExprStructLiteral p fields =>
-        showPath p ++ " " ++ braces (joinWith ", " (showFieldInitList style fields))
-
-      ExprCall callee args =>
-        showExprAt style precPostfix callee ++
-          "(" ++ joinWith ", " (showExprList style args) ++ ")"
-
-      ExprMethodCall recv methodName args =>
-        showExprAt style precPostfix recv ++ "." ++ showMemberName methodName ++
-          "(" ++ joinWith ", " (showExprList style args) ++ ")"
-
-      ExprField obj fld      => showExprAt style precPostfix obj ++ "." ++ showMemberName fld
-      ExprTupleIndex obj idx => showExprAt style precPostfix obj ++ "." ++ idx
-      ExprIndex obj idx      =>
-        showExprAt style precPostfix obj ++ "[" ++ showExprAt style 0 idx ++ "]"
-
-      ExprUnary (MkAstNode _ _ op) operand =>
-        let operandStr = showExprAt style precUnary operand in
-        case op of
-          UnaryNegate     => "-" ++ operandStr
-          UnaryLogicalNot => "!" ++ operandStr
-          UnaryBorrow b   => showBorrowPrefixed b operandStr
-
-      ExprBinary (MkAstNode _ _ op) lhs rhs =>
-        let p = binaryOperatorPrecedence op in
-        showExprAt style p lhs ++ " " ++ show op ++ " " ++ showExprAt style (S p) rhs
-
-      ExprRange start (MkAstNode _ _ op) end =>
-        (case start of
-           Nothing => ""
-           Just s  => showExprAt style (S precRange) s) ++
-        show op ++
-        (case end of
-           Nothing => ""
-           Just e  => showExprAt style (S precRange) e)
-
-      ExprCast operand ty => showExprAt style precCast operand ++ " as " ++ showTy style ty
-
-      ExprBlock blk => showBlock style blk
-
-      ExprIf ifNode => showClassicalIfNode style ifNode
-
-      ExprQIf (MkQuantumIfNode qcond thenBranch elseBranch) =>
-        "qif " ++ showExprAt style 0 qcond ++ " " ++ showQuantumBranch style thenBranch ++
-          (case elseBranch of
-             Nothing => ""
-             Just b  => " qelse " ++ showQuantumBranch style b)
-
-      ExprSIf (MkStateIfNode scond thenE elseE) =>
-        "sif " ++ showExprAt style 0 scond ++ " then " ++ showExprAt style 0 thenE ++
-          " selse " ++ showExprAt style 0 elseE
-
-      ExprMatch (MkClassicalMatchNode scrut arms) =>
-        "match " ++ showExprAt style 0 scrut ++ " " ++
-          braces (joinWith ", " (showClassicalMatchArmList style arms))
-
-      ExprQMatch (MkQuantumMatchNode scrut arms) =>
-        "qmatch " ++ showExprAt style 0 scrut ++ " " ++
-          braces (joinWith ", " (showQuantumMatchArmList style arms))
-
-      ExprSMatch (MkStateMatchNode scrut arms) =>
-        "smatch " ++ showExprAt style 0 scrut ++ " " ++
-          braces (joinWith ", " (showQuantumMatchArmList style arms))
-
-      ExprLoop body => "loop " ++ showBlock style body
-
-      ExprWhile cond body =>
-        "while " ++ showExprAt style 0 cond ++ " " ++ showBlock style body
-
-      ExprFor pat iterE body =>
-        "for " ++ showPattern pat ++ " in " ++ showExprAt style 0 iterE ++
-          " " ++ showBlock style body
-
-      ExprBreak Nothing  => "break"
-      ExprBreak (Just e) => "break " ++ showExprAt style 0 e
-
-      ExprContinue => "continue"
-
-      ExprReturn Nothing  => "return"
-      ExprReturn (Just e) => "return " ++ showExprAt style 0 e
-
-      ExprCtrl c    => showControlExpr style c
-      ExprAdjoint a => showAdjointExpr style a
-
---------------------------------------------------------------------------------
--- Expression collections and struct fields
---------------------------------------------------------------------------------
-
-mutual
-
-  showExprList style []        = []
-  showExprList style (e :: es) = showExprAt style 0 e :: showExprList style es
-
-  showExprList1 style (e ::: es) = showExprAt style 0 e :: showExprList style es
-
-  showFieldInit : PhasePretty phase => PrettyStyle -> AstNode phase (FieldInitializerNode phase) -> String
-  showFieldInit style (MkAstNode _ _ f) =
-    case f of
-      FieldInitShorthand nm => showName nm
-      FieldInitExplicit nm e => showName nm ++ ": " ++ showExprAt style 0 e
-
-  showFieldInitList style []        = []
-  showFieldInitList style (f :: fs) = showFieldInit style f :: showFieldInitList style fs
-
---------------------------------------------------------------------------------
--- if / qif / sif
---------------------------------------------------------------------------------
-
-mutual
-
-  showClassicalIfNode style (MkClassicalIfNode cond thenBlk elseBranch) =
-    "if " ++ showExprAt style 0 cond ++ " " ++ showBlock style thenBlk ++
-      (case elseBranch of
-         Nothing                                          => ""
-         Just (ElseBlock b)                                => " else " ++ showBlock style b
-         Just (ElseChainedIf (MkAstNode _ _ chained)) =>
-           " else " ++ showClassicalIfNode style chained)
-
-  showQuantumBranch style branch =
-    case branch of
-      QuantumBranchBlock b      => showBlock style b
-      QuantumBranchExpression e => showExprAt style 0 e
-
---------------------------------------------------------------------------------
--- match / qmatch / smatch
---------------------------------------------------------------------------------
-
-mutual
-
-  showClassicalMatchArmNode : PhasePretty phase => PrettyStyle -> ClassicalMatchArmNode phase -> String
-  showClassicalMatchArmNode style (MkClassicalMatchArmNode pat guard armBody) =
-    showPattern pat ++
-      (case guard of
-         Nothing => ""
-         Just g  => " if " ++ showExprAt style 0 g) ++
-      " => " ++ showExprAt style 0 armBody
-
-  public export
-  showClassicalMatchArm : PhasePretty phase => PrettyStyle -> ClassicalMatchArm phase -> String
-  showClassicalMatchArm style (MkAstNode _ _ arm) = showClassicalMatchArmNode style arm
-
-  showClassicalMatchArmList style []        = []
-  showClassicalMatchArmList style (a :: as) =
-    showClassicalMatchArm style a :: showClassicalMatchArmList style as
-
-  showQuantumMatchArmNode : PhasePretty phase => PrettyStyle -> QuantumMatchArmNode phase -> String
-  showQuantumMatchArmNode style (MkQuantumMatchArmNode pat armBody) =
-    showQuantumMatchPattern pat ++ " => " ++ showExprAt style 0 armBody
-
-  public export
-  showQuantumMatchArm : PhasePretty phase => PrettyStyle -> QuantumMatchArm phase -> String
-  showQuantumMatchArm style (MkAstNode _ _ arm) = showQuantumMatchArmNode style arm
-
-  showQuantumMatchArmList style []        = []
-  showQuantumMatchArmList style (a :: as) =
-    showQuantumMatchArm style a :: showQuantumMatchArmList style as
-
---------------------------------------------------------------------------------
--- ctrl and adjoint
---------------------------------------------------------------------------------
-
-mutual
-
-  showControlExpr style c =
-    case c of
-      ControlledCallable controls onBasis callable =>
-        "ctrl(" ++ joinWith ", " (showExprList1 style controls) ++ ")" ++
-          showOnBasis onBasis ++ ".apply(" ++ showExprAt style 0 callable ++ ")"
-      ControlledBlock controls onBasis body =>
-        "ctrl(" ++ joinWith ", " (showExprList1 style controls) ++ ")" ++
-          showOnBasis onBasis ++ " " ++ showBlock style body
-
-  showAdjointExpr style a =
-    case a of
-      AdjointOfCallable callable => "adjoint(" ++ showExprAt style 0 callable ++ ")"
-      AdjointBlock body          => "adjoint " ++ showBlock style body
-
---------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- Blocks and statements
+------------------------------------------------------------------------------
+
+showAssignmentTargetNodeDoc : PhasePretty phase => PrettyStyle -> AssignmentTargetNode phase -> SourceText
+showAssignmentTargetNodeDoc style target =
+  case target of
+    AssignTargetName name          => showNameDoc name
+    AssignTargetIndex object index => objectDoc precPostfix object <+> brackets (showExprDoc style index)
+    AssignTargetField object field => objectDoc precPostfix object <+> "." <+> showMemberNameDoc field
+    AssignTargetTupleIndex object@(MkAstNode _ _ base) index =>
+      objectDoc (tupleIndexBasePrecedence base) object <+> "." <+> text index
+  where
+    -- The object before `[`, `.` or `.<digits>`, which starts the statement.
+    objectDoc : Nat -> Expr phase -> SourceText
+    objectDoc requirement object =
+      showExprAtDoc style requirement Followed (parenthesizeLeadingBlock style requirement object)
+
+showAssignmentTargetDoc : PhasePretty phase => PrettyStyle -> AssignmentTarget phase -> SourceText
+showAssignmentTargetDoc style (MkAstNode _ _ target) = showAssignmentTargetNodeDoc style target
+
+showAssignmentNodeDoc : PhasePretty phase => PrettyStyle -> AssignmentNode phase -> SourceText
+showAssignmentNodeDoc style (MkAssignmentNode (MkAstNode _ _ target) (MkAstNode _ _ op) value) =
+  showAssignmentTargetNodeDoc style target <+> " " <+> text (show op) <+> " " <+> showExprDoc style value
+
+showLetBindingNodeDoc : PhasePretty phase => PrettyStyle -> LetBindingNode phase -> SourceText
+showLetBindingNodeDoc style (MkLetBindingNode qualifiers pattern annotation initializer) =
+  "let " <+> showQualifiersPrefixDoc qualifiers <+> showPatternDoc pattern <+>
+    optionalText ": " (showTyDoc style) annotation <+> optionalText " " showInitializerDoc initializer
+  where
+    showInitializerDoc : LetInitializerNode phase -> SourceText
+    showInitializerDoc (MkLetInitializerNode (MkAstNode _ _ marker) value) =
+      text (show marker) <+> " " <+> showExprDoc style value
+
+showLetBindingDoc : PhasePretty phase => PrettyStyle -> LetBinding phase -> SourceText
+showLetBindingDoc style (MkAstNode _ _ binding) = showLetBindingNodeDoc style binding
+
+showStatementNodeDoc : PhasePretty phase => PrettyStyle -> StatementNode phase -> SourceText
+showStatementNodeDoc style statement =
+  case statement of
+    StatementLet binding         => showLetBindingNodeDoc style binding <+> ";"
+    StatementAssignment assigned => showAssignmentNodeDoc style assigned <+> ";"
+    StatementSemiExpression e    => showStatementPositionExprDoc style e <+> ";"
+    StatementExpression e        => showStatementPositionExprDoc style e
+
+public export
+showStatementDoc : PhasePretty phase => PrettyStyle -> Statement phase -> SourceText
+showStatementDoc style (MkAstNode _ _ statement) = showStatementNodeDoc style statement
+
+showBlockNodeDoc : PhasePretty phase => PrettyStyle -> BlockNode phase -> SourceText
+showBlockNodeDoc style (MkBlockNode innerDocs statements final) =
+  braces (docsPrefix innerDocs <+> joinWith " " (appendDocs (mapDocs (showStatementDoc style) statements) finalText))
+  where
+    finalText : SourceDocs
+    finalText = case final of
+      Nothing => NoDocs
+      Just e  => MoreDocs (showStatementPositionExprDoc style e) NoDocs
+
+showBlockDoc style (MkAstNode _ _ block) = showBlockNodeDoc style block
+
+--------------------------------------------------------------------------------
+-- Contracts
+--------------------------------------------------------------------------------
+
+showContractPredicateNodeDoc :
+  PhasePretty phase => PrettyStyle -> ContractPredicateNode phase (Expr phase) -> SourceText
+showContractPredicateNodeDoc style predicate =
+  case predicate of
+    ContractClean e              => "clean" <+> parens (showExprListDoc style [e])
+    ContractBasis e pauli        =>
+      "basis" <+> argumentList (MoreDocs (showExprDoc style e) (MoreDocs (showPauliStringDoc pauli) NoDocs))
+    ContractSeparable e          => "separable" <+> parens (showExprListDoc style [e])
+    ContractIsolated e           => "isolated" <+> parens (showExprListDoc style [e])
+    ContractProduct first others => "product" <+> parens (showExprListDoc style (first :: forget others))
+    ContractStabilized e terms   =>
+      "stabilized" <+> argumentList
+        (MoreDocs (showExprDoc style e)
+          (MoreDocs (brackets (commaList (mapDocs showSignedPauliTermDoc (forget terms)))) NoDocs))
+
+showContractPredicateDoc : PhasePretty phase => PrettyStyle -> ContractPredicate phase (Expr phase) -> SourceText
+showContractPredicateDoc style (MkAstNode _ _ predicate) = showContractPredicateNodeDoc style predicate
+
+showContractClauseNodeDoc : PhasePretty phase => PrettyStyle -> ContractClauseNode phase (Expr phase) -> SourceText
+showContractClauseNodeDoc style (RequiresClause predicate) = "requires " <+> showContractPredicateDoc style predicate
+showContractClauseNodeDoc style (EnsuresClause predicate)  = "ensures " <+> showContractPredicateDoc style predicate
+
+showContractClauseDoc : PhasePretty phase => PrettyStyle -> ContractClause phase (Expr phase) -> SourceText
+showContractClauseDoc style (MkAstNode _ _ clause) = showContractClauseNodeDoc style clause
+
+--------------------------------------------------------------------------------
+-- Functions
+--------------------------------------------------------------------------------
+
+showFunctionParameterNodeDoc : PhasePretty phase => PrettyStyle -> FunctionParameterNode phase -> SourceText
+showFunctionParameterNodeDoc style parameter =
+  case parameter of
+    NormalParameter docs mutability name ty =>
+      docsPrefix docs <+> locatedModifier mutability <+> showNameDoc name <+> ": " <+> showTyDoc style ty
+    ReceiverParameter docs Nothing => docsPrefix docs <+> "self"
+    ReceiverParameter docs (Just (MkAstNode _ _ borrow)) => docsPrefix docs <+> showBorrowPrefixed borrow "self"
+
+showFunctionParameterDoc : PhasePretty phase => PrettyStyle -> FunctionParameter phase -> SourceText
+showFunctionParameterDoc style (MkAstNode _ _ parameter) = showFunctionParameterNodeDoc style parameter
+
+showFunctionDeclarationNodeDoc : PhasePretty phase => PrettyStyle -> FunctionDeclarationNode phase -> SourceText
+showFunctionDeclarationNodeDoc style
+    (MkFunctionDeclarationNode docs attrs visibility constness effect name params result supports contracts body) =
+  docsPrefix docs <+> attrsPrefix attrs <+>
+    locatedModifier visibility <+> locatedModifier constness <+> locatedModifier effect <+>
+    "fn " <+> showNameDoc name <+> argumentList (mapDocs (showFunctionParameterDoc style) params) <+>
+    optionalText " -> " (showTyDoc style) result <+>
+    supportsText <+>
+    concatDocs (\clause => " " <+> showContractClauseDoc style clause) contracts <+>
+    " " <+> showBlockDoc style body
+  where
+    supportsText : SourceText
+    supportsText = case supports of
+      [] => ""
+      _  => " supports " <+> commaList (mapDocs (text . show . nodeValue) supports)
+
+public export
+showFunctionDeclarationDoc : PhasePretty phase => PrettyStyle -> FunctionDeclaration phase -> SourceText
+showFunctionDeclarationDoc style (MkAstNode _ _ function) = showFunctionDeclarationNodeDoc style function
+
+--------------------------------------------------------------------------------
+-- struct, enum, qenum, impl, const and use declarations
+--------------------------------------------------------------------------------
+
+-- Docs, attributes, visibility and `<keyword> <name>`: the common head of a
+-- type declaration.
+declarationHeadDoc :
+     PhasePretty phase
+  => List (DocComment phase) -> List (Attribute phase) -> Maybe (AstNode phase VisibilityQualifier)
+  -> SourceText -> Name phase -> SourceText
+declarationHeadDoc docs attrs visibility keyword name =
+  docsPrefix docs <+> attrsPrefix attrs <+> locatedModifier visibility <+> keyword <+> " " <+> showNameDoc name
+
+showStructFieldDoc : PhasePretty phase => PrettyStyle -> AstNode phase (StructFieldNode phase) -> SourceText
+showStructFieldDoc style (MkAstNode _ _ (MkStructFieldNode docs name ty)) =
+  docsPrefix docs <+> showNameDoc name <+> ": " <+> showTyDoc style ty
+
+showStructFieldsDoc : PhasePretty phase => PrettyStyle -> List (AstNode phase (StructFieldNode phase)) -> SourceText
+showStructFieldsDoc style fields = braces (commaList (mapDocs (showStructFieldDoc style) fields))
+
+showStructDeclarationNodeDoc : PhasePretty phase => PrettyStyle -> StructDeclarationNode phase -> SourceText
+showStructDeclarationNodeDoc style (MkStructDeclarationNode docs attrs visibility name fields) =
+  declarationHeadDoc docs attrs visibility "struct" name <+> " " <+> showStructFieldsDoc style fields
+
+showStructDeclarationDoc : PhasePretty phase => PrettyStyle -> StructDeclaration phase -> SourceText
+showStructDeclarationDoc style (MkAstNode _ _ declaration) = showStructDeclarationNodeDoc style declaration
+
+showEnumVariantDoc : PhasePretty phase => PrettyStyle -> AstNode phase (EnumVariantNode phase) -> SourceText
+showEnumVariantDoc style (MkAstNode _ _ (MkEnumVariantNode docs name body)) =
+  docsPrefix docs <+> showNameDoc name <+>
+    (case body of
+       VariantUnit          => ""
+       VariantTuple types   => argumentList (mapDocs (showTyDoc style) (forget types))
+       VariantStruct fields => " " <+> showStructFieldsDoc style fields)
+
+showEnumDeclarationNodeDoc : PhasePretty phase => PrettyStyle -> EnumDeclarationNode phase -> SourceText
+showEnumDeclarationNodeDoc style (MkEnumDeclarationNode docs attrs visibility name variants) =
+  declarationHeadDoc docs attrs visibility "enum" name <+> " " <+>
+    braces (commaList (mapDocs (showEnumVariantDoc style) variants))
+
+showEnumDeclarationDoc : PhasePretty phase => PrettyStyle -> EnumDeclaration phase -> SourceText
+showEnumDeclarationDoc style (MkAstNode _ _ declaration) = showEnumDeclarationNodeDoc style declaration
+
+showQEnumVariantDoc : PhasePretty phase => PrettyStyle -> AstNode phase (QEnumVariantNode phase) -> SourceText
+showQEnumVariantDoc style (MkAstNode _ _ (MkQEnumVariantNode docs name payload)) =
+  docsPrefix docs <+> showNameDoc name <+> argumentList (mapDocs (showTyDoc style) (forget payload))
+
+showQEnumDeclarationNodeDoc : PhasePretty phase => PrettyStyle -> QEnumDeclarationNode phase -> SourceText
+showQEnumDeclarationNodeDoc style (MkQEnumDeclarationNode docs attrs visibility name variants) =
+  declarationHeadDoc docs attrs visibility "qenum" name <+> " " <+>
+    braces (commaList (mapDocs (showQEnumVariantDoc style) variants))
+
+showQEnumDeclarationDoc : PhasePretty phase => PrettyStyle -> QEnumDeclaration phase -> SourceText
+showQEnumDeclarationDoc style (MkAstNode _ _ declaration) = showQEnumDeclarationNodeDoc style declaration
+
+showImplDeclarationNodeDoc : PhasePretty phase => PrettyStyle -> ImplDeclarationNode phase -> SourceText
+showImplDeclarationNodeDoc style (MkImplDeclarationNode docs target functions) =
+  docsPrefix docs <+> "impl " <+> showPathDoc target <+> " " <+>
+    braces (joinWith " " (mapDocs (showFunctionDeclarationDoc style) functions))
+
+showImplDeclarationDoc : PhasePretty phase => PrettyStyle -> ImplDeclaration phase -> SourceText
+showImplDeclarationDoc style (MkAstNode _ _ declaration) = showImplDeclarationNodeDoc style declaration
+
+showConstDeclarationNodeDoc : PhasePretty phase => PrettyStyle -> ConstDeclarationNode phase -> SourceText
+showConstDeclarationNodeDoc style (MkConstDeclarationNode docs visibility name ty value) =
+  declarationHeadDoc docs [] visibility "const" name <+> ": " <+> showTyDoc style ty <+>
+    " = " <+> showExprDoc style value <+> ";"
+
+showConstDeclarationDoc : PhasePretty phase => PrettyStyle -> ConstDeclaration phase -> SourceText
+showConstDeclarationDoc style (MkAstNode _ _ declaration) = showConstDeclarationNodeDoc style declaration
+
+showUseDeclarationNodeDoc : PhasePretty phase => PrettyStyle -> UseDeclarationNode phase -> SourceText
+showUseDeclarationNodeDoc style (MkUseDeclarationNode docs visibility path alias) =
+  docsPrefix docs <+> locatedModifier visibility <+> "use " <+> showPathDoc path <+>
+    optionalText " as " showPlainNameDoc alias <+> ";"
+
+showUseDeclarationDoc : PhasePretty phase => PrettyStyle -> UseDeclaration phase -> SourceText
+showUseDeclarationDoc style (MkAstNode _ _ declaration) = showUseDeclarationNodeDoc style declaration
+
+--------------------------------------------------------------------------------
+-- Modules and items (recursive group, through inline module bodies)
 --------------------------------------------------------------------------------
 
 mutual
+  showModuleDeclarationNodeDoc : PhasePretty phase => PrettyStyle -> ModuleDeclarationNode phase -> SourceText
+  showModuleDeclarationNodeDoc style (MkModuleDeclarationNode docs visibility name body) =
+    declarationHeadDoc docs [] visibility "mod" name <+>
+      (case body of
+         ModuleInline innerDocs items =>
+           " " <+> braces (docsPrefix innerDocs <+> joinWith "\n" (showItemListDoc style items))
+         ModuleExternal               => ";")
 
-  showBlockNode : PhasePretty phase => PrettyStyle -> BlockNode phase -> String
-  showBlockNode style (MkBlockNode innerDocs stmts finalE) =
-    let docsStrs  = map showDocComment innerDocs
-        stmtsStrs = showStatementList style stmts
-        tailStrs  = case finalE of
-                      Nothing => []
-                      Just e  => [showExprAt style 0 e]
-        parts     = docsStrs ++ stmtsStrs ++ tailStrs
-    in case parts of
-         [] => "{ }"
-         _  => braces (joinWith " " parts)
-
-  showBlock style (MkAstNode _ _ blk) = showBlockNode style blk
-
-  showStatementNode : PhasePretty phase => PrettyStyle -> StatementNode phase -> String
-  showStatementNode style stmt =
-    case stmt of
-      StatementLet letBinding         => showLetBindingNode style letBinding ++ ";"
-      StatementAssignment assignment  => showAssignmentNode style assignment ++ ";"
-      StatementSemiExpression e       => showExprAt style 0 e ++ ";"
-      StatementExpression e           => showExprAt style 0 e
-
-  public export
-  showStatement : PhasePretty phase => PrettyStyle -> Statement phase -> String
-  showStatement style (MkAstNode _ _ stmt) = showStatementNode style stmt
-
-  showStatementList : PhasePretty phase => PrettyStyle -> List (Statement phase) -> List String
-  showStatementList style []        = []
-  showStatementList style (s :: ss) = showStatement style s :: showStatementList style ss
-
-  showLetBindingNode : PhasePretty phase => PrettyStyle -> LetBindingNode phase -> String
-  showLetBindingNode style (MkLetBindingNode quals pat tyAnn maybeInit) =
-    "let " ++ showQualifiersPrefix quals ++ showPattern pat ++
-      (case tyAnn of
-         Nothing => ""
-         Just t  => ": " ++ showTy style t) ++
-      (case maybeInit of
-         Nothing                                       => ""
-         Just (MkLetInitializerNode (MkAstNode _ _ marker) val) =>
-           " " ++ show marker ++ " " ++ showExprAt style 0 val)
-
-  public export
-  showLetBinding : PhasePretty phase => PrettyStyle -> LetBinding phase -> String
-  showLetBinding style (MkAstNode _ _ lb) = showLetBindingNode style lb
-
-  showAssignmentNode : PhasePretty phase => PrettyStyle -> AssignmentNode phase -> String
-  showAssignmentNode style (MkAssignmentNode (MkAstNode _ _ target) (MkAstNode _ _ op) val) =
-    showAssignmentTargetNode style target ++ " " ++ show op ++ " " ++ showExprAt style 0 val
-
-  showAssignmentTargetNode : PhasePretty phase => PrettyStyle -> AssignmentTargetNode phase -> String
-  showAssignmentTargetNode style target =
-    case target of
-      AssignTargetName nm      => showName nm
-      AssignTargetIndex obj ix =>
-        showExprAt style precPostfix obj ++ "[" ++ showExprAt style 0 ix ++ "]"
-      AssignTargetField obj fld => showExprAt style precPostfix obj ++ "." ++ showMemberName fld
-      AssignTargetTupleIndex obj ix => showExprAt style precPostfix obj ++ "." ++ ix
-
-  public export
-  showAssignmentTarget : PhasePretty phase => PrettyStyle -> AssignmentTarget phase -> String
-  showAssignmentTarget style (MkAstNode _ _ t) = showAssignmentTargetNode style t
-
---------------------------------------------------------------------------------
--- Contracts: requires/ensures clauses and their predicates
---------------------------------------------------------------------------------
-
-mutual
-
-  showContractPredicateNode : PhasePretty phase => PrettyStyle -> ContractPredicateNode phase (Expr phase) -> String
-  showContractPredicateNode style predicate =
-    case predicate of
-      ContractClean e        => "clean(" ++ showExprAt style 0 e ++ ")"
-      ContractBasis e pauli  =>
-        "basis(" ++ showExprAt style 0 e ++ ", " ++ showPauliString pauli ++ ")"
-      ContractSeparable e    => "separable(" ++ showExprAt style 0 e ++ ")"
-      ContractIsolated e     => "isolated(" ++ showExprAt style 0 e ++ ")"
-      ContractProduct e (x ::: xs) =>
-        "product(" ++
-          joinWith ", " (showExprAt style 0 e :: showExprAt style 0 x :: showExprList style xs) ++
-          ")"
-      ContractStabilized e terms =>
-        "stabilized(" ++ showExprAt style 0 e ++ ", [" ++
-          joinWith ", " (map showSignedPauliTerm (forget terms)) ++ "])"
-
-  public export
-  showContractPredicate : PhasePretty phase => PrettyStyle -> ContractPredicate phase (Expr phase) -> String
-  showContractPredicate style (MkAstNode _ _ p) = showContractPredicateNode style p
-
-  showContractClauseNode : PhasePretty phase => PrettyStyle -> ContractClauseNode phase (Expr phase) -> String
-  showContractClauseNode style clause =
-    case clause of
-      RequiresClause p => "requires " ++ showContractPredicate style p
-      EnsuresClause p  => "ensures " ++ showContractPredicate style p
-
-  public export
-  showContractClause : PhasePretty phase => PrettyStyle -> ContractClause phase (Expr phase) -> String
-  showContractClause style (MkAstNode _ _ c) = showContractClauseNode style c
-
-  showContractClauseList : PhasePretty phase => PrettyStyle -> List (ContractClause phase (Expr phase)) -> List String
-  showContractClauseList style []        = []
-  showContractClauseList style (c :: cs) =
-    showContractClause style c :: showContractClauseList style cs
-
---------------------------------------------------------------------------------
--- Function declarations and parameters
---------------------------------------------------------------------------------
-
-mutual
-
-  showFunctionParameterNode : PhasePretty phase => PrettyStyle -> FunctionParameterNode phase -> String
-  showFunctionParameterNode style p =
-    case p of
-      NormalParameter docs mutability nm ty =>
-        docsPrefix docs ++ showMutabilityPrefix mutability ++
-        showName nm ++ ": " ++ showTy style ty
-      ReceiverParameter docs Nothing => docsPrefix docs ++ "self"
-      ReceiverParameter docs (Just (MkAstNode _ _ borrow)) =>
-        docsPrefix docs ++
-          (case borrow of
-             SharedBorrow  => "&self"
-             MutableBorrow => "&mut self")
-
-  public export
-  showFunctionParameter : PhasePretty phase => PrettyStyle -> FunctionParameter phase -> String
-  showFunctionParameter style (MkAstNode _ _ p) = showFunctionParameterNode style p
-
-  showFunctionParameterList : PhasePretty phase => PrettyStyle -> List (FunctionParameter phase) -> List String
-  showFunctionParameterList style []        = []
-  showFunctionParameterList style (p :: ps) =
-    showFunctionParameter style p :: showFunctionParameterList style ps
-
-  showFunctionDeclarationNode : PhasePretty phase => PrettyStyle -> FunctionDeclarationNode phase -> String
-  showFunctionDeclarationNode style
-    (MkFunctionDeclarationNode docs attrs vis constness effect nm params retTy supports contracts body) =
-    let visibilityStr = case vis of
-                          Nothing                       => ""
-                          Just (MkAstNode _ _ visibility) => visPrefix visibility
-        effectStr = case effect of
-                      Nothing                        => ""
-                      Just (MkAstNode _ _ eff)  => show eff ++ " "
-        constStr    = case constness of
-                        Nothing                         => ""
-                        Just (MkAstNode _ _ qualifier) => show qualifier ++ " "
-        paramsStr   = joinWith ", " (showFunctionParameterList style params)
-        retStr      = case retTy of
-                        Nothing => ""
-                        Just t  => " -> " ++ showTy style t
-        supportsStr = case supports of
-                        [] => ""
-                        _  => " supports " ++
-                              joinWith ", " (map (\(MkAstNode _ _ k) => show k) supports)
-        contractsStr = concatMap (\c => " " ++ c) (showContractClauseList style contracts)
-    in docsPrefix docs ++ attrsPrefix attrs ++ visibilityStr ++ constStr ++ effectStr ++
-       "fn " ++ showName nm ++ "(" ++ paramsStr ++ ")" ++ retStr ++ supportsStr ++
-       contractsStr ++ " " ++ showBlock style body
-
-  public export
-  showFunctionDeclaration : PhasePretty phase => PrettyStyle -> FunctionDeclaration phase -> String
-  showFunctionDeclaration style (MkAstNode _ _ fd) = showFunctionDeclarationNode style fd
-
-  showImplFunctionList :
-       PhasePretty phase => PrettyStyle -> List (FunctionDeclaration phase) -> List String
-  showImplFunctionList style []        = []
-  showImplFunctionList style (MkAstNode _ _ fd :: rest) =
-    showFunctionDeclarationNode style fd :: showImplFunctionList style rest
-
---------------------------------------------------------------------------------
--- struct / enum / qenum declarations
---------------------------------------------------------------------------------
-
-mutual
-
-  showStructField : PhasePretty phase => PrettyStyle -> AstNode phase (StructFieldNode phase) -> String
-  showStructField style (MkAstNode _ _ (MkStructFieldNode docs nm ty)) =
-    docsPrefix docs ++ showName nm ++ ": " ++ showTy style ty
-
-  showStructFieldList :
-       PhasePretty phase => PrettyStyle -> List (AstNode phase (StructFieldNode phase)) -> List String
-  showStructFieldList style []        = []
-  showStructFieldList style (f :: fs) = showStructField style f :: showStructFieldList style fs
-
-  showStructDeclarationNode : PhasePretty phase => PrettyStyle -> StructDeclarationNode phase -> String
-  showStructDeclarationNode style (MkStructDeclarationNode docs attrs vis nm fields) =
-    docsPrefix docs ++ attrsPrefix attrs ++ optionalVisPrefix vis ++ "struct " ++ showName nm ++
-      " " ++ braces (joinWith ", " (showStructFieldList style fields))
-
-  public export
-  showStructDeclaration : PhasePretty phase => PrettyStyle -> StructDeclaration phase -> String
-  showStructDeclaration style (MkAstNode _ _ sd) = showStructDeclarationNode style sd
-
-  showEnumVariantBody : PhasePretty phase => PrettyStyle -> EnumVariantBody phase -> String
-  showEnumVariantBody style body =
-    case body of
-      VariantUnit          => ""
-      VariantTuple tys      => parens (joinWith ", " (showTyList1 style tys))
-      VariantStruct fields   => " " ++ braces (joinWith ", " (showStructFieldList style fields))
-
-  showEnumVariant : PhasePretty phase => PrettyStyle -> AstNode phase (EnumVariantNode phase) -> String
-  showEnumVariant style (MkAstNode _ _ (MkEnumVariantNode docs nm body)) =
-    docsPrefix docs ++ showName nm ++ showEnumVariantBody style body
-
-  showEnumVariantList :
-       PhasePretty phase => PrettyStyle -> List (AstNode phase (EnumVariantNode phase)) -> List String
-  showEnumVariantList style []        = []
-  showEnumVariantList style (v :: vs) = showEnumVariant style v :: showEnumVariantList style vs
-
-  showEnumDeclarationNode : PhasePretty phase => PrettyStyle -> EnumDeclarationNode phase -> String
-  showEnumDeclarationNode style (MkEnumDeclarationNode docs attrs vis nm variants) =
-    docsPrefix docs ++ attrsPrefix attrs ++ optionalVisPrefix vis ++ "enum " ++ showName nm ++
-      " " ++ braces (joinWith ", " (showEnumVariantList style variants))
-
-  public export
-  showEnumDeclaration : PhasePretty phase => PrettyStyle -> EnumDeclaration phase -> String
-  showEnumDeclaration style (MkAstNode _ _ ed) = showEnumDeclarationNode style ed
-
-  showQEnumVariant : PhasePretty phase => PrettyStyle -> AstNode phase (QEnumVariantNode phase) -> String
-  showQEnumVariant style (MkAstNode _ _ (MkQEnumVariantNode docs nm payloadTys)) =
-    docsPrefix docs ++ showName nm ++ parens (joinWith ", " (showTyList1 style payloadTys))
-
-  showQEnumVariantList :
-       PhasePretty phase => PrettyStyle -> List (AstNode phase (QEnumVariantNode phase)) -> List String
-  showQEnumVariantList style []        = []
-  showQEnumVariantList style (v :: vs) = showQEnumVariant style v :: showQEnumVariantList style vs
-
-  showQEnumDeclarationNode : PhasePretty phase => PrettyStyle -> QEnumDeclarationNode phase -> String
-  showQEnumDeclarationNode style (MkQEnumDeclarationNode docs attrs vis nm variants) =
-    docsPrefix docs ++ attrsPrefix attrs ++ optionalVisPrefix vis ++ "qenum " ++ showName nm ++
-      " " ++ braces (joinWith ", " (showQEnumVariantList style variants))
-
-  public export
-  showQEnumDeclaration : PhasePretty phase => PrettyStyle -> QEnumDeclaration phase -> String
-  showQEnumDeclaration style (MkAstNode _ _ qd) = showQEnumDeclarationNode style qd
-
---------------------------------------------------------------------------------
--- impl / const / use declarations
---------------------------------------------------------------------------------
-
-mutual
-
-  showImplDeclarationNode : PhasePretty phase => PrettyStyle -> ImplDeclarationNode phase -> String
-  showImplDeclarationNode style (MkImplDeclarationNode docs target fns) =
-    docsPrefix docs ++ "impl " ++ showPath target ++ " " ++
-      braces (joinWith " " (showImplFunctionList style fns))
-
-  public export
-  showImplDeclaration : PhasePretty phase => PrettyStyle -> ImplDeclaration phase -> String
-  showImplDeclaration style (MkAstNode _ _ impl) = showImplDeclarationNode style impl
-
-  showConstDeclarationNode : PhasePretty phase => PrettyStyle -> ConstDeclarationNode phase -> String
-  showConstDeclarationNode style (MkConstDeclarationNode docs vis nm ty val) =
-    docsPrefix docs ++ optionalVisPrefix vis ++ "const " ++ showName nm ++ ": " ++ showTy style ty ++
-      " = " ++ showExprAt style 0 val ++ ";"
-
-  public export
-  showConstDeclaration : PhasePretty phase => PrettyStyle -> ConstDeclaration phase -> String
-  showConstDeclaration style (MkAstNode _ _ cd) = showConstDeclarationNode style cd
-
-  showUseDeclarationNode : PhasePretty phase => PrettyStyle -> UseDeclarationNode phase -> String
-  showUseDeclarationNode style (MkUseDeclarationNode docs vis path alias) =
-    docsPrefix docs ++ optionalVisPrefix vis ++ "use " ++ showPath path ++
-      maybe "" (\name => " as " ++ showPlainName name) alias ++ ";"
-
-  public export
-  showUseDeclaration : PhasePretty phase => PrettyStyle -> UseDeclaration phase -> String
-  showUseDeclaration style (MkAstNode _ _ ud) = showUseDeclarationNode style ud
-
---------------------------------------------------------------------------------
--- Modules and items are mutually recursive through inline module bodies.
---------------------------------------------------------------------------------
-
-mutual
-
-  showModuleDeclarationNode : PhasePretty phase => PrettyStyle -> ModuleDeclarationNode phase -> String
-  showModuleDeclarationNode style (MkModuleDeclarationNode docs vis nm body) =
-    docsPrefix docs ++ optionalVisPrefix vis ++ "mod " ++ showName nm ++ showModuleBody style body
-
-  showModuleBody : PhasePretty phase => PrettyStyle -> ModuleBody phase -> String
-  showModuleBody style body =
-    case body of
-      ModuleInline innerDocs items =>
-        " " ++ braces (joinWith "\n" (map showDocComment innerDocs ++ showItemList style items))
-      ModuleExternal => ";"
-
-  public export
-  showModuleDeclaration : PhasePretty phase => PrettyStyle -> ModuleDeclaration phase -> String
-  showModuleDeclaration style (MkAstNode _ _ md) = showModuleDeclarationNode style md
-
-  ------------------------------------------------------------------
-  -- Items
-  ------------------------------------------------------------------
-
-  showItemNode : PhasePretty phase => PrettyStyle -> ItemNode phase -> String
-  showItemNode style item =
+  showItemNodeDoc : PhasePretty phase => PrettyStyle -> ItemNode phase -> SourceText
+  showItemNodeDoc style item =
     case item of
-      ItemFunction fd => showFunctionDeclarationNode style fd
-      ItemStruct sd   => showStructDeclarationNode style sd
-      ItemEnum ed     => showEnumDeclarationNode style ed
-      ItemQEnum qd    => showQEnumDeclarationNode style qd
-      ItemImpl impl   => showImplDeclarationNode style impl
-      ItemConst cd    => showConstDeclarationNode style cd
-      ItemUse ud      => showUseDeclarationNode style ud
-      ItemModule md   => showModuleDeclarationNode style md
+      ItemFunction declaration => showFunctionDeclarationNodeDoc style declaration
+      ItemStruct declaration   => showStructDeclarationNodeDoc style declaration
+      ItemEnum declaration     => showEnumDeclarationNodeDoc style declaration
+      ItemQEnum declaration    => showQEnumDeclarationNodeDoc style declaration
+      ItemImpl declaration     => showImplDeclarationNodeDoc style declaration
+      ItemConst declaration    => showConstDeclarationNodeDoc style declaration
+      ItemUse declaration      => showUseDeclarationNodeDoc style declaration
+      ItemModule declaration   => showModuleDeclarationNodeDoc style declaration
 
-  public export
-  showItem : PhasePretty phase => PrettyStyle -> Item phase -> String
-  showItem style (MkAstNode _ _ item) = showItemNode style item
+  export
+  showItemDoc : PhasePretty phase => PrettyStyle -> Item phase -> SourceText
+  showItemDoc style (MkAstNode _ _ item) = showItemNodeDoc style item
 
-  showItemList : PhasePretty phase => PrettyStyle -> List (Item phase) -> List String
-  showItemList style []        = []
-  showItemList style (i :: is) = showItem style i :: showItemList style is
+  showItemListDoc : PhasePretty phase => PrettyStyle -> List (Item phase) -> SourceDocs
+  showItemListDoc style []              = NoDocs
+  showItemListDoc style (item :: items) = MoreDocs (showItemDoc style item) (showItemListDoc style items)
 
---------------------------------------------------------------------------------
--- Source files
---------------------------------------------------------------------------------
+showModuleDeclarationDoc : PhasePretty phase => PrettyStyle -> ModuleDeclaration phase -> SourceText
+showModuleDeclarationDoc style (MkAstNode _ _ declaration) = showModuleDeclarationNodeDoc style declaration
 
-mutual
+showSourceFileNodeDoc : PhasePretty phase => PrettyStyle -> SourceFileNode phase -> SourceText
+showSourceFileNodeDoc style (MkSourceFileNode innerDocs items) =
+  joinWith "\n" (appendDocs (mapDocs showDocCommentDoc innerDocs) (showItemListDoc style items))
 
-  showSourceFileNode : PhasePretty phase => PrettyStyle -> SourceFileNode phase -> String
-  showSourceFileNode style (MkSourceFileNode innerDocs items) =
-    joinWith "\n" (map showDocComment innerDocs ++ showItemList style items)
-
-  public export
-  showSourceFile : PhasePretty phase => PrettyStyle -> SourceFile phase -> String
-  showSourceFile style (MkAstNode _ _ sf) = showSourceFileNode style sf
+showSourceFileDoc : PhasePretty phase => PrettyStyle -> SourceFile phase -> SourceText
+showSourceFileDoc style (MkAstNode _ _ sourceFile) = showSourceFileNodeDoc style sourceFile
 
 --------------------------------------------------------------------------------
--- Public convenience wrappers
+-- String printers: one per syntactic category, for diagnostics and tests.
+--------------------------------------------------------------------------------
+
+public export
+showPattern : PhasePretty phase => Pattern phase -> String
+showPattern value = renderSource (showPatternDoc value)
+
+public export
+showQuantumMatchPattern : PhasePretty phase => QuantumMatchPattern phase -> String
+showQuantumMatchPattern value = renderSource (showQuantumMatchPatternDoc value)
+
+public export
+showBlock : PhasePretty phase => PrettyStyle -> Block phase -> String
+showBlock style value = renderSource (showBlockDoc style value)
+
+public export
+showExpr : PhasePretty phase => PrettyStyle -> Expr phase -> String
+showExpr style value = renderSource (showExprDoc style value)
+
+public export
+showTy : PhasePretty phase => PrettyStyle -> Ty phase (Expr phase) -> String
+showTy style value = renderSource (showTyDoc style value)
+
+public export
+showClassicalMatchArm : PhasePretty phase => PrettyStyle -> ClassicalMatchArm phase -> String
+showClassicalMatchArm style value = renderSource (showClassicalMatchArmDoc style value)
+
+public export
+showQuantumMatchArm : PhasePretty phase => PrettyStyle -> QuantumMatchArm phase -> String
+showQuantumMatchArm style value = renderSource (showQuantumMatchArmDoc style value)
+
+public export
+showAssignmentTarget : PhasePretty phase => PrettyStyle -> AssignmentTarget phase -> String
+showAssignmentTarget style value = renderSource (showAssignmentTargetDoc style value)
+
+public export
+showLetBinding : PhasePretty phase => PrettyStyle -> LetBinding phase -> String
+showLetBinding style value = renderSource (showLetBindingDoc style value)
+
+public export
+showStatement : PhasePretty phase => PrettyStyle -> Statement phase -> String
+showStatement style value = renderSource (showStatementDoc style value)
+
+public export
+showContractPredicate : PhasePretty phase => PrettyStyle -> ContractPredicate phase (Expr phase) -> String
+showContractPredicate style value = renderSource (showContractPredicateDoc style value)
+
+public export
+showContractClause : PhasePretty phase => PrettyStyle -> ContractClause phase (Expr phase) -> String
+showContractClause style value = renderSource (showContractClauseDoc style value)
+
+public export
+showFunctionParameter : PhasePretty phase => PrettyStyle -> FunctionParameter phase -> String
+showFunctionParameter style value = renderSource (showFunctionParameterDoc style value)
+
+public export
+showFunctionDeclaration : PhasePretty phase => PrettyStyle -> FunctionDeclaration phase -> String
+showFunctionDeclaration style value = renderSource (showFunctionDeclarationDoc style value)
+
+public export
+showStructDeclaration : PhasePretty phase => PrettyStyle -> StructDeclaration phase -> String
+showStructDeclaration style value = renderSource (showStructDeclarationDoc style value)
+
+public export
+showEnumDeclaration : PhasePretty phase => PrettyStyle -> EnumDeclaration phase -> String
+showEnumDeclaration style value = renderSource (showEnumDeclarationDoc style value)
+
+public export
+showQEnumDeclaration : PhasePretty phase => PrettyStyle -> QEnumDeclaration phase -> String
+showQEnumDeclaration style value = renderSource (showQEnumDeclarationDoc style value)
+
+public export
+showImplDeclaration : PhasePretty phase => PrettyStyle -> ImplDeclaration phase -> String
+showImplDeclaration style value = renderSource (showImplDeclarationDoc style value)
+
+public export
+showConstDeclaration : PhasePretty phase => PrettyStyle -> ConstDeclaration phase -> String
+showConstDeclaration style value = renderSource (showConstDeclarationDoc style value)
+
+public export
+showUseDeclaration : PhasePretty phase => PrettyStyle -> UseDeclaration phase -> String
+showUseDeclaration style value = renderSource (showUseDeclarationDoc style value)
+
+public export
+showItem : PhasePretty phase => PrettyStyle -> Item phase -> String
+showItem style value = renderSource (showItemDoc style value)
+
+public export
+showModuleDeclaration : PhasePretty phase => PrettyStyle -> ModuleDeclaration phase -> String
+showModuleDeclaration style value = renderSource (showModuleDeclarationDoc style value)
+
+public export
+showSourceFile : PhasePretty phase => PrettyStyle -> SourceFile phase -> String
+showSourceFile style value = renderSource (showSourceFileDoc style value)
+
+--------------------------------------------------------------------------------
+-- Convenience wrappers
 --------------------------------------------------------------------------------
 
 public export
@@ -1125,127 +1311,95 @@ showSourceFileStrict : PhasePretty phase => SourceFile phase -> String
 showSourceFileStrict = showSourceFile PrettyStrict
 
 public export
-showExprLax : PhasePretty phase => Expr phase -> String
-showExprLax = showExprAt PrettyLax 0
-
-public export
 showExprStrict : PhasePretty phase => Expr phase -> String
-showExprStrict = showExprAt PrettyStrict 0
-
-public export
-showBlockLax : PhasePretty phase => Block phase -> String
-showBlockLax = showBlock PrettyLax
-
-public export
-showBlockStrict : PhasePretty phase => Block phase -> String
-showBlockStrict = showBlock PrettyStrict
-
-public export
-showItemLax : PhasePretty phase => Item phase -> String
-showItemLax = showItem PrettyLax
-
-public export
-showItemStrict : PhasePretty phase => Item phase -> String
-showItemStrict = showItem PrettyStrict
-
-public export
-showTyLax : PhasePretty phase => Ty phase (Expr phase) -> String
-showTyLax = showTy PrettyLax
-
-public export
-showTyStrict : PhasePretty phase => Ty phase (Expr phase) -> String
-showTyStrict = showTy PrettyStrict
+showExprStrict = showExpr PrettyStrict
 
 --------------------------------------------------------------------------------
--- Show instances on the raw (un-located) payload types. Compiler.Frontend.ASTPhases
--- implements `Show a => Show (AstNode phase a)` generically by printing
--- `value` alone and skipping AstInfo/metadata -- so giving each raw type
--- below a Show instance is enough for every located alias in
--- Compiler.Frontend.Syntax.AST to be `Show` automatically, always in PrettyLax style
--- and for any phase with a `PhasePretty` instance. Call showXxxStrict (or the
--- showXxx style-taking functions above) directly when strict style is wanted.
+-- Show instances on the raw payload types, in lax style. ASTPhases shows an
+-- AstNode by showing its payload, so every located alias in Syntax.AST is
+-- `Show` too. Use the style-taking printers above for strict output.
 --------------------------------------------------------------------------------
 
 public export
 PhasePretty phase => Show (ExpressionNode phase) where
-  show = showExpressionNode PrettyLax
+  show = renderSource . showExpressionNodeDoc PrettyLax
 
 public export
 PhasePretty phase => Show (BlockNode phase) where
-  show = showBlockNode PrettyLax
+  show = renderSource . showBlockNodeDoc PrettyLax
 
 public export
 PhasePretty phase => Show (StatementNode phase) where
-  show = showStatementNode PrettyLax
+  show = renderSource . showStatementNodeDoc PrettyLax
 
 public export
 PhasePretty phase => Show (ItemNode phase) where
-  show = showItemNode PrettyLax
+  show = renderSource . showItemNodeDoc PrettyLax
 
 public export
 PhasePretty phase => Show (TyNode phase (Expr phase)) where
-  show = showTyNode PrettyLax
+  show = renderSource . showTyNodeDoc PrettyLax
 
 public export
 PhasePretty phase => Show (ContractClauseNode phase (Expr phase)) where
-  show = showContractClauseNode PrettyLax
+  show = renderSource . showContractClauseNodeDoc PrettyLax
 
 public export
 PhasePretty phase => Show (ContractPredicateNode phase (Expr phase)) where
-  show = showContractPredicateNode PrettyLax
+  show = renderSource . showContractPredicateNodeDoc PrettyLax
 
 public export
 PhasePretty phase => Show (SourceFileNode phase) where
-  show = showSourceFileNode PrettyLax
+  show = renderSource . showSourceFileNodeDoc PrettyLax
 
 public export
 PhasePretty phase => Show (FunctionDeclarationNode phase) where
-  show = showFunctionDeclarationNode PrettyLax
+  show = renderSource . showFunctionDeclarationNodeDoc PrettyLax
 
 public export
 PhasePretty phase => Show (FunctionParameterNode phase) where
-  show = showFunctionParameterNode PrettyLax
+  show = renderSource . showFunctionParameterNodeDoc PrettyLax
 
 public export
 PhasePretty phase => Show (StructDeclarationNode phase) where
-  show = showStructDeclarationNode PrettyLax
+  show = renderSource . showStructDeclarationNodeDoc PrettyLax
 
 public export
 PhasePretty phase => Show (EnumDeclarationNode phase) where
-  show = showEnumDeclarationNode PrettyLax
+  show = renderSource . showEnumDeclarationNodeDoc PrettyLax
 
 public export
 PhasePretty phase => Show (QEnumDeclarationNode phase) where
-  show = showQEnumDeclarationNode PrettyLax
+  show = renderSource . showQEnumDeclarationNodeDoc PrettyLax
 
 public export
 PhasePretty phase => Show (ImplDeclarationNode phase) where
-  show = showImplDeclarationNode PrettyLax
+  show = renderSource . showImplDeclarationNodeDoc PrettyLax
 
 public export
 PhasePretty phase => Show (ConstDeclarationNode phase) where
-  show = showConstDeclarationNode PrettyLax
+  show = renderSource . showConstDeclarationNodeDoc PrettyLax
 
 public export
 PhasePretty phase => Show (UseDeclarationNode phase) where
-  show = showUseDeclarationNode PrettyLax
+  show = renderSource . showUseDeclarationNodeDoc PrettyLax
 
 public export
 PhasePretty phase => Show (ModuleDeclarationNode phase) where
-  show = showModuleDeclarationNode PrettyLax
+  show = renderSource . showModuleDeclarationNodeDoc PrettyLax
 
 public export
 PhasePretty phase => Show (LetBindingNode phase) where
-  show = showLetBindingNode PrettyLax
+  show = renderSource . showLetBindingNodeDoc PrettyLax
 
 public export
 PhasePretty phase => Show (AssignmentTargetNode phase) where
-  show = showAssignmentTargetNode PrettyLax
+  show = renderSource . showAssignmentTargetNodeDoc PrettyLax
 
 public export
 PhasePretty phase => Show (ClassicalMatchArmNode phase) where
-  show = showClassicalMatchArmNode PrettyLax
+  show = renderSource . showClassicalMatchArmNodeDoc PrettyLax
 
 public export
 PhasePretty phase => Show (QuantumMatchArmNode phase) where
-  show = showQuantumMatchArmNode PrettyLax
+  show = renderSource . showQuantumMatchArmNodeDoc PrettyLax
