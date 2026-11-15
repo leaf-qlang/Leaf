@@ -54,3 +54,7 @@ Useful commands:
 - Run tests using the command used by CI: `pack -v test leaf`
 
 Keep the current the library dependencies, the code layout and the code conventions for both production and test code. Whenever in doubt ask.
+
+All code edits you should respect the clean code principles and common clean code practices. In general I prefer slightly longer but more explicit names to short ones. Avoid introducing helper functions for trivial one line code fragments unless you really believe this will significantly improve code readbility and ease of undestanding. The names of helper functions should describe explicitely what the function is doing. As I already said, longer names are fine with me.
+
+
