@@ -42,6 +42,7 @@ data TcType
   | TcFunctionType FunctionEffect (List SupportKind) (List TcType) TcType
   | TcQualifiedType TcQuantumUsage TcType
   | TcNeverType
+  | TcStringLiteralType
   | TcVariable Nat                     -- an unsuffixed literal's type, {integer} or {float}, Nat identifies an entry in InferenceState.variables.
 
 public export

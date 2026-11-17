@@ -180,7 +180,7 @@ symbolMatches resolved name scope kind origin =
     Nothing => False
     Just symbol => symbol.symbolId == symbolId name &&
       symbol.declaredName == name.nodeValue.nameNodeText &&
-      symbol.declaringScope == scope && symbol.declaringModule == resolved.rootModule &&
+      symbol.declaringScope == scope && symbol.declaringModule == resolved.rootSymbolId &&
       kindText symbol.symbolKind == kind &&
       (case symbol.origin of
          SourceSymbol info => info.nodeId == origin.nodeId && spanKey info.span == spanKey origin.span
@@ -395,7 +395,7 @@ export
 duplicateDeclaration : String -> String -> String -> (Nat, Nat, Nat, Nat) -> Either String Bool
 duplicateDeclaration first second name expectedSpan = do
   expected <- checkSource first $ \resolved => do
-    root <- lookup resolved.rootScope resolved.tables.scopes
+    root <- lookup resolved.rootScopeId resolved.tables.scopes
     binding <- lookup name root.valueBindings
     previousSpan <- binding.introducedAt
     pure (binding.target, spanKey previousSpan)

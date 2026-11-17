@@ -252,6 +252,10 @@ referenceLifetimeTests = Test.do
     typeCheckOutcome "fn f() -> &i32 { let x = 5; &x }"
       `shouldBe` rejectedWith (EscapingReference (spanAt 1 29))
 
+  test "a const fn cannot return a reference to its local" $
+    typeCheckOutcome "const fn r() -> &u32 { let x = 5; &x }"
+      `shouldBe` rejectedWith (EscapingReference (spanAt 1 35))
+
   test "a reference to a local cannot escape inside a tuple" $
     typeCheckOutcome "fn f(a: &i32) -> (i32, &i32) { let x = 1; (x, &x) }"
       `shouldBe` rejectedWith (EscapingReference (spanAt 1 47))

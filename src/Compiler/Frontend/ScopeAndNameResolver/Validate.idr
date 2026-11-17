@@ -206,33 +206,33 @@ memberScopeMatches _ _ = False
 
 validateRoots : ResolvedModule -> List ResolutionInvariantError
 validateRoots resolved =
-  let symbolErrors = case lookup resolved.rootModule resolved.tables.symbols of
-        Nothing => [MissingRootModule resolved.rootModule]
-        Just symbol => check (isModule symbol.symbolKind) (InvalidRootModule resolved.rootModule)
-      scopeErrors = case lookup resolved.rootScope resolved.tables.scopes of
-        Nothing => [MissingRootScope resolved.rootScope]
+  let symbolErrors = case lookup resolved.rootSymbolId resolved.tables.symbols of
+        Nothing => [MissingRootModule resolved.rootSymbolId]
+        Just symbol => check (isModule symbol.symbolKind) (InvalidRootModule resolved.rootSymbolId)
+      scopeErrors = case lookup resolved.rootScopeId resolved.tables.scopes of
+        Nothing => [MissingRootScope resolved.rootScopeId]
         Just scope => case scope.kind of
           ModuleScope => []
-          _ => [InvalidRootScope resolved.rootScope]
+          _ => [InvalidRootScope resolved.rootScopeId]
   in symbolErrors ++ scopeErrors
 
 -- Check the final StateT cursor, without cascading when a root is already invalid.
 validateFinalState : ResolvedModule -> List ResolutionInvariantError
 validateFinalState resolved =
-  let scopeErrors = case lookup resolved.rootScope resolved.tables.scopes of
+  let scopeErrors = case lookup resolved.rootScopeId resolved.tables.scopes of
         Just scope => case scope.kind of
           ModuleScope =>
-            check (resolved.tables.currentScope == resolved.rootScope)
-                  (UnrestoredCurrentScope resolved.rootScope resolved.tables.currentScope) ++
+            check (resolved.tables.currentScope == resolved.rootScopeId)
+                  (UnrestoredCurrentScope resolved.rootScopeId resolved.tables.currentScope) ++
             (case resolved.tables.currentScopeKind of
                ModuleScope => []
-               _ => [InvalidCurrentScopeKind resolved.rootScope])
+               _ => [InvalidCurrentScopeKind resolved.rootScopeId])
           _ => []
         Nothing => []
-      moduleErrors = case lookup resolved.rootModule resolved.tables.symbols of
+      moduleErrors = case lookup resolved.rootSymbolId resolved.tables.symbols of
         Just symbol => if isModule symbol.symbolKind
-          then check (resolved.tables.currentModule == resolved.rootModule)
-                     (UnrestoredCurrentModule resolved.rootModule resolved.tables.currentModule)
+          then check (resolved.tables.currentModule == resolved.rootSymbolId)
+                     (UnrestoredCurrentModule resolved.rootSymbolId resolved.tables.currentModule)
           else []
         Nothing => []
       constErrors = case resolved.tables.constContextBoundary of
@@ -253,11 +253,11 @@ validateSymbol resolved declarations (key, symbol) =
   check (key == symbol.symbolId) (SymbolKeyMismatch key symbol.symbolId) ++
   check (hasKey symbol.declaringScope resolved.tables.scopes) (MissingDeclaringScope key symbol.declaringScope) ++
   -- Only the root module may be its own declaring module; see SymbolInfo.
-  check (symbol.declaringModule /= key || key == resolved.rootModule) (SelfDeclaringModule key) ++
+  check (symbol.declaringModule /= key || key == resolved.rootSymbolId) (SelfDeclaringModule key) ++
   -- The root is implicit. Invalid self-declarations and missing scopes already
   -- have diagnostics above. Every other symbol, including shadowed and Prelude
   -- declarations, must occur in its lexical declaring scope's order list.
-  (if key == resolved.rootModule || symbol.declaringModule == key ||
+  (if key == resolved.rootSymbolId || symbol.declaringModule == key ||
       not (hasKey symbol.declaringScope resolved.tables.scopes)
      then []
      else check (hasKey (symbol.declaringScope, key) declarations)

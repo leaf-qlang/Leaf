@@ -29,6 +29,13 @@ let (q1, q2, q3) = weaken(q1, q2, q3);
 let qs = weaken(qs);
 ```
 
+- `weaken` is the only way to turn a linear qubit into an affine one; the conversion never happens implicitly. A linear qubit must be weakened before it is bound with `let affine` or passed to a parameter of type `affine qbit`:
+```leaf
+let q = qalloc();
+let affine a = q;            // error: q is linear
+let affine a = weaken(q);    // a is affine
+```
+
 - Resetting qubits:
 ```leaf
 let q = reset(q);

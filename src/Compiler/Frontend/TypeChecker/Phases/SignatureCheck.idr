@@ -9,6 +9,7 @@ import Compiler.Frontend.ScopeAndNameResolver.Data
 import Compiler.Frontend.TypeChecker.Data
 import Compiler.Frontend.TypeChecker.Helper
 import Compiler.Frontend.TypeChecker.Phases.BodyCheck
+import Compiler.Frontend.TypeChecker.Phases.ConstEval
 import Compiler.Frontend.TypeChecker.State
 import Compiler.Frontend.TypeChecker.Type
 import Compiler.Frontend.ASTData
@@ -57,10 +58,10 @@ checkFunctionDeclaration
         (\parameter =>
           case parameter.nodeValue of
             NormalParameter _ _ _ parameterType => checkTypeIsSized parameterType
-            ReceiverParameter _ _ => unreachable {function = "checkFunctionDeclaration"} {reason = "the parser does yet not produce receiver parameters"}
+            ReceiverParameter _ _ => notImplemented {function = "checkFunctionDeclaration"} {feature = "receiver parameters"}
         ) functionParameters
       traverse_ checkTypeIsSized returnType
-      -- Second pass: evaluate lengths and record the types.
+      -- Second pass: evaluate array lengths and record the types.
       paramLeafTypes <- traverse
         (\parameter =>
           case parameter.nodeValue of
@@ -76,7 +77,7 @@ checkFunctionDeclaration
                       recordParameterStorage nameNodeSymbolId paramLeafType
                     _ => pure ()
               pure paramLeafType
-            ReceiverParameter _ _ => unreachable {function = "checkFunctionDeclaration"} {reason = "the parser does not produce receiver parameters"}
+            ReceiverParameter _ _ => notImplemented {function = "checkFunctionDeclaration"} {feature = "receiver parameters"}
         ) functionParameters
       returnLeafType <- case returnType of
         Just resolvedTy => writtenLeafTypeM evalConstExprNat resolvedTy

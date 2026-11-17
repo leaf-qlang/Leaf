@@ -57,7 +57,7 @@ runPreludeFunctionsResolutionTests = runTests $ Test.do
 
   test "prelude registration creates no source occurrences or locals" $
     (do resolved <- resolvedSource ""
-        root <- lookup resolved.rootScope resolved.tables.scopes
+        root <- lookup resolved.rootScopeId resolved.tables.scopes
         pure (length (SortedMap.toList resolved.tables.references),
               length (SortedMap.toList resolved.tables.nodeScopes),
               length (SortedMap.toList resolved.tables.localVarsMeta),

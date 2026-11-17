@@ -224,7 +224,7 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
       gxOK <- useMatches resolved gx gxExpr
       pure (xOK && yOK && gxOK && symbolId x /= symbolId gx &&
             fScope.id /= gScope.id && fBody.parent == Just fScope.id &&
-            fScope.parent == Just resolved.rootScope && gScope.parent == Just resolved.rootScope &&
+            fScope.parent == Just resolved.rootScopeId && gScope.parent == Just resolved.rootScopeId &&
             (case fScope.kind of FunctionScope => True; _ => False) &&
             (case gScope.kind of FunctionScope => True; _ => False) &&
             bindingMatches fScope x && bindingMatches fScope y && bindingMatches gScope gx &&
@@ -474,15 +474,15 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
       privateSymbol <- lookup (symbolId privateFn.functionName) resolved.tables.symbols
       use <- exprAt 0 fn.functionBody
       useOK <- useMatches resolved con.constName use
-      pure (useOK && symbolMatches resolved con.constName resolved.rootScope "constant" constInfo &&
-            symbolMatches resolved fn.functionName resolved.rootScope "function" fnInfo &&
+      pure (useOK && symbolMatches resolved con.constName resolved.rootScopeId "constant" constInfo &&
+            symbolMatches resolved fn.functionName resolved.rootScopeId "function" fnInfo &&
             (case constantSymbol.visibility of PublicVisibility => True; _ => False) &&
             (case functionSymbol.visibility of PublicVisibility => True; _ => False) &&
             (case privateSymbol.visibility of ModuleVisibility => True; _ => False) &&
             all (\name => isNothing (lookup (symbolId name) resolved.tables.localVarsMeta))
               [con.constName, fn.functionName, privateFn.functionName] &&
-            resolved.tables.currentScope == resolved.rootScope &&
-            resolved.tables.currentModule == resolved.rootModule &&
+            resolved.tables.currentScope == resolved.rootScopeId &&
+            resolved.tables.currentModule == resolved.rootSymbolId &&
             (case resolved.tables.currentScopeKind of ModuleScope => True; _ => False))) `shouldBe` Right True
 
   test "self-initialization without an outer binding is unresolved" $
@@ -730,7 +730,7 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
               [referenceType, tupleType, arrayType, elementType, sliceReference, sliceType, sliceElement, returnType, returnElement] &&
             all (nodeHasScope resolved bodyScope.id) [localType, localElement] &&
             all (nodeHasScope resolved bodyScope.id) [init, zero] &&
-            nodeHasScope resolved resolved.rootScope con.constType)) `shouldBe` Right True
+            nodeHasScope resolved resolved.rootScopeId con.constType)) `shouldBe` Right True
 
   test "cast target type nodes have the enclosing expression scope" $
     checkSource "const N: i32 = 2; fn f(a: [i32; 2]) { a as [i32; N]; }" (\resolved => do
@@ -781,12 +781,12 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
       ExprName xUse <- pure xUseExpr.nodeValue | _ => Nothing
       ExprName y1Use <- pure y1UseExpr.nodeValue | _ => Nothing
       ExprName y2Use <- pure y2UseExpr.nodeValue | _ => Nothing
-      root <- lookup resolved.rootScope resolved.tables.scopes
+      root <- lookup resolved.rootScopeId resolved.tables.scopes
       functionScope <- scopeFor resolved parameter
       bodyScope <- scopeFor resolved fn.functionBody
       orderedRoot <- traverse (\id => lookup id resolved.tables.symbols) (root.declaredSymbolsInOrder <>> [])
       pure (sort (map (.symbolId) (sourceSymbols resolved)) ==
-              sort [resolved.rootModule, symbolId con.constName, symbolId fn.functionName, symbolId x, symbolId y1, symbolId y2] &&
+              sort [resolved.rootSymbolId, symbolId con.constName, symbolId fn.functionName, symbolId x, symbolId y1, symbolId y2] &&
             sort (map fst (SortedMap.toList resolved.tables.localVarsMeta)) == sort [symbolId x, symbolId y1, symbolId y2] &&
             map (.declaredName) orderedRoot == ["<prelude>", "n", "f"] &&
             map (\(name, binding) => (name, binding.target)) (SortedMap.toList root.valueBindings) ==
@@ -815,7 +815,7 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
       firstUse <- exprAt 0 fn.functionBody
       laterUse <- exprAt 1 fn.functionBody
       body <- scopeFor resolved fn.functionBody
-      forwardOK <- usesInScope resolved resolved.rootScope [(later.constName, first.constValue)]
+      forwardOK <- usesInScope resolved resolved.rootScopeId [(later.constName, first.constValue)]
       bodyOK <- usesInScope resolved body.id [(first.constName, firstUse), (later.constName, laterUse)]
       pure (forwardOK && bodyOK && symbolId first.constName /= symbolId later.constName &&
             referenceMatches resolved DeclarationReference firstInfo.nodeId first.constName &&

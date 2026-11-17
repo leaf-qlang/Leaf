@@ -19,10 +19,6 @@ import Utils.ASTDebugPrinterTest
 import Utils.ASTPrettyPrinterTest
 import Validator.PostParseValidationTest
 
-||| Each suite's module name and runner, in the order they run. A runner
-||| reports whether all its tests passed. The `TypeChecker.Phases` suites and
-||| `TypeChecker.TypeCheckTest` are left out until the type checker has no
-||| holes left: they stop at the first one they reach.
 suites : List (String, IO Bool)
 suites =
   [ ("Lexer.LexerTest", runLexerTests)

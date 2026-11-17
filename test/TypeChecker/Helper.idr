@@ -26,9 +26,8 @@ import Compiler.Frontend.Utils.ASTPrettyPrinter
 
 %default total
 
-export
-lexParseDesugarResolveAndTypeCheck : String -> String -> Either TypeError TypedSourceFile
-lexParseDesugarResolveAndTypeCheck fileName inputProgram =
+checkResolvedFixture : (ResolvedModule -> Either TypeError result) -> String -> String -> Either TypeError result
+checkResolvedFixture checkResolvedModule fileName inputProgram =
   case lexFile inputProgram of
     Left err => invalidFixture (renderLexerError err)
     Right tokens => case parseFile fileName tokens of
@@ -43,13 +42,23 @@ lexParseDesugarResolveAndTypeCheck fileName inputProgram =
             Right resolvedModule => case validateResolvedModule resolvedModule of
               errors@(_ :: _) =>
                 invalidFixture ("Resolution invariant errors:\n" ++ joinBy "\n" (map show errors))
-              [] => case typeCheck resolvedModule of
-                Left err => Left err
-                Right typedModule => Right typedModule.ast
+              [] => checkResolvedModule resolvedModule
   where
-    invalidFixture : String -> Either TypeError TypedSourceFile
+    invalidFixture : String -> Either TypeError result
     invalidFixture message =
       assert_total $ idris_crash $ "Invalid type-checking fixture (" ++ fileName ++ "):\n" ++ message
+
+||| Run the complete type-checking pipeline, including translation, effects and ownership.
+export
+lexParseDesugarResolveAndTypeCheck : String -> String -> Either TypeError TypedSourceFile
+lexParseDesugarResolveAndTypeCheck = checkResolvedFixture (map (.ast) . typeCheck)
+
+||| Check only signatures and bodies; do not run phases T, E or C.
+export
+signaturesAndBodiesOutcome : String -> Either String ()
+signaturesAndBodiesOutcome inputProgram =
+  bimap show (const ())
+    (checkResolvedFixture typeCheckSignaturesAndBodies "test-fixture.rs" inputProgram)
 
 export
 typeCheckAndPrettyPrint : String -> Either TypeError String

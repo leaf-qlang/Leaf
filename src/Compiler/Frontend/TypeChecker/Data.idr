@@ -172,8 +172,8 @@ record OwnershipTables where
 public export
 record TypedModule where
   constructor MkTypedModule
-  rootModule     : SymbolId
-  rootScope      : ScopeId
+  rootSymbolId   : SymbolId
+  rootScopeId    : ScopeId
   ast            : TypedSourceFile
   tables         : TypeTables
   ownership      : OwnershipTables

@@ -64,8 +64,8 @@ public export
 public export
 record ResolvedModule where
   constructor MkResolvedModule
-  rootModule     : SymbolId
-  rootScope      : ScopeId
+  rootSymbolId   : SymbolId
+  rootScopeId    : ScopeId
   ast            : ResolvedSourceFile
   tables         : ScopeTables
 

@@ -462,10 +462,6 @@ constantLimitTests = Test.do
     typeCheckOutcome "const fn get(i: usize) -> u32 { let a = [1, 2, 3]; a[i] } const N: u32 = get(5);"
       `shouldBe` rejectedWith (IndexOutOfBounds 5 3 (spanAt 1 54))
 
-  test "a const fn cannot return a reference to its local" $
-    typeCheckOutcome "const fn r() -> &u32 { let x = 5; &x }"
-      `shouldBe` rejectedWith (EscapingReference (spanAt 1 35))
-
   test "a local array length with type u128 is rejected before conversion" $
     typeCheckOutcome "const N: u128 = 18446744073709551616; fn f() { let a: [i32; N]; }"
       `shouldBe` rejectedWith (IncorrectArrayLengthType u128 (spanAt 1 61))

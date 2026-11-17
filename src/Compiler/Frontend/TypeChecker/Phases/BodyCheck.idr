@@ -9,6 +9,7 @@ import Compiler.Frontend.ScopeAndNameResolver.Data
 import Compiler.Frontend.TypeChecker.Data
 import Compiler.Frontend.TypeChecker.Helper
 import Compiler.Frontend.TypeChecker.Numeric
+import Compiler.Frontend.TypeChecker.Phases.ConstEval
 import Compiler.Frontend.TypeChecker.State
 import Compiler.Frontend.TypeChecker.Type
 import Compiler.Frontend.ASTData
@@ -27,24 +28,6 @@ import Compiler.Frontend.Token
 
 %default total
 
-export
-evalConstExprNat : Expr ResolvedAstPhase -> StateT TypeCheckerState (Either CheckFailure) Nat
-evalConstExprNat (MkAstNode astInfo _ (ExprLiteral (MkAstNode _ _ (LiteralIntegerRaw raw)))) =
-  case integerLiteralValue raw of
-    Nothing => unreachable {function = "evalConstExprNat"} {reason = "the lexer accepted a malformed integer literal: " ++ raw}
-    Just _ =>
-      case arrayLengthProblem raw of
-        Just (NonUsizeLengthSuffix suffixType) => typeError (IncorrectArrayLengthType (LeafPrimitiveType suffixType) astInfo.span)
-        _ =>
-          case inferIntegerLiteral (Just TypPrimUsize) raw astInfo.span of
-            Left err => typeError err
-            Right (primitive, value) =>
-              case checkArrayLength (LeafPrimitiveType primitive) value astInfo.span of
-                Left err => typeError err
-                Right count => pure count
--- only literal expression are implemented for now in order to unblock Phase A
-evalConstExprNat _ = notImplemented {function = "evalConstExprNat"} {feature = "array lengths other than a literal (needs ConstEval/ConstRules)"}
-
 ||| A slice type [T] has no length known at compile time, so it can't be a parameter, result or constant type on its own. 
 ||| A reference to a slice, &[T], is fine, a slice reference carries both a pointer to its first element and its length.
 export
@@ -57,7 +40,7 @@ checkTypeIsSized = walk False
         TyPrimitive primitiveName => pure ()
         TyPath typePath => notImplemented {function = "checkTypeIsSized"} {feature = "structs, enums or qenums"}
         TyUnit => pure ()
-        TyParenthesized innerType => assert_total (idris_crash "Parenthesized types should have been removed during the desugaring phase.")
+        TyParenthesized innerType => unreachable {function = "checkTypeIsSized"} {reason = "parenthesized types should have been removed during the desugaring phase."}
         TyTuple elementTypes => traverse_ (\element => walk False (assert_smaller typeNode element)) elementTypes
         TyArray elementType sizeExpression => walk False (assert_smaller typeNode elementType)
         TySlice elementType =>
@@ -71,6 +54,51 @@ checkTypeIsSized = walk False
         TyFunction functionEffect functionParameters returnType => do
           traverse_ (\parameter => walk False (assert_smaller typeNode parameter.nodeValue.parameterType)) functionParameters
           traverse_ (\result => walk False (assert_smaller typeNode result)) returnType
+
+
+checkExpressionNode : ExpressionNode ResolvedAstPhase -> StateT TypeCheckerState (Either CheckFailure) ()
+checkExpressionNode expression =
+  case expression of
+    ExprLiteral literal => ?checkExpressionLiteralHole
+    ExprName name => ?checkExpressionNameHole
+    ExprPath path => ?checkExpressionPathHole
+    ExprBuiltin builtin => ?checkExpressionBuiltinHole
+    ExprSelf selfReceiver => ?checkExpressionSelfHole
+    ExprParenthesized inner => ?checkExpressionParenthesizedHole
+    ExprTuple elements => ?checkExpressionTupleHole
+    ExprArray elements => ?checkExpressionArrayHole
+    ExprRepeatedArray element count => ?checkExpressionRepeatedArrayHole
+    ExprStructLiteral path fields => ?checkExpressionStructLiteralHole
+    ExprCall callee arguments => ?checkExpressionCallHole
+    ExprMethodCall receiver name arguments => ?checkExpressionMethodCallHole
+    ExprField object name => ?checkExpressionFieldHole
+    ExprTupleIndex tuple indexText => ?checkExpressionTupleIndexHole
+    ExprIndex object index => ?checkExpressionIndexHole
+    ExprUnary operator operand => ?checkExpressionUnaryHole
+    ExprBinary operator left right => ?checkExpressionBinaryHole
+    ExprRange start operator end => ?checkExpressionRangeHole
+    ExprCast operand target => ?checkExpressionCastHole
+    ExprBlock block => ?checkExpressionBlockHole
+    ExprIf ifNode => ?checkExpressionIfHole
+    ExprQIf ifNode => ?checkExpressionQIfHole
+    ExprSIf ifNode => ?checkExpressionSIfHole
+    ExprMatch matchNode => ?checkExpressionMatchHole
+    ExprQMatch matchNode => ?checkExpressionQMatchHole
+    ExprSMatch matchNode => ?checkExpressionSMatchHole
+    ExprLoop body => ?checkExpressionLoopHole
+    ExprWhile condition body => ?checkExpressionWhileHole
+    ExprFor pattern iterator body => ?checkExpressionForHole
+    ExprBreak value => ?checkExpressionBreakHole
+    ExprContinue => ?checkExpressionContinueHole
+    ExprReturn value => ?checkExpressionReturnHole
+    ExprCtrl control => ?checkExpressionCtrlHole
+    ExprAdjoint adjoint => ?checkExpressionAdjointHole
+
+checkExpression : ResolvedExpr -> StateT TypeCheckerState (Either CheckFailure) ()
+checkExpression (MkAstNode expressionInfo (MkProvenanceMetadata provenance) expressionNode) = pure ()
+
+checkBlock : Block ResolvedAstPhase ->  StateT TypeCheckerState (Either CheckFailure) ()
+checkBlock (MkAstNode functionBodyAstInfo (MkProvenanceMetadata provenance) (MkBlockNode blockInnerDocs blockStatements finalExpression)) = pure ()
 
 checkFunctionDeclaration : FunctionDeclarationNode ResolvedAstPhase -> StateT TypeCheckerState (Either CheckFailure) ()
 checkFunctionDeclaration
@@ -86,10 +114,10 @@ checkFunctionDeclaration
       supportClause
       contractClauses
       functionBody
-    ) = pure ()
+    ) = checkBlock functionBody
 
 checkConstDeclaration : ConstDeclarationNode ResolvedAstPhase ->  StateT TypeCheckerState (Either CheckFailure) ()
-checkConstDeclaration (MkConstDeclarationNode constDocs constVisibility constName constType constValue) = pure ()
+checkConstDeclaration (MkConstDeclarationNode constDocs constVisibility constName constType constValue) = checkExpression constValue
 
 export
 checkBody : ResolvedItem -> StateT TypeCheckerState (Either CheckFailure) ()

@@ -10,6 +10,7 @@ import Compiler.Frontend.ScopeAndNameResolver.Data
 import Compiler.Frontend.ScopeAndNameResolver.Helper
 import Compiler.Frontend.ScopeAndNameResolver.Resolve
 import Compiler.Frontend.ScopeAndNameResolver.Validate
+import Compiler.Frontend.TypeChecker.ConstRules
 import Compiler.Frontend.TypeChecker.Data
 import Compiler.Frontend.TypeChecker.Helper
 import Compiler.Frontend.TypeChecker.Numeric

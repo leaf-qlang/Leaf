@@ -39,23 +39,23 @@ export
 preludeLayout : ResolvedModule -> Maybe Bool
 preludeLayout resolved = do
   let tables = resolved.tables
-  root <- lookup resolved.rootScope tables.scopes
+  root <- lookup resolved.rootScopeId tables.scopes
   preludeScopeId <- root.parent
   preludeScope <- lookup preludeScopeId tables.scopes
   [owner] <- pure (filter isPreludeModule (map snd (SortedMap.toList tables.symbols)))
     | _ => Nothing
   let bindings = map snd (SortedMap.toList preludeScope.valueBindings)
   pure $
-    tables.currentScope == resolved.rootScope &&
+    tables.currentScope == resolved.rootScopeId &&
     isModuleScope tables.currentScopeKind &&
-    tables.currentModule == resolved.rootModule &&
+    tables.currentModule == resolved.rootSymbolId &&
     isModuleScope root.kind && isModuleScope preludeScope.kind &&
     (case preludeScope.origin of PreludeScope => True; _ => False) &&
     isNothing preludeScope.parent &&
-    owner.declaringScope == resolved.rootScope &&
-    owner.declaringModule == resolved.rootModule &&
+    owner.declaringScope == resolved.rootScopeId &&
+    owner.declaringModule == resolved.rootSymbolId &&
     lookup owner.symbolId tables.memberScopes == Just preludeScopeId &&
-    lookup resolved.rootModule tables.memberScopes == Just resolved.rootScope &&
+    lookup resolved.rootSymbolId tables.memberScopes == Just resolved.rootScopeId &&
     elem owner.symbolId (root.declaredSymbolsInOrder <>> []) &&
     sort (map (.writtenName) bindings) == sort preludeFunctionNames &&
     sort (preludeScope.declaredSymbolsInOrder <>> []) == sort (map (.target) bindings) &&
@@ -103,7 +103,7 @@ constantShadowsPrelude resolved = do
   MkAstNode _ _ (StatementSemiExpression expression) :: _ <- pure fn.functionBody.nodeValue.blockStatements
     | _ => Nothing
   ExprName use <- pure expression.nodeValue | _ => Nothing
-  root <- lookup resolved.rootScope resolved.tables.scopes
+  root <- lookup resolved.rootScopeId resolved.tables.scopes
   preludeId <- root.parent
   preludeScope <- lookup preludeId resolved.tables.scopes
   sourceBinding <- lookup "sin" root.valueBindings
@@ -120,7 +120,7 @@ constantShadowsPrelude resolved = do
         (case sourceBinding.bindingVisibility of ModuleVisibility => True; _ => False) &&
         (case sourceSymbol.symbolKind of SymbolConstant => True; _ => False) &&
         (case sourceSymbol.origin of SourceSymbol _ => True; _ => False) &&
-        sourceSymbol.declaringScope == resolved.rootScope && sourceSymbol.declaringModule == resolved.rootModule &&
+        sourceSymbol.declaringScope == resolved.rootScopeId && sourceSymbol.declaringModule == resolved.rootSymbolId &&
         isPrelude preludeSymbol.origin && preludeSymbol.declaringScope == preludeId &&
         (case preludeBinding.bindingKind of PreludeBinding => True; _ => False) &&
         isPublic preludeBinding.bindingVisibility &&

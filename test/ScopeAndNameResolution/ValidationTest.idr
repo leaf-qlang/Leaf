@@ -227,18 +227,18 @@ runResolutionValidationTests = runTests $ Test.do
     diagnostics (withSymbol 1 ({ symbolKind := SymbolSelfReceiverParameter } localSymbol) validModule) `shouldBe` []
 
   test "missing root modules are reported" $
-    reports (MissingRootModule (MkSymbolId 99)) ({ rootModule := MkSymbolId 99 } validModule) `shouldBe` True
+    reports (MissingRootModule (MkSymbolId 99)) ({ rootSymbolId := MkSymbolId 99 } validModule) `shouldBe` True
 
   test "the root module must be a module symbol" $
-    diagnostics ({ rootModule := MkSymbolId 1 } validModule) `shouldBe`
+    diagnostics ({ rootSymbolId := MkSymbolId 1 } validModule) `shouldBe`
       [show (InvalidRootModule (MkSymbolId 1)), show (SelfDeclaringModule (MkSymbolId 0))]
 
   test "missing root scopes are reported" $
-    diagnostics ({ rootScope := MkScopeId 99 } validModule) `shouldBe`
+    diagnostics ({ rootScopeId := MkScopeId 99 } validModule) `shouldBe`
       [show (MissingRootScope (MkScopeId 99))]
 
   test "the root scope must be a ModuleScope" $
-    diagnostics ({ rootScope := MkScopeId 1 } validModule) `shouldBe`
+    diagnostics ({ rootScopeId := MkScopeId 1 } validModule) `shouldBe`
       [show (InvalidRootScope (MkScopeId 1))]
 
   test "symbol table keys must agree with stored symbol IDs" $
@@ -378,7 +378,7 @@ runResolutionValidationTests = runTests $ Test.do
       [show (InvalidMemberScopeKind (MkSymbolId 2) (MkScopeId 0))]
 
   test "independent invariant failures are accumulated" $
-    diagnostics ({ rootScope := MkScopeId 99,
+    diagnostics ({ rootScopeId := MkScopeId 99,
                    tables.nodeScopes := insert (MkNodeId 10 0) (MkScopeId 99) validModule.tables.nodeScopes } validModule) `shouldBe`
       map show [MissingRootScope (MkScopeId 99), MissingNodeScope (MkNodeId 10 0) (MkScopeId 99)]
 

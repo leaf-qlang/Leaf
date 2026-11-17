@@ -9,7 +9,7 @@ import TypeChecker.Helper
 %default total
 
 --------------------------------------------------------------------------------
--- Pass E: effects, capabilities and constness
+-- Pass E: effects, capabilities and attributes
 --------------------------------------------------------------------------------
 -- Pass E checks each function's declared effect against its signature and
 -- against every operation in its body, carrying an effect ceiling into
@@ -76,6 +76,10 @@ signatureClaimTests = Test.do
   test "a const fn cannot take quantum data" $
     typeCheckOutcome "const fn f(q: &qbit) {}"
       `shouldBe` rejectedWith (EffectViolation EffectClassical EffectUncompsafe (spanAt 1 10))
+
+  test "a const fn without an effect is recorded as classical" $
+    typeCheckOutcome "const fn square(x: i32) -> i32 { x * x } classical fn f() -> i32 { square(3) }"
+      `shouldBe` accepted
 
   test "owned widths use evaluated constant lengths" $
     typeCheckOutcome "const N: u32 = 2; unitary fn f(qs: [qbit; N as usize]) -> [qbit; (N + 1) as usize] { [qs[0], qs[1], qalloc()] }"
@@ -211,6 +215,9 @@ modifierTests = Test.do
     typeCheckOutcome "unitary fn f(g: unitary fn(q: &qbit), c: &qbit, q: &qbit) { ctrl(c).apply(g)(q); }"
       `shouldBe` rejectedWith (MissingCapability "ctrl" (spanAt 1 75))
 
+  test "a gate alias keeps its control capability" $
+    typeCheckOutcome "fn f(c: &qbit, q: &qbit) { let h = H; ctrl(c).apply(h)(q); }" `shouldBe` accepted
+
   test "a control block nested in an adjoint block over gates is permitted" $
     typeCheckOutcome "unitary fn f(c: &qbit, q: &qbit) { adjoint { ctrl(c) { H(q); } } }" `shouldBe` accepted
 
@@ -219,6 +226,30 @@ modifierTests = Test.do
 
   test "a control block over X keeps an uncompsafe function uncompsafe" $
     typeCheckOutcome "uncompsafe fn f(c: &qbit, t: &qbit) { ctrl(c) { X(t); } }" `shouldBe` accepted
+
+-- Stage 2 (plan §1.4, §9 item 3): capabilities of adjoint callables. Moved
+-- here from BodyCheckTest because E reports their errors. Left out of
+-- runEffectsCheckTests until milestone 8 enables adjoint.
+adjointStageTwoTests : List TestResult
+adjointStageTwoTests = Test.do
+  test "the adjoint of a gate alias is permitted" $
+    typeCheckOutcome "fn f(q: &qbit) { let s = S; adjoint(s)(q); }" `shouldBe` accepted
+
+  test "the adjoint of a gate's adjoint is permitted" $
+    typeCheckOutcome "fn f(q: &qbit) { adjoint(adjoint(T))(q); }" `shouldBe` accepted
+
+  test "a callable join intersects capabilities instead of retaining adjoint" $
+    typeCheckOutcome "unitary fn plain(q: qbit) -> qbit { H(q) } fn f(flag: bool, q: qbit) -> qbit { let g = if flag { H } else { plain }; adjoint(g)(q) }"
+      `shouldBe` rejectedWith (MissingCapability "adjoint" (spanAt 1 126))
+
+-- Stage 2 (plan §1.4, §9 item 3): the uncompsafe ceiling of a := initializer.
+-- Moved here from BodyCheckTest because the ceiling is E's. Left out of
+-- runEffectsCheckTests until milestone 8 enables :=.
+uncomputationStageTwoTests : List TestResult
+uncomputationStageTwoTests = Test.do
+  test ":= accepts an uncompsafe qubit initializer" $
+    typeCheckOutcome "uncompsafe fn flip(q: qbit) -> qbit { X(q) } fn f() { let q: qbit := flip(qalloc()); }"
+      `shouldBe` accepted
 
 -- Leaving modifier blocks (plan §7.2)
 jumpTests : List TestResult

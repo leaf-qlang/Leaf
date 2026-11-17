@@ -9,9 +9,9 @@ Higher priority:
 - Modules and imports.
 - Uncomputation support.
 - Add a classical expression language to Idris2 DSL.
-- Support for mutable variables.
 - Handle supports adjoint/ctrl function clauses.
 - Support for adjoint() operation.
+- Support for `ctrl` blocks: `ctrl(...) { ... }` and `ctrl(...).on(...) { ... }`. The callable form `ctrl(...).apply(f)` is supported.
 - `affine` & `scratch` qubits.
 - Quantum contracts.
 - Rust style generic types and generic const parameters.

@@ -59,8 +59,8 @@ sameItem a b = a.astInfo.nodeId == b.astInfo.nodeId
 -- Seeding
 --------------------------------------------------------------------------------
 
-sourceCodeItems : ResolvedSourceFile -> List ResolvedItem
-sourceCodeItems (MkAstNode _ _ (MkSourceFileNode _ items)) = items
+getSourceCodeItems : ResolvedSourceFile -> List ResolvedItem
+getSourceCodeItems (MkAstNode _ _ (MkSourceFileNode _ items)) = items
 
 seedTypeTables : ScopeTables -> TypeTables
 seedTypeTables scopeTables =
@@ -193,14 +193,20 @@ resolveAndCheckTypes seededState items =
 --------------------------------------------------------------------------------
 
 ||| Passes A and B run in rounds until every signature and body is checked;
+export
+typeCheckSignaturesAndBodies : ResolvedModule -> Either TypeError TypeTables
+typeCheckSignaturesAndBodies resolvedModule = do
+  let items = getSourceCodeItems resolvedModule.ast
+  resolveAndCheckTypes (seedTypeCheckerState resolvedModule items) items                  -- A ⇄ B
+
+||| Passes A and B run in rounds until every signature and body is checked;
 ||| then the typed AST is built, and effects and ownership are checked once each.
 public export
 typeCheck : ResolvedModule -> Either TypeError TypedModule
-typeCheck resolvedModule = do
-  let items = sourceCodeItems resolvedModule.ast
-  typeTables <- resolveAndCheckTypes (seedTypeCheckerState resolvedModule items) items    -- A ⇄ B
-  let typedAst = translateAst typeTables resolvedModule.ast                               -- T: pure, cannot fail
-  checkEffects typeTables typedAst                                                        -- E
-  ownership <- checkOwnership typeTables typedAst                                         -- C
-  pure (MkTypedModule resolvedModule.rootModule resolvedModule.rootScope typedAst typeTables ownership)
+typeCheck resolvedModule = do 
+  typeTables <- typeCheckSignaturesAndBodies resolvedModule                              -- A ⇄ B
+  let typedAst = translateAst typeTables resolvedModule.ast                              -- T
+  checkEffects typeTables typedAst                                                       -- E
+  ownership <- checkOwnership typeTables typedAst                                        -- C
+  pure (MkTypedModule resolvedModule.rootSymbolId resolvedModule.rootScopeId typedAst typeTables ownership)
 

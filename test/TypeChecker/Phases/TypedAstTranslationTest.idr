@@ -2,7 +2,6 @@ module TypeChecker.Phases.TypedAstTranslationTest
 
 import Expect
 
-import Compiler.Frontend.TypeChecker.Data
 import TypeChecker.Helper
 
 %default total
@@ -16,7 +15,7 @@ import TypeChecker.Helper
 -- including the nodes desugaring generated: default effects and result
 -- types, returns, unit else blocks, ctrl selectors, moved and default
 -- qualifiers and attribute arguments. Named members never reach translation:
--- pass B rejects them first.
+-- pass B rejects them first, and `BodyCheckTest` checks those diagnostics.
 --------------------------------------------------------------------------------
 
 -- Items and generated nodes (plan §6.1, §6.2)
@@ -120,21 +119,6 @@ expressionTranslationTests = Test.do
     printedTypedAst "fn f() -> param { Param(\"theta\") }"
       `shouldBe` Right "general fn f() -> param { return Param(\"theta\"); }"
 
--- Named members are rejected before translation (plan §6.1)
-memberTranslationTests : List TestResult
-memberTranslationTests = Test.do
-  test "a named field read is rejected before translation" $
-    printedTypedAst "fn f() { let t = (1, 2); let x = t.first; }"
-      `shouldBe` Left (show (UnknownMember "first" (spanAt 1 36)))
-
-  test "a method call is rejected before translation" $
-    printedTypedAst "fn f() { let a = [1, 2]; let n = a.size(); }"
-      `shouldBe` Left (show (UnknownMember "size" (spanAt 1 36)))
-
-  test "a field assignment is rejected before translation" $
-    printedTypedAst "fn f() { let mut t = (1, 2); t.first = 3; }"
-      `shouldBe` Left (show (UnknownMember "first" (spanAt 1 32)))
-
 export
 runTypedAstTranslationTests : IO Bool
 runTypedAstTranslationTests =
@@ -142,5 +126,4 @@ runTypedAstTranslationTests =
     [ itemTranslationTests
     , statementTranslationTests
     , expressionTranslationTests
-    , memberTranslationTests
     ]

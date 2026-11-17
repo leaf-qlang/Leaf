@@ -33,6 +33,7 @@ data LeafType
   | LeafReferenceType BorrowKind LeafType
   | LeafFunctionType FunctionEffect (List SupportKind) (List LeafType) LeafType
   | LeafQualifiedType QuantumUsageQualifier LeafType
+  | LeafStringLiteralType
   | LeafNeverType     -- expressions that never finish: return, break, continue, loop with no break
                       -- none of them ever produce a value at the point where they appear: control jumps somewhere else
 
@@ -61,6 +62,7 @@ showLeafType ty =
            [] => ""
            kinds => " supports " ++ joinBy ", " (map show kinds))
     LeafQualifiedType qualifier qualifiedType => show qualifier ++ " " ++ recur qualifiedType
+    LeafStringLiteralType => "string literal"
     LeafNeverType => "!"
   where
     recur : LeafType -> String
@@ -113,6 +115,7 @@ hasOwnedQbit leafType =
     LeafFunctionType _ _ _ _ => False
     LeafUnitType => False
     LeafNeverType => False
+    LeafStringLiteralType => False
     LeafNamedType _ => False
   where
     recur : LeafType -> Bool
