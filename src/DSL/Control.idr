@@ -11,7 +11,7 @@ import Decidable.Equality
 public export
 data NotElem : (x : a) -> Vect n a -> Type where
   NotHere  : NotElem x []
-  NotThere : (NotElem x xs) -> NotElem x (y :: xs)
+  NotThere : NotElem x xs -> {auto 0 neq : Not (x = y)} -> NotElem x (y :: xs)
 
 public export
 data AllDistinct : Vect n a -> Type where

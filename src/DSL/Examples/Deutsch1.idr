@@ -1,7 +1,9 @@
 module DSL.Examples.Deutsch1
 
 import Data.Fin
+
 import DSL.Circuit
+import DSL.Core
 import DSL.GateHelpers
 
 %default total

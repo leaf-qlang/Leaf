@@ -3,6 +3,7 @@ module Run
 import Data.String
 import System
 
+import Backend.OpenQASM3.SerializerTest
 import CompileCodeExamples
 import CompileCodeExamplesTest
 import Desugarer.DesugaringTest
@@ -22,6 +23,7 @@ import Validator.PostParseValidationTest
 suites : List (String, IO Bool)
 suites =
   [ ("Lexer.LexerTest", runLexerTests)
+  , ("Backend.OpenQASM3.SerializerTest", runSerializerTests)
   , ("Parser.ExpressionParseTest", runExpressionParseTests)
   , ("Utils.ASTDebugPrinterTest", runASTDebugPrinterTests)
   , ("Utils.ASTPrettyPrinterTest", runASTPrettyPrinterTests)

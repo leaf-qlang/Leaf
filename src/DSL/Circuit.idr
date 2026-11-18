@@ -1,12 +1,10 @@
 module DSL.Circuit
 
 import DSL.Adjoint
+import DSL.Core
 import DSL.Gates
 
 %default total
-
-public export
-data State = Zero | One
 
 -- Quantum circuits with n inputs and m outputs
 public export
@@ -33,7 +31,7 @@ data Circuit : Nat -> Nat -> Type where
         Circuit (n1 + n2) (m1 + m2)
 
   -- Add one qubit per initial state
-  Init : {0 n : Nat} -> (states : List State) -> Circuit n (n + length states)
+  Init : {0 n : Nat} -> (states : List QState) -> Circuit n (n + length states)
 
 
 -- Inverse of a circuit, if it exists

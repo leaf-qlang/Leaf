@@ -70,15 +70,12 @@ data UnitaryGate : Nat -> Type where
         -> {auto 0 cb  : Not (c = b)}
         -> UnitaryGate n
 
-  -- Generic controlled wrapper:
-  --   cs = control wires,
-  --   bs = their required polarities (True = |1>, False = |0>)
-  --   inner = the original gate
+  -- Generic controlled wrapper
   Controlled :
     {k : Nat} ->
-    (cs : Vect k (Fin n)) ->
-    (bs : Vect k Bool) -> 
-    (inner : UnitaryGate n) ->
+    (cs : Vect k (Fin n)) ->           -- control wires
+    (bs : Vect k QState) ->            -- control wires polarities: 0, 1, +, -, +i, -i 
+    (inner : UnitaryGate n) ->         -- original gate
     {auto _ : AllDistinct cs} ->
     UnitaryGate n
 
@@ -147,7 +144,7 @@ public export
 mkControlled :
   {k : Nat} ->
   (cs : Vect k (Fin n)) ->
-  (bs : Vect k Bool) ->
+  (qsts : Vect k QState) ->
   (inner : UnitaryGate n) ->
   {auto distinct : AllDistinct cs} ->                                 -- keeps the control wires pairwise distinct
   {auto disjoint : Disjoint cs (snd (targetsUnitary inner))} ->       -- checks that none of those control wires overlap the targets

@@ -1,7 +1,9 @@
 module DSL.Examples.Deutsch2
 
 import Data.Fin
+
 import DSL.CircuitBuilder
+import DSL.Core
 
 %default total
 

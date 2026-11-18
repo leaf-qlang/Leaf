@@ -3,7 +3,7 @@ module Compiler.Backend.OpenQASM3.Serializer
 import Data.Fin
 import Data.Nat
 import Data.Vect
-import DSL.Core    -- Radians, MkRadians, pi, Num / Neg
+import DSL.Core    -- Radians, QState, etc.
 import DSL.Gates   -- UnitaryGate, etc.
 
 %default total
@@ -41,17 +41,17 @@ joinWith sep [x]       = x
 joinWith sep (x :: xs) = x ++ sep ++ joinWith sep xs
 
 --------------------------------------------------------------------------------
--- Core representation: a gate + (possibly) ctrl/negctrl modifiers
+-- Core representation: a gate + control states
 --
--- ctrls: one Bool per control qbit at the START of 'qbits'
---        True  = ctrl    @   (control on |1>)
---        False = negctrl @   (control on |0>)
+-- ctrls: one QState per control qbit at the START of 'qbits'.
+-- Keep the full state until serialization so X/Y-basis controls can be
+-- converted to computational-basis controls and restored afterward.
 --------------------------------------------------------------------------------
 
 public export
 record CoreGate (n : Nat) where
   constructor MkCoreGate
-  ctrls  : List Bool
+  ctrls  : List QState
   gname  : String
   params : List Radians
   qbits : List (Fin n)
@@ -176,18 +176,18 @@ unitaryToCore (CSWAP c a b {ab} {ca} {cb}) =
 
 -- Generic Controlled wrapper:
 -- We FLATTEN all nested controls into:
---   - extra Bool flags at the FRONT of 'ctrls'
+--   - extra control states at the FRONT of 'ctrls'
 --   - extra control qbits at the FRONT of 'qbits'
 --
 -- So the resulting CoreGate qbits list is: [all controls] ++ [inner’s qbits]
--- and ctrls: [polarity for each control] ++ inner.ctrls
+-- and ctrls: [state for each control] ++ inner.ctrls
 
 unitaryToCore (Controlled {k} cs bs inner) =
   let
     innerCore : CoreGate n
     innerCore = unitaryToCore inner
 
-    ctrls0  : List Bool
+    ctrls0  : List QState
     ctrls0  = ctrls innerCore
 
     name0   : String
@@ -202,20 +202,52 @@ unitaryToCore (Controlled {k} cs bs inner) =
     csList : List (Fin n)
     csList = vectToList cs
 
-    bsList : List Bool
+    bsList : List QState
     bsList = vectToList bs
   in
     MkCoreGate (List.(++) bsList ctrls0) name0 params0 (List.(++) csList qbits0)
 
 --------------------------------------------------------------------------------
--- CoreGate -> OpenQASM 3 statement
+-- CoreGate -> OpenQASM 3 statements
 --
--- We emit:
+-- After changing each control's basis, we emit:
 --   ctrl @ ... @ negctrl @ gname(theta, ...) q[...], q[...], ...;
+-- Then we undo the basis changes in reverse order.
 --
 -- Number of ctrl/negctrl = length ctrls
 -- Number of leading qbits used as controls = SAME length
 --------------------------------------------------------------------------------
+
+controlModifier : QState -> String
+controlModifier Zero   = "negctrl @ "
+controlModifier One    = "ctrl @ "
+controlModifier Plus   = "negctrl @ "
+controlModifier Minus  = "ctrl @ "
+controlModifier PlusI  = "negctrl @ "
+controlModifier MinusI = "ctrl @ "
+
+-- H maps |+> to |0> and |-> to |1>. For Y-basis controls, apply
+-- S-dagger before H to map |+i> to |0> and |-i> to |1>.
+-- Return preparation statements and their inverse, in execution order.
+controlBasisChanges :
+  {n : Nat} -> String -> List QState -> List (Fin n) -> (List String, List String)
+controlBasisChanges qregName [] _ = ([], [])
+controlBasisChanges qregName _ [] = ([], [])
+controlBasisChanges qregName (state :: states) (qbit :: qbits) =
+  let
+    (remainingPreparation, remainingRestoration) = controlBasisChanges qregName states qbits
+    operand = qasmQbit qregName qbit ++ ";"
+    basisChanges : (List String, List String)
+    basisChanges =
+      case state of
+        Zero   => ([], [])
+        One    => ([], [])
+        Plus   => (["h " ++ operand], ["h " ++ operand])
+        Minus  => (["h " ++ operand], ["h " ++ operand])
+        PlusI  => (["sdg " ++ operand, "h " ++ operand], ["h " ++ operand, "s " ++ operand])
+        MinusI => (["sdg " ++ operand, "h " ++ operand], ["h " ++ operand, "s " ++ operand])
+  in
+    (fst basisChanges ++ remainingPreparation, remainingRestoration ++ snd basisChanges)
 
 public export
 coreGateToOpenQasm3 :
@@ -227,7 +259,7 @@ coreGateToOpenQasm3 qregName (MkCoreGate ctrls name params qbits) =
   let
     -- One modifier per control qbit, in order.
     mods : List String
-    mods = map (\b => if b then "ctrl @ " else "negctrl @ ") ctrls
+    mods = map controlModifier ctrls
 
     modsStr : String
     modsStr = concatStrings mods
@@ -241,11 +273,14 @@ coreGateToOpenQasm3 qregName (MkCoreGate ctrls name params qbits) =
     qbitsStr : String
     qbitsStr =
       joinWith ", " (map (qasmQbit qregName) qbits)
+
+    basisChanges : (List String, List String)
+    basisChanges = controlBasisChanges qregName ctrls qbits
   in
-    modsStr ++ name ++ paramsStr ++ " " ++ qbitsStr ++ ";"
+    joinWith "\n" (fst basisChanges ++ [modsStr ++ name ++ paramsStr ++ " " ++ qbitsStr ++ ";"] ++ snd basisChanges)
 
 --------------------------------------------------------------------------------
--- Public entry: UnitaryGate n -> OpenQASM 3 line
+-- Public entry: UnitaryGate n -> OpenQASM 3 statements
 --------------------------------------------------------------------------------
 
 public export

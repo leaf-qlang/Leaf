@@ -9,6 +9,7 @@ depends = leaf,
           parser
 
 modules = Expect,
+          Backend.OpenQASM3.SerializerTest,
           Lexer.LexerTest,
           Parser.DebugDump,
           Parser.ExpressionParseTest,

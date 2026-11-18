@@ -24,17 +24,14 @@ public export
 pi : Radians
 pi = MkRadians 3.141592653589793
 
--- public export
--- Qbit : Type
--- Qbit = Nat     -- wire label/index
+public export
+data QState
+  = Zero
+  | One
+  | Plus
+  | Minus
+  | PlusI
+  | MinusI
 
--- public export
--- record Complex where
---   constructor MkComplex
---   re, im : Double
-
--- public export
--- data QbitState
---   = Zero
---   | One
---   | Superposition Complex Complex  -- amplitudes α, β
+public export
+data BState = ZERO | ONE
