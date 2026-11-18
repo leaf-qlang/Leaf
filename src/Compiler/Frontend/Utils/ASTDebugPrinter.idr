@@ -103,7 +103,7 @@ PhaseDebug ResolvedAstPhase where
   nameSymbol name = Just name.nameNodeSymbolId
   memberSymbol _ = Nothing
   selfSymbol symbol = Just symbol
-  pathParts path = ([], Just path.resolvedPathTargetSymbolId)
+  pathParts path = ([], Just path.referencedSymbolId)
 
 public export
 PhaseDebug TypedAstPhase where
@@ -112,7 +112,7 @@ PhaseDebug TypedAstPhase where
   nameSymbol name = Just name.nameNodeSymbolId
   memberSymbol name = Just name.nameNodeSymbolId
   selfSymbol symbol = Just symbol
-  pathParts path = ([], Just path.resolvedPathTargetSymbolId)
+  pathParts path = ([], Just path.referencedSymbolId)
 
 --------------------------------------------------------------------------------
 -- Line text

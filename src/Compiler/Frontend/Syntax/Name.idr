@@ -174,14 +174,14 @@ CanonicalPathSegment = PathSegment CanonicalAstPhase
 -- segment, but local binders and declarations should usually use `Name`
 -- directly.
 --
--- ResolvedAstPhase paths are kept intentionally simple: the resolver preserves the
--- written path as text and records only the FINAL symbol the whole path
--- resolved to (individual segments are no longer separately meaningful once
--- resolution has happened). Example -- `Data::Left` becomes:
+-- For ResolvedAstPhase paths, the resolver preserves the written path as text
+-- and records the SymbolId of the declaration that the complete path refers to.
+-- For example, `Data::Nested::Left` refers to the declaration named `Left`
+-- inside the module `Nested`, which is inside the module `Data`:
 --
 --   firstPathSegmentText      = "Data"
---   remainingPathSegmentTexts = ["Left"]
---   resolvedPathTargetSymbolId = SymbolId for Left
+--   remainingPathSegmentTexts = ["Nested", "Left"]
+--   referencedSymbolId        = SymbolId of that `Left` declaration
 --------------------------------------------------------------------------------
 
 public export
@@ -193,9 +193,9 @@ record PathNode (phase : AstPhase) where
 public export
 record ResolvedPathNode where
   constructor MkResolvedPathNode
-  firstPathSegmentText       : String
-  remainingPathSegmentTexts  : List String
-  resolvedPathTargetSymbolId : SymbolId
+  firstPathSegmentText      : String
+  remainingPathSegmentTexts : List String
+  referencedSymbolId        : SymbolId
 
 public export
 PathFor : AstPhase -> Type

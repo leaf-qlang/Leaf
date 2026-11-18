@@ -1,5 +1,6 @@
 module Compiler.Frontend.TypeChecker.Phases.SignatureCheck
 
+import Compiler.Helper
 import Data.List1
 import Data.SortedMap
 import Data.SortedSet
@@ -31,7 +32,7 @@ import Compiler.Frontend.Syntax.Type
 checkedFunctionEffect  : Maybe (ResolvedAstNode FunctionConstness)
                       -> Maybe (ResolvedAstNode FunctionEffect)
                       -> StateT TypeCheckerState (Either CheckFailure) FunctionEffect
-checkedFunctionEffect  _ Nothing = unreachable {function = "checkedFunctionEffect"} {reason = "desugaring did not supply a function effect"}
+checkedFunctionEffect  _ Nothing = unreachable __FILE__ {function = "checkedFunctionEffect"} {reason = "desugaring did not supply a function effect"}
 checkedFunctionEffect  Nothing (Just (MkAstNode _ _ writtenEffect)) = pure writtenEffect
 checkedFunctionEffect  (Just _) (Just (MkAstNode _ _ EffectClassical)) = pure EffectClassical
 checkedFunctionEffect  (Just _) (Just (MkAstNode info _ writtenEffect)) = typeError (EffectViolation EffectClassical writtenEffect info.span)
@@ -58,7 +59,7 @@ checkFunctionDeclaration
         (\parameter =>
           case parameter.nodeValue of
             NormalParameter _ _ _ parameterType => checkTypeIsSized parameterType
-            ReceiverParameter _ _ => notImplemented {function = "checkFunctionDeclaration"} {feature = "receiver parameters"}
+            ReceiverParameter _ _ => notImplemented __FILE__ {function = "checkFunctionDeclaration"} {feature = "receiver parameters"}
         ) functionParameters
       traverse_ checkTypeIsSized returnType
       -- Second pass: evaluate array lengths and record the types.
@@ -69,7 +70,7 @@ checkFunctionDeclaration
               paramLeafType <- writtenLeafTypeM evalConstExprNat parameterType
               typeCheckerState <- get
               case lookup nameNodeSymbolId typeCheckerState.tables.symbols of
-                Nothing => unreachable {function = "checkFunctionDeclaration"} {reason = "parameter symbol cannot be found in checker state"}
+                Nothing => unreachable __FILE__ {function = "checkFunctionDeclaration"} {reason = "parameter symbol cannot be found in checker state"}
                 Just symbolInfo =>
                   case symbolInfo.symbolKind of
                     SymbolFunctionParameter => do
@@ -77,11 +78,11 @@ checkFunctionDeclaration
                       recordParameterStorage nameNodeSymbolId paramLeafType
                     _ => pure ()
               pure paramLeafType
-            ReceiverParameter _ _ => notImplemented {function = "checkFunctionDeclaration"} {feature = "receiver parameters"}
+            ReceiverParameter _ _ => notImplemented __FILE__ {function = "checkFunctionDeclaration"} {feature = "receiver parameters"}
         ) functionParameters
       returnLeafType <- case returnType of
         Just resolvedTy => writtenLeafTypeM evalConstExprNat resolvedTy
-        Nothing => unreachable {function = "checkFunctionDeclaration"} {reason = "desugaring did not supply a return type"}
+        Nothing => unreachable __FILE__ {function = "checkFunctionDeclaration"} {reason = "desugaring did not supply a return type"}
       let functionNameSymbolId = functionName.nodeValue.nameNodeSymbolId
       recordSymbolType functionNameSymbolId (LeafFunctionType functionEffect (map (.nodeValue) supportClause) paramLeafTypes returnLeafType)
 
@@ -96,12 +97,12 @@ export
 checkSignature : ResolvedItem -> StateT TypeCheckerState (Either CheckFailure) ()
 checkSignature (MkAstNode itemInfo metadata item) = do
   case item of
-      ItemModule declaration => notImplemented {function = "checkItem"} {feature = "ItemModule"}
-      ItemUse declaration => notImplemented {function = "checkItem"} {feature = "ItemUse"}
+      ItemModule declaration => notImplemented __FILE__ {function = "checkItem"} {feature = "ItemModule"}
+      ItemUse declaration => notImplemented __FILE__ {function = "checkItem"} {feature = "ItemUse"}
       ItemConst declaration => checkConstDeclaration declaration
-      ItemEnum declaration => notImplemented {function = "checkItem"} {feature = "ItemEnum"}
-      ItemQEnum declaration => notImplemented {function = "checkItem"} {feature = "ItemQEnum"}
-      ItemStruct declaration => notImplemented {function = "checkItem"} {feature = "ItemStruct"}
-      ItemImpl declaration => notImplemented {function = "checkItem"} {feature = "ItemImpl"}
+      ItemEnum declaration => notImplemented __FILE__ {function = "checkItem"} {feature = "ItemEnum"}
+      ItemQEnum declaration => notImplemented __FILE__ {function = "checkItem"} {feature = "ItemQEnum"}
+      ItemStruct declaration => notImplemented __FILE__ {function = "checkItem"} {feature = "ItemStruct"}
+      ItemImpl declaration => notImplemented __FILE__ {function = "checkItem"} {feature = "ItemImpl"}
       ItemFunction declaration => checkFunctionDeclaration declaration
 

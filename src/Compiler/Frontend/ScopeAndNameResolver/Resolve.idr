@@ -1,5 +1,6 @@
 module Compiler.Frontend.ScopeAndNameResolver.Resolve
 
+import Compiler.Helper
 import Control.Monad.State
 import Compiler.Frontend.Prelude
 import Compiler.Frontend.TypeChecker.Data
@@ -48,7 +49,7 @@ rejectConstantShadowing nameText binderSpan = do
       Just constantSpan =>
         lift $ Left $ BindingShadowsConstant nameText binding.target binderSpan constantSpan
       -- Constants are only declared from source, which always records the name span.
-      Nothing => unreachable {function = "rejectConstantShadowing"} {reason = "constant binding has no introduction span"}
+      Nothing => unreachable __FILE__ {function = "rejectConstantShadowing"} {reason = "constant binding has no introduction span"}
     Nothing => pure ()
 
 rejectLocalNameUsedInConstantRole : String -> SourceSpan -> ScopeBinding -> StateT ScopeTables (Either ResolutionError) ()
@@ -61,7 +62,7 @@ rejectLocalNameUsedInConstantRole nameText useSpan binding = do
           Just localSpan =>
             lift $ Left $ LocalValueUsedAsConstant nameText binding.target useSpan localSpan
           -- Locals and parameters are only declared from source, which always records the name span.
-          Nothing => unreachable {function = "rejectLocalNameUsedInConstantRole"} {reason = "local binding has no introduction span"}
+          Nothing => unreachable __FILE__ {function = "rejectLocalNameUsedInConstantRole"} {reason = "local binding has no introduction span"}
         else pure ()
     _ => pure ()
 
@@ -224,7 +225,7 @@ resolveAttribute (MkAstNode attributeInfo metadata (MkAttributeNode name argumen
 resolvePath : CanonicalPath -> StateT ScopeTables (Either ResolutionError) ResolvedPath
 resolvePath (MkAstNode pathAstInfo metadata (MkPathNode firstSegment remainingSegments)) = do
   recordNodeScope pathAstInfo.nodeId
-  notImplemented {function = "resolvePath"} {feature = "paths"}
+  notImplemented __FILE__ {function = "resolvePath"} {feature = "paths"}
   --pure $ resolveNode pathAstInfo metadata $
   --  MkResolvedPathNode
   --    (pathSegmentText firstSegment)
@@ -251,12 +252,12 @@ resolvePatternUnchecked (MkAstNode patternInfo metadata patternNode) = do
           resolvedBinderName <- declareLocalName SymbolLocalBinding patternInfo.nodeId mutability binderName
           pure $ PatternName mutability resolvedBinderName
     PatternPath valuePath =>
-      notImplemented {function = "resolvePatternUnchecked"} {feature = "path patterns (needed for modules)"}
+      notImplemented __FILE__ {function = "resolvePatternUnchecked"} {feature = "path patterns (needed for modules)"}
       --pure $ PatternPath (resolvePath valuePath)
     PatternLiteral literal =>
       pure $ PatternLiteral (resolveAstNode literal)
     PatternParenthesized innerPattern =>
-      unreachable {function = "resolvePatternUnchecked"} {reason = "parenthesized patterns should have been removed during desugaring"}
+      unreachable __FILE__ {function = "resolvePatternUnchecked"} {reason = "parenthesized patterns should have been removed during desugaring"}
     PatternTuple elementPatterns => do
       resolvedElements <- traverse recur elementPatterns
       pure $ PatternTuple resolvedElements
@@ -264,11 +265,11 @@ resolvePatternUnchecked (MkAstNode patternInfo metadata patternNode) = do
       resolvedElements <- traverse recur elementPatterns
       pure $ PatternArray resolvedElements
     PatternStruct structPath fieldPatterns => do
-      notImplemented {function = "resolvePatternUnchecked"} {feature = "struct patterns"}
+      notImplemented __FILE__ {function = "resolvePatternUnchecked"} {feature = "struct patterns"}
       --resolvedFields <- traverse resolveStructPatternField fieldPatterns
       --pure $ PatternStruct (resolvePath structPath) resolvedFields
     PatternEnumTuple variantPath argumentPatterns => do
-      notImplemented {function = "resolvePatternUnchecked"} {feature = "tuple-like enum variant patterns"}
+      notImplemented __FILE__ {function = "resolvePatternUnchecked"} {feature = "tuple-like enum variant patterns"}
       --resolvedArguments <- traverse recur argumentPatterns
       --pure $ PatternEnumTuple (resolvePath variantPath) resolvedArguments
   pure $ resolveNode patternInfo metadata resolvedPatternNode
@@ -285,7 +286,7 @@ resolvePatternUnchecked (MkAstNode patternInfo metadata patternNode) = do
     --    -- `recur` below classifies it: `Point { N }` with a visible constant N is
     --    -- a constant pattern, as in Rust. Never declare it via declareLocalName directly.
     --    StructPatternFieldShorthand _ _ =>
-    --      unreachable {function = "resolveStructPatternField"} {reason = "struct pattern field shorthands should have been removed during desugaring"}
+    --      unreachable __FILE__ {function = "resolveStructPatternField"} {reason = "struct pattern field shorthands should have been removed during desugaring"}
     --    StructPatternFieldExplicit fieldName fieldPattern => do
     --      resolvedFieldName <- resolveName fieldInfo.nodeId FieldReference fieldName
     --      resolvedFieldPattern <- recur fieldPattern
@@ -336,7 +337,7 @@ resolveFunctionParameterName (MkAstNode parameterInfo _ (NormalParameter _ mutab
   recordNodeScope parameterInfo.nodeId
   resolveParameterName parameterInfo.nodeId (map (.nodeValue) mutability) name
 resolveFunctionParameterName (MkAstNode _ _ (ReceiverParameter _ _)) =
-  notImplemented {function = "resolveFunctionParameterName"} {feature = "receiver parameters (self, &self, &mut self)"}
+  notImplemented __FILE__ {function = "resolveFunctionParameterName"} {feature = "receiver parameters (self, &self, &mut self)"}
 
 mutual
   resolveExpressionNode : AstInfo -> ExpressionNode CanonicalAstPhase -> StateT ScopeTables (Either ResolutionError) (ExpressionNode ResolvedAstPhase)
@@ -350,8 +351,8 @@ mutual
         resolvedPath <- resolvePath path
         pure $ ExprPath resolvedPath
       ExprBuiltin builtin => pure $ ExprBuiltin builtin
-      ExprSelf () => notImplemented {function = "resolveExpressionNode"} {feature = "self expressions"}
-      ExprParenthesized inner => unreachable {function = "resolveExpressionNode"} {reason = "parenthesized expressions should have been removed during desugaring"}
+      ExprSelf () => notImplemented __FILE__ {function = "resolveExpressionNode"} {feature = "self expressions"}
+      ExprParenthesized inner => unreachable __FILE__ {function = "resolveExpressionNode"} {reason = "parenthesized expressions should have been removed during desugaring"}
       ExprTuple elements => do
         resolvedElements <- traverse resolveNestedExpression elements
         pure $ ExprTuple resolvedElements
@@ -362,7 +363,7 @@ mutual
         resolvedElement <- resolveNestedExpression element
         resolvedCount <- withConstContext (resolveNestedExpression count)
         pure $ ExprRepeatedArray resolvedElement resolvedCount
-      ExprStructLiteral path fields => notImplemented {function = "resolveExpressionNode"} {feature = "struct literals (ExprStructLiteral)"}
+      ExprStructLiteral path fields => notImplemented __FILE__ {function = "resolveExpressionNode"} {feature = "struct literals (ExprStructLiteral)"}
       ExprCall callee arguments => do
         resolvedCallee <- resolveNestedExpression callee
         resolvedArguments <- traverse resolveNestedExpression arguments
@@ -406,11 +407,11 @@ mutual
       ExprIf ifNode => do
         resolvedIfNode <- resolveIfNode ifNode
         pure $ ExprIf resolvedIfNode
-      ExprQIf ifNode => notImplemented {function = "resolveExpressionNode"} {feature = "ExprQIf"}
-      ExprSIf ifNode => notImplemented {function = "resolveExpressionNode"} {feature = "ExprSIf"}
-      ExprMatch matchNode => notImplemented {function = "resolveExpressionNode"} {feature = "ExprMatch"}
-      ExprQMatch matchNode => notImplemented {function = "resolveExpressionNode"} {feature = "ExprQMatch"}
-      ExprSMatch matchNode => notImplemented {function = "resolveExpressionNode"} {feature = "ExprSMatch"}
+      ExprQIf ifNode => notImplemented __FILE__ {function = "resolveExpressionNode"} {feature = "ExprQIf"}
+      ExprSIf ifNode => notImplemented __FILE__ {function = "resolveExpressionNode"} {feature = "ExprSIf"}
+      ExprMatch matchNode => notImplemented __FILE__ {function = "resolveExpressionNode"} {feature = "ExprMatch"}
+      ExprQMatch matchNode => notImplemented __FILE__ {function = "resolveExpressionNode"} {feature = "ExprQMatch"}
+      ExprSMatch matchNode => notImplemented __FILE__ {function = "resolveExpressionNode"} {feature = "ExprSMatch"}
       ExprLoop body => do
         resolvedBody <- resolveBlockExpression body
         pure $ ExprLoop resolvedBody
@@ -518,7 +519,7 @@ mutual
         TyUnit => do
           pure TyUnit
         TyParenthesized innerType => do
-          unreachable {function = "resolveType"} {reason = "parenthesized types should have been removed during desugaring"}
+          unreachable __FILE__ {function = "resolveType"} {reason = "parenthesized types should have been removed during desugaring"}
         TyTuple elementTypes => do
           resolvedElementTypes <- traverse resolveNestedType elementTypes
           pure $ TyTuple resolvedElementTypes
@@ -554,7 +555,7 @@ mutual
                             StateT ScopeTables (Either ResolutionError) (AstNode ResolvedAstPhase ResolvedPathNode)
         resolveTypePath nodeId (MkAstNode pathInfo _ (MkPathNode firstSegment remainingSegments)) = do
           recordNodeScope pathInfo.nodeId
-          notImplemented {function = "resolveTypePath"} {feature = "type paths (needed for modules and structs)"}
+          notImplemented __FILE__ {function = "resolveTypePath"} {feature = "type paths (needed for modules and structs)"}
         resolveNestedType : CanonicalTy -> StateT ScopeTables (Either ResolutionError) ResolvedTy
         resolveNestedType nestedType = resolveType (assert_smaller typeNode nestedType)
         resolveParameter : CanonicalAstNode (FunctionTypeParameterNode CanonicalAstPhase (CanonicalAstNode (ExpressionNode CanonicalAstPhase))) ->
@@ -643,7 +644,7 @@ resolveFunctionParameter resolvedParameterName
         resolvedParameterName
         resolvedParameterType
 resolveFunctionParameter _ (MkAstNode _ _ (ReceiverParameter _ _)) =
-  notImplemented {function = "resolveFunctionParameter"} {feature = "receiver parameters (self, &self, &mut self)"}
+  notImplemented __FILE__ {function = "resolveFunctionParameter"} {feature = "receiver parameters (self, &self, &mut self)"}
 
 resolveSignedPauliTerm : SignedPauliTerm CanonicalAstPhase -> StateT ScopeTables (Either ResolutionError) (SignedPauliTerm ResolvedAstPhase)
 resolveSignedPauliTerm (MkAstNode termInfo metadata (MkSignedPauliTermNode sign pauliString)) = do
@@ -697,7 +698,7 @@ resolveContractClause (MkAstNode contractAstInfo metadata contractClauseNode) = 
 
 resolveFunctionBody : Block CanonicalAstPhase -> StateT ScopeTables (Either ResolutionError) (Block ResolvedAstPhase)
 resolveFunctionBody (MkAstNode _ _ (MkBlockNode _ _ (Just _))) =
-  unreachable {function = "resolveFunctionBody"} {reason = "the final expression of a function body should have been desugared to a statement"}
+  unreachable __FILE__ {function = "resolveFunctionBody"} {reason = "the final expression of a function body should have been desugared to a statement"}
 resolveFunctionBody (MkAstNode functionBodyAstInfo metadata (MkBlockNode blockInnerDocs blockStatements Nothing)) = do
   resolvedBlockStatement <- withChildScope BlockScope (SourceScope functionBodyAstInfo) $ do
     recordNodeScope functionBodyAstInfo.nodeId
@@ -722,7 +723,7 @@ declareValueSymbol itemInfo symbolKind visibility (MkAstNode nameInfo _ (MkNameN
         lift $ Left $ DuplicateDeclaration nameText [binding.target] nameInfo.span previousSpan
       -- Source declarations always record their name span. Prelude bindings
       -- live in the parent scope and cannot be a same-scope conflict here.
-      Nothing => unreachable {function = "declareValueSymbol"} {reason = "existing source declaration has no introduction span"}
+      Nothing => unreachable __FILE__ {function = "declareValueSymbol"} {reason = "existing source declaration has no introduction span"}
     Nothing => pure ()
   let symbolInfo = MkSymbolInfo
         symbolId
@@ -753,14 +754,14 @@ declareValueSymbol itemInfo symbolKind visibility (MkAstNode nameInfo _ (MkNameN
 declareItem : CanonicalItem -> StateT ScopeTables (Either ResolutionError) ()
 declareItem (MkAstNode itemInfo _ item) =
   case item of
-    ItemModule declaration => notImplemented {function = "declareItem"} {feature = "ItemModule"}
-    ItemUse declaration => notImplemented {function = "declareItem"} {feature = "ItemUse"}
+    ItemModule declaration => notImplemented __FILE__ {function = "declareItem"} {feature = "ItemModule"}
+    ItemUse declaration => notImplemented __FILE__ {function = "declareItem"} {feature = "ItemUse"}
     ItemConst (MkConstDeclarationNode _ constVisibility constName _ _) =>
       declareValueSymbol itemInfo SymbolConstant (symbolVisibility constVisibility) constName
-    ItemEnum declaration => notImplemented {function = "declareItem"} {feature = "ItemEnum"}
-    ItemQEnum declaration => notImplemented {function = "declareItem"} {feature = "ItemQEnum"}
-    ItemStruct declaration => notImplemented {function = "declareItem"} {feature = "ItemStruct"}
-    ItemImpl declaration => notImplemented {function = "declareItem"} {feature = "ItemImpl"}
+    ItemEnum declaration => notImplemented __FILE__ {function = "declareItem"} {feature = "ItemEnum"}
+    ItemQEnum declaration => notImplemented __FILE__ {function = "declareItem"} {feature = "ItemQEnum"}
+    ItemStruct declaration => notImplemented __FILE__ {function = "declareItem"} {feature = "ItemStruct"}
+    ItemImpl declaration => notImplemented __FILE__ {function = "declareItem"} {feature = "ItemImpl"}
     ItemFunction (MkFunctionDeclarationNode _ _ functionVisibility _ _ functionName _ _ _ _ _) =>
       declareValueSymbol itemInfo SymbolFunction (symbolVisibility functionVisibility) functionName
 
@@ -773,22 +774,22 @@ resolveDeclaredValueName (MkAstNode nameInfo metadata (MkNameNode nameText)) = d
   let declaredBinding = lookup scopeTables.currentScope scopeTables.scopes >>= \scope => lookup nameText scope.valueBindings
   case declaredBinding of
     Just binding => pure $ resolveNode nameInfo metadata $ MkResolvedNameNode nameText binding.target
-    Nothing => unreachable {function = "resolveDeclaredValueName"} {reason = "item name was not declared by declareItem"}
+    Nothing => unreachable __FILE__ {function = "resolveDeclaredValueName"} {reason = "item name was not declared by declareItem"}
 
 -- Second pass over a scope's items: resolves each item against the scope that
 -- declareItem has already populated with all item names.
 resolveItem : CanonicalItem -> StateT ScopeTables (Either ResolutionError) ResolvedItem
 resolveItem (MkAstNode itemInfo metadata item) = do
   resolvedItem <- case item of
-    ItemModule declaration => notImplemented {function = "resolveItem"} {feature = "ItemModule"}
-    ItemUse declaration => notImplemented {function = "resolveItem"} {feature = "ItemUse"}
+    ItemModule declaration => notImplemented __FILE__ {function = "resolveItem"} {feature = "ItemModule"}
+    ItemUse declaration => notImplemented __FILE__ {function = "resolveItem"} {feature = "ItemUse"}
     ItemConst declaration => do
       resolvedDeclaration <- resolveConstDeclaration declaration
       pure $ ItemConst resolvedDeclaration
-    ItemEnum declaration => notImplemented {function = "resolveItem"} {feature = "ItemEnum"}
-    ItemQEnum declaration => notImplemented {function = "resolveItem"} {feature = "ItemQEnum"}
-    ItemStruct declaration => notImplemented {function = "resolveItem"} {feature = "ItemStruct"}
-    ItemImpl declaration => notImplemented {function = "resolveItem"} {feature = "ItemImpl"}
+    ItemEnum declaration => notImplemented __FILE__ {function = "resolveItem"} {feature = "ItemEnum"}
+    ItemQEnum declaration => notImplemented __FILE__ {function = "resolveItem"} {feature = "ItemQEnum"}
+    ItemStruct declaration => notImplemented __FILE__ {function = "resolveItem"} {feature = "ItemStruct"}
+    ItemImpl declaration => notImplemented __FILE__ {function = "resolveItem"} {feature = "ItemImpl"}
     ItemFunction declaration => do
       resolvedDeclaration <- resolveFunctionDeclaration declaration
       pure $ ItemFunction resolvedDeclaration

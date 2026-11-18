@@ -1,12 +1,12 @@
 module Compiler.Frontend.TypeChecker.State
 
+import Compiler.Helper
 import Control.Monad.State
 import Data.SortedMap
 import Data.SortedSet
 
 import Compiler.Frontend.ScopeAndNameResolver.Data
 import Compiler.Frontend.TypeChecker.Data
-import Compiler.Frontend.TypeChecker.Helper
 import Compiler.Frontend.TypeChecker.TcType
 import Compiler.Frontend.TypeChecker.Type
 import Compiler.Frontend.Syntax.AST
@@ -76,23 +76,23 @@ blocked symbol = do
   checkerState <- get
   case lookup symbol checkerState.declarations of
     Just _  => lift (Left (Blocked symbol))
-    Nothing => unreachable {function = "blocked"} {reason = "symbol cannot be found in checker state top level declarations"}
+    Nothing => unreachable __FILE__ {function = "blocked"} {reason = "symbol cannot be found in checker state top level declarations"}
 
 --------------------------------------------------------------------------------
 -- Recording results
 --------------------------------------------------------------------------------
 
-typedSymbolInfo : TypedSymbolInfo -> InferredType -> TypedSymbolInfo
-typedSymbolInfo symbolInfo inferredType = { symbolType := inferredType } symbolInfo
+updatedTypedSymbolInfo : TypedSymbolInfo -> InferredType -> TypedSymbolInfo
+updatedTypedSymbolInfo symbolInfo inferredType = { symbolType := inferredType } symbolInfo
 
 export
 recordSymbolType : SymbolId -> LeafType -> StateT TypeCheckerState (Either CheckFailure) ()
 recordSymbolType symbolId leafType = do
   checkerState <- get
   case lookup symbolId checkerState.tables.symbols of
-    Nothing => unreachable {function = "recordSymbolType"} {reason = "symbol cannot be found in the symbol table"}
+    Nothing => unreachable __FILE__ {function = "recordSymbolType"} {reason = "symbol cannot be found in the symbol table"}
     Just symbolInfo => do
-      let typedSymbol = typedSymbolInfo symbolInfo (ResolvedType leafType)
+      let typedSymbol = updatedTypedSymbolInfo symbolInfo (ResolvedType leafType)
       modify $ \state => { tables.symbols := insert symbolId typedSymbol state.tables.symbols } state
 
 typedLocalVarQualifiers : TypedLocalVarQualifiers -> LeafType -> TypedLocalVarQualifiers
@@ -106,7 +106,7 @@ recordParameterStorage : SymbolId -> LeafType -> StateT TypeCheckerState (Either
 recordParameterStorage symbolId leafType = do
   checkerState <- get
   case lookup symbolId checkerState.tables.localVarsMeta of
-    Nothing => unreachable {function = "recordParameterStorage"} {reason = "symbol cannot be found in the local variable metadata"}
+    Nothing => unreachable __FILE__ {function = "recordParameterStorage"} {reason = "symbol cannot be found in the local variable metadata"}
     Just qualifiers => do
       let typedQualifiers = typedLocalVarQualifiers qualifiers leafType
       modify $ \state => { tables.localVarsMeta := insert symbolId typedQualifiers state.tables.localVarsMeta } state

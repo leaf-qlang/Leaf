@@ -1,9 +1,9 @@
 module Compiler.Frontend.TypeChecker.Phases.ConstEval
 
+import Compiler.Helper
 import Control.Monad.State
 
 import Compiler.Frontend.TypeChecker.Data
-import Compiler.Frontend.TypeChecker.Helper
 import Compiler.Frontend.TypeChecker.Numeric
 import Compiler.Frontend.TypeChecker.State
 import Compiler.Frontend.TypeChecker.Type
@@ -19,7 +19,7 @@ export
 evalConstExprNat : Expr ResolvedAstPhase -> StateT TypeCheckerState (Either CheckFailure) Nat
 evalConstExprNat (MkAstNode astInfo _ (ExprLiteral (MkAstNode _ _ (LiteralIntegerRaw raw)))) =
   case integerLiteralValue raw of
-    Nothing => unreachable {function = "evalConstExprNat"} {reason = "the lexer accepted a malformed integer literal: " ++ raw}
+    Nothing => unreachable __FILE__ {function = "evalConstExprNat"} {reason = "the lexer accepted a malformed integer literal: " ++ raw}
     Just _ =>
       case arrayLengthProblem raw of
         Just (NonUsizeLengthSuffix suffixType) => typeError (IncorrectArrayLengthType (LeafPrimitiveType suffixType) astInfo.span)
@@ -31,4 +31,4 @@ evalConstExprNat (MkAstNode astInfo _ (ExprLiteral (MkAstNode _ _ (LiteralIntege
                 Left err => typeError err
                 Right count => pure count
 -- only literal expression are implemented for now in order to unblock Phase A
-evalConstExprNat _ = notImplemented {function = "evalConstExprNat"} {feature = "array lengths other than a literal (needs ConstEval/ConstRules)"}
+evalConstExprNat _ = notImplemented __FILE__ {function = "evalConstExprNat"} {feature = "array lengths other than a literal (needs ConstEval/ConstRules)"}

@@ -1,10 +1,10 @@
 module Compiler.Frontend.TypeChecker.PreludeSignatures
 
+import Compiler.Helper
 import Data.List
 import Data.List1
 
 import Compiler.Frontend.TypeChecker.Data
-import Compiler.Frontend.TypeChecker.Helper
 import Compiler.Frontend.TypeChecker.Type
 import Compiler.Frontend.Syntax.Common
 import Compiler.Frontend.Token
@@ -173,7 +173,7 @@ mathArity _     = 1
 
 -- every Leaf gate returns the qbits it was given
 gateReturnType : (qbitArgs : Nat) -> (qbitType : LeafType) -> LeafType
-gateReturnType Z _ = unreachable {function = "gateReturnType"} {reason = "every prelude gate returns at least one qbit"}
+gateReturnType Z _ = unreachable __FILE__ {function = "gateReturnType"} {reason = "every prelude gate returns at least one qbit"}
 gateReturnType (S Z) qbitType = qbitType
 gateReturnType (S (S n)) qbitType = LeafTupleType (qbitType ::: replicate (S n) qbitType)
 
@@ -181,7 +181,7 @@ gateReturnType (S (S n)) qbitType = LeafTupleType (qbitType ::: replicate (S n) 
 gateFunctionType : (gateName : String) -> (angleArgs : Nat) -> (qbitArgs : Nat) -> LeafType
 gateFunctionType gateName angleArgs qbitArgs =
   let angleType = LeafPrimitiveType TypPrimAngle64
-      qbitType  = LeafQualifiedType QuantumUsageLinear (LeafPrimitiveType TypPrimQbit)
+      qbitType  = LeafQuantumQualifiedType QuantumUsageLinear (LeafPrimitiveType TypPrimQbit)
       parameterTypes = replicate angleArgs angleType ++ replicate qbitArgs qbitType
   in LeafFunctionType (gateLeastEffect gateName) gateCapabilities parameterTypes
        (gateReturnType qbitArgs qbitType)
@@ -199,6 +199,6 @@ preludeValueType name =
     Just (TurnsSignature _) =>
       ResolvedType (LeafFunctionType EffectClassical [] [LeafPrimitiveType TypPrimF64] (LeafPrimitiveType TypPrimAngle64))
     Just ParamSignature =>
-      unreachable {function = "preludeValueType"} {reason = "Param is handled above, as it has no value type"}
+      unreachable __FILE__ {function = "preludeValueType"} {reason = "Param is handled above, as it has no value type"}
     Nothing =>
-      unreachable {function = "preludeValueType"} {reason = "\{name} is not a prelude symbol"}
+      unreachable __FILE__ {function = "preludeValueType"} {reason = "\{name} is not a prelude symbol"}

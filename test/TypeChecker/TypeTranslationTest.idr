@@ -47,7 +47,7 @@ firstParameterReferentIsQualified inputProgram =
     _ => Nothing
   where
     qualified : LeafType -> Bool
-    qualified (LeafQualifiedType _ _) = True
+    qualified (LeafQuantumQualifiedType _ _) = True
     qualified leafType@(LeafTupleType elementTypes) =
       any (\elementType => qualified (assert_smaller leafType elementType)) elementTypes
     qualified (LeafArrayType elementType _) = qualified elementType
@@ -58,7 +58,7 @@ firstParameterReferentIsQualified inputProgram =
 firstParameterElementQuantumUsage : String -> Maybe QuantumUsageQualifier
 firstParameterElementQuantumUsage inputProgram =
   case firstParameterType inputProgram of
-    Just (ResolvedType (LeafArrayType (LeafQualifiedType quantumUsage (LeafPrimitiveType TypPrimQbit)) _)) =>
+    Just (ResolvedType (LeafArrayType (LeafQuantumQualifiedType quantumUsage (LeafPrimitiveType TypPrimQbit)) _)) =>
       Just quantumUsage
     _ => Nothing
 

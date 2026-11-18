@@ -7,6 +7,7 @@ depends = elab-util,
           parser
 
 modules = Main,
+          Compiler.Helper,
 	  Compiler.Backend.OpenQASM3.Serializer,
           Compiler.Frontend.ASTData,
           Compiler.Frontend.ASTPhases,

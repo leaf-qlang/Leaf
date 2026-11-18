@@ -1,5 +1,6 @@
 module Compiler.Frontend.TypeChecker.Phases.BodyCheck
 
+import Compiler.Helper
 import Data.List1
 import Data.SortedMap
 import Data.SortedSet
@@ -38,9 +39,9 @@ checkTypeIsSized = walk False
     walk unsizedAllowed typeAstNode@(MkAstNode astInfo metadata typeNode) =
       case typeNode of
         TyPrimitive primitiveName => pure ()
-        TyPath typePath => notImplemented {function = "checkTypeIsSized"} {feature = "structs, enums or qenums"}
+        TyPath typePath => notImplemented __FILE__ {function = "checkTypeIsSized"} {feature = "structs, enums or qenums"}
         TyUnit => pure ()
-        TyParenthesized innerType => unreachable {function = "checkTypeIsSized"} {reason = "parenthesized types should have been removed during the desugaring phase."}
+        TyParenthesized innerType => unreachable __FILE__ {function = "checkTypeIsSized"} {reason = "parenthesized types should have been removed during the desugaring phase."}
         TyTuple elementTypes => traverse_ (\element => walk False (assert_smaller typeNode element)) elementTypes
         TyArray elementType sizeExpression => walk False (assert_smaller typeNode elementType)
         TySlice elementType =>
@@ -123,12 +124,12 @@ export
 checkBody : ResolvedItem -> StateT TypeCheckerState (Either CheckFailure) ()
 checkBody (MkAstNode itemInfo metadata item) = do
   case item of
-      ItemModule declaration => notImplemented {function = "checkItem"} {feature = "ItemModule"}
-      ItemUse declaration => notImplemented {function = "checkItem"} {feature = "ItemUse"}
+      ItemModule declaration => notImplemented __FILE__ {function = "checkItem"} {feature = "ItemModule"}
+      ItemUse declaration => notImplemented __FILE__ {function = "checkItem"} {feature = "ItemUse"}
       ItemConst declaration => checkConstDeclaration declaration
-      ItemEnum declaration => notImplemented {function = "checkItem"} {feature = "ItemEnum"}
-      ItemQEnum declaration => notImplemented {function = "checkItem"} {feature = "ItemQEnum"}
-      ItemStruct declaration => notImplemented {function = "checkItem"} {feature = "ItemStruct"}
-      ItemImpl declaration => notImplemented {function = "checkItem"} {feature = "ItemImpl"}
+      ItemEnum declaration => notImplemented __FILE__ {function = "checkItem"} {feature = "ItemEnum"}
+      ItemQEnum declaration => notImplemented __FILE__ {function = "checkItem"} {feature = "ItemQEnum"}
+      ItemStruct declaration => notImplemented __FILE__ {function = "checkItem"} {feature = "ItemStruct"}
+      ItemImpl declaration => notImplemented __FILE__ {function = "checkItem"} {feature = "ItemImpl"}
       ItemFunction declaration => checkFunctionDeclaration declaration
 

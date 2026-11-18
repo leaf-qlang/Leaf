@@ -1,5 +1,6 @@
 module Compiler.Frontend.TypeChecker.Helper
 
+import Compiler.Helper
 import Compiler.Frontend.TypeChecker.Data
 import Compiler.Frontend.TypeChecker.Type
 import Data.List
@@ -17,39 +18,25 @@ import Compiler.Frontend.Token
 
 %default total
 
-||| Crash on a language feature that typechecking does not support yet.
-export
-notImplemented : (function : String) -> (feature : String) -> a
-notImplemented function feature =
-  assert_total $ idris_crash $
-    "Typechecking, " ++ function ++ ": not yet implemented: " ++ feature ++ "."
-
-||| Crash on a violated internal invariant: a compiler bug, not invalid Leaf source.
-export
-unreachable : (function : String) -> (reason : String) -> a
-unreachable function reason =
-  assert_total $ idris_crash $
-    "Typechecking, " ++ function ++ ": internal error: " ++ reason ++ "."
-
-pathTargetSymbolId : {astPhase : AstPhase} -> Path astPhase -> SymbolId
-pathTargetSymbolId {astPhase = SurfaceAstPhase} _ = unreachable {function = "pathTargetSymbolId"} {reason = "paths are not yet resolved"}
-pathTargetSymbolId {astPhase = CanonicalAstPhase} _ = unreachable {function = "pathTargetSymbolId"} {reason = "paths are not yet resolved"}
-pathTargetSymbolId {astPhase = ResolvedAstPhase} path = path.nodeValue.resolvedPathTargetSymbolId
-pathTargetSymbolId {astPhase = TypedAstPhase} path = path.nodeValue.resolvedPathTargetSymbolId
+pathReferencedSymbolId : {astPhase : AstPhase} -> Path astPhase -> SymbolId
+pathReferencedSymbolId {astPhase = SurfaceAstPhase} _ = unreachable __FILE__ {function = "pathReferencedSymbolId"} {reason = "paths are not yet resolved"}
+pathReferencedSymbolId {astPhase = CanonicalAstPhase} _ = unreachable __FILE__ {function = "pathReferencedSymbolId"} {reason = "paths are not yet resolved"}
+pathReferencedSymbolId {astPhase = ResolvedAstPhase} path = path.nodeValue.referencedSymbolId
+pathReferencedSymbolId {astPhase = TypedAstPhase} path = path.nodeValue.referencedSymbolId
 
 export
 writtenLeafTypeM :  {astPhase : AstPhase} -> Monad m => (resolveLength : Expr astPhase -> m Nat) -> Ty astPhase (Expr astPhase) -> m LeafType
 writtenLeafTypeM resolveLength typeAstNode@(MkAstNode _ _ typeNode) =
   case typeNode of
     TyPrimitive primitiveName => pure (LeafPrimitiveType primitiveName)
-    TyPath typePath           => pure (LeafNamedType (pathTargetSymbolId typePath))
+    TyPath typePath           => pure (LeafNamedType (pathReferencedSymbolId typePath))
     TyUnit                    => pure LeafUnitType
     TyParenthesized innerType => recur innerType
     TyTuple elementTypes      => LeafTupleType <$> traverse recur elementTypes
     TyArray elementType sizeExpression => LeafArrayType <$> recur elementType <*> resolveLength sizeExpression
     TySlice elementType => LeafSliceType <$> recur elementType
     TyReference borrowKind referencedType => quantumUsageFreeReference borrowKind.nodeValue <$> recur referencedType
-    TyQualified quantumUsageQualifier qualifiedType => LeafQualifiedType quantumUsageQualifier.nodeValue <$> recur qualifiedType
+    TyQualified quantumUsageQualifier qualifiedType => LeafQuantumQualifiedType quantumUsageQualifier.nodeValue <$> recur qualifiedType
     TyFunction functionEffect functionParameters returnType =>
       LeafFunctionType (maybe EffectGeneral (.nodeValue) functionEffect) []
         <$> traverse (\parameter => recur parameter.nodeValue.parameterType) functionParameters
@@ -66,7 +53,7 @@ toInferredType = maybe TypeNotYetResolved ResolvedType . writtenLeafTypeM litera
     literalArrayLength (MkAstNode _ _ (ExprLiteral (MkAstNode _ _ (LiteralIntegerRaw raw)))) =
       case (integerLiteralValue raw, arrayLengthProblem raw) of
         (Just length, Nothing) => if length <= usizeMaximum then Just length else Nothing
-        (Just _, Just _) => unreachable {function = "toInferredType"} {reason = "post-parse validation rejects this array length: " ++ raw}
-        (Nothing, _) => unreachable {function = "toInferredType"} {reason = "the lexer accepted a malformed integer literal: " ++ raw}
+        (Just _, Just _) => unreachable __FILE__ {function = "toInferredType"} {reason = "post-parse validation rejects this array length: " ++ raw}
+        (Nothing, _) => unreachable __FILE__ {function = "toInferredType"} {reason = "the lexer accepted a malformed integer literal: " ++ raw}
     literalArrayLength _ = Nothing
 

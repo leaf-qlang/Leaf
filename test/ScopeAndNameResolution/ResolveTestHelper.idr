@@ -141,7 +141,7 @@ constantPatternMatches : ResolvedModule -> ResolvedName -> ResolvedPattern -> Bo
 constantPatternMatches resolved constant pattern = case pattern.nodeValue of
   PatternPath path =>
     let name = MkAstNode path.astInfo path.metadata
-                 (MkResolvedNameNode path.nodeValue.firstPathSegmentText path.nodeValue.resolvedPathTargetSymbolId)
+                 (MkResolvedNameNode path.nodeValue.firstPathSegmentText path.nodeValue.referencedSymbolId)
     in path.nodeValue.remainingPathSegmentTexts == [] &&
        path.nodeValue.firstPathSegmentText == constant.nodeValue.nameNodeText &&
        constantOccurrenceMatches resolved constant pattern.astInfo.nodeId name

@@ -32,7 +32,7 @@ data LeafType
   | LeafRangeType RangeShape LeafType
   | LeafReferenceType BorrowKind LeafType
   | LeafFunctionType FunctionEffect (List SupportKind) (List LeafType) LeafType
-  | LeafQualifiedType QuantumUsageQualifier LeafType
+  | LeafQuantumQualifiedType QuantumUsageQualifier LeafType
   | LeafStringLiteralType
   | LeafNeverType     -- expressions that never finish: return, break, continue, loop with no break
                       -- none of them ever produce a value at the point where they appear: control jumps somewhere else
@@ -61,7 +61,7 @@ showLeafType ty =
         (case supportKinds of
            [] => ""
            kinds => " supports " ++ joinBy ", " (map show kinds))
-    LeafQualifiedType qualifier qualifiedType => show qualifier ++ " " ++ recur qualifiedType
+    LeafQuantumQualifiedType qualifier qualifiedType => show qualifier ++ " " ++ recur qualifiedType
     LeafStringLiteralType => "string literal"
     LeafNeverType => "!"
   where
@@ -76,7 +76,7 @@ implementation Show LeafType where
 -- References
 --------------------------------------------------------------------------------
 -- A reference borrows its referent without owning it, so the referent of a
--- LeafReferenceType holds no LeafQualifiedType at an owned position: its
+-- LeafReferenceType holds no LeafQuantumQualifiedType at an owned position: its
 -- qbits, found through tuples, arrays and slices but not inside function
 -- types or nested references (as in "Owned positions" in
 -- Compiler.Frontend.Syntax.Type). A borrow of a linear qbit and a borrow of an affine
@@ -87,7 +87,7 @@ export
 removeQuantumUsage : LeafType -> LeafType
 removeQuantumUsage leafType =
   case leafType of
-    LeafQualifiedType _ qualifiedType => qualifiedType
+    LeafQuantumQualifiedType _ qualifiedType => qualifiedType
     LeafTupleType elementTypes => LeafTupleType (map recur elementTypes)
     LeafArrayType elementType arrayLength => LeafArrayType (recur elementType) arrayLength
     LeafSliceType elementType => LeafSliceType (recur elementType)
@@ -110,7 +110,7 @@ hasOwnedQbit leafType =
     LeafArrayType elementType _ => recur elementType
     LeafSliceType elementType => recur elementType
     LeafRangeType _ elementType => recur elementType
-    LeafQualifiedType _ qualifiedType => recur qualifiedType
+    LeafQuantumQualifiedType _ qualifiedType => recur qualifiedType
     LeafReferenceType _ _ => False
     LeafFunctionType _ _ _ _ => False
     LeafUnitType => False

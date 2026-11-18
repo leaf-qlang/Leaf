@@ -1,7 +1,7 @@
 module Compiler.Frontend.TypeChecker.Phases.TypedAstTranslation
 
+import Compiler.Helper
 import Compiler.Frontend.TypeChecker.Data
-import Compiler.Frontend.TypeChecker.Helper
 import Compiler.Frontend.ASTData
 import Compiler.Frontend.ASTPhases
 import Compiler.Frontend.Syntax.AST
@@ -61,7 +61,7 @@ typecheckPattern (MkAstNode patternInfo (MkProvenanceMetadata provenance) patter
       PatternLiteral literal =>
         PatternLiteral (typecheckAstNode literal)
       PatternParenthesized innerPattern =>
-        unreachable {function = "typecheckPattern"} {reason = "parenthesized patterns should have been removed during desugaring"}
+        unreachable __FILE__ {function = "typecheckPattern"} {reason = "parenthesized patterns should have been removed during desugaring"}
       PatternTuple elementPatterns =>
         PatternTuple (map recur elementPatterns)
       PatternArray elementPatterns =>
@@ -101,11 +101,11 @@ mutual
       ExprPath path => ExprPath (typecheckPath path)
       ExprBuiltin builtin => ExprBuiltin builtin
       ExprSelf selfReceiver => ExprSelf selfReceiver
-      ExprParenthesized inner => unreachable {function = "typecheckExpressionNode"} {reason = "parenthesized expressions should have been removed during desugaring"}
+      ExprParenthesized inner => unreachable __FILE__ {function = "typecheckExpressionNode"} {reason = "parenthesized expressions should have been removed during desugaring"}
       ExprTuple elements => ExprTuple (map typecheckNestedExpression elements)
       ExprArray elements => ExprArray (map typecheckNestedExpression elements)
       ExprRepeatedArray element count => ExprRepeatedArray (typecheckNestedExpression element) (typecheckNestedExpression count)
-      ExprStructLiteral path fields => assert_total $ idris_crash "Resolve.idr: typecheckExpressionNode: ExprStructLiteral not implemented"
+      ExprStructLiteral path fields => notImplemented __FILE__ {function = "typecheckExpressionNode"} {feature = "ExprStructLiteral"}
       ExprCall callee arguments => ExprCall (typecheckNestedExpression callee) (map typecheckNestedExpression arguments)
       ExprMethodCall receiver name arguments => ExprMethodCall (typecheckNestedExpression receiver) (typecheckMemberName name) (map typecheckNestedExpression arguments)
       ExprField object name => ExprField (typecheckNestedExpression object) (typecheckMemberName name)
@@ -117,11 +117,11 @@ mutual
       ExprCast operand target => ExprCast (typecheckNestedExpression operand) (typecheckType target)
       ExprBlock block => ExprBlock (typecheckBlockExpression block)
       ExprIf ifNode => ExprIf (typecheckIfNode ifNode)
-      ExprQIf ifNode => assert_total $ idris_crash "Resolve.idr: typecheckExpressionNode: ExprQIf not implemented"
-      ExprSIf ifNode => assert_total $ idris_crash "Resolve.idr: typecheckExpressionNode: ExprSIf not implemented"
-      ExprMatch matchNode => assert_total $ idris_crash "Resolve.idr: typecheckExpressionNode: ExprMatch not implemented"
-      ExprQMatch matchNode => assert_total $ idris_crash "Resolve.idr: typecheckExpressionNode: ExprQMatch not implemented"
-      ExprSMatch matchNode => assert_total $ idris_crash "Resolve.idr: typecheckExpressionNode: ExprSMatch not implemented"
+      ExprQIf ifNode => notImplemented __FILE__ {function = "typecheckExpressionNode"} {feature = "ExprQIf"}
+      ExprSIf ifNode => notImplemented __FILE__ {function = "typecheckExpressionNode"} {feature = "ExprSIf"}
+      ExprMatch matchNode => notImplemented __FILE__ {function = "typecheckExpressionNode"} {feature = "ExprMatch"}
+      ExprQMatch matchNode => notImplemented __FILE__ {function = "typecheckExpressionNode"} {feature = "ExprQMatch"}
+      ExprSMatch matchNode => notImplemented __FILE__ {function = "typecheckExpressionNode"} {feature = "ExprSMatch"}
       ExprLoop body => ExprLoop (typecheckBlockExpression body)
       ExprWhile condition body => ExprWhile (typecheckNestedExpression condition) (typecheckBlockExpression body)
       ExprFor pattern iterator body => ExprFor (typecheckPattern pattern) (typecheckNestedExpression iterator) (typecheckBlockExpression body)
@@ -186,7 +186,7 @@ mutual
         TyUnit =>
           TyUnit
         TyParenthesized innerType =>
-          unreachable {function = "typecheckType"} {reason = "parenthesized types should have been removed during desugaring"}
+          unreachable __FILE__ {function = "typecheckType"} {reason = "parenthesized types should have been removed during desugaring"}
         TyTuple elementTypes =>
           TyTuple (map typecheckNestedType elementTypes)
         TyArray elementType sizeExpression =>
@@ -325,13 +325,13 @@ typecheckItem : ResolvedItem -> TypedItem
 typecheckItem (MkAstNode itemInfo (MkProvenanceMetadata provenance) item) =
   typecheckNode itemInfo (MkProvenanceMetadata provenance) $
     case item of
-      ItemModule declaration => assert_total $ idris_crash "Resolve.idr: typecheckItem: ItemModule not implemented."
-      ItemUse declaration => assert_total $ idris_crash "Resolve.idr: typecheckItem: ItemUse not implemented."
+      ItemModule declaration => notImplemented __FILE__ {function = "typecheckItem"} {feature = "ItemModule"}
+      ItemUse declaration => notImplemented __FILE__ {function = "typecheckItem"} {feature = "ItemUse"}
       ItemConst declaration => ItemConst $ typecheckConstDeclaration declaration
-      ItemEnum declaration => assert_total $ idris_crash "Resolve.idr: typecheckItem: ItemEnum not implemented"
-      ItemQEnum declaration => assert_total $ idris_crash "Resolve.idr: typecheckItem: ItemQEnum not implemented"
-      ItemStruct declaration => assert_total $ idris_crash "Resolve.idr: typecheckItem: ItemStruct not implemented"
-      ItemImpl declaration => assert_total $ idris_crash "Resolve.idr: typecheckItem: ItemImpl not implemented"
+      ItemEnum declaration => notImplemented __FILE__ {function = "typecheckItem"} {feature = "ItemEnum"}
+      ItemQEnum declaration => notImplemented __FILE__ {function = "typecheckItem"} {feature = "ItemQEnum"}
+      ItemStruct declaration => notImplemented __FILE__ {function = "typecheckItem"} {feature = "ItemStruct"}
+      ItemImpl declaration => notImplemented __FILE__ {function = "typecheckItem"} {feature = "ItemImpl"}
       ItemFunction declaration => ItemFunction $ typecheckFunctionDeclaration declaration
     where
       typecheckConstDeclaration : ConstDeclarationNode ResolvedAstPhase -> ConstDeclarationNode TypedAstPhase

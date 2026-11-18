@@ -2,6 +2,7 @@ module Leaf
 
 -- a module used to load Leaf libraries in REPL sessions
 
+import Compiler.Helper
 import Compiler.Frontend.Desugarer.Desugar
 import Compiler.Frontend.Desugarer.Helper
 import Core.Data

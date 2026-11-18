@@ -1,5 +1,6 @@
 module Compiler.Frontend.Desugarer.Desugar
 
+import Compiler.Helper
 import Compiler.Frontend.Desugarer.Helper
 import Data.List
 import Data.List1
@@ -131,11 +132,11 @@ mutual
       ExprCast operand target => ExprCast (desugarNestedExpression operand) (desugarType target)
       ExprBlock block => ExprBlock (desugarBlockExpression block)
       ExprIf ifNode => ExprIf (desugarIfNode expressionInfo ifNode)
-      ExprQIf ifNode => assert_total $ idris_crash "Desugar.idr: desugarExpressionNode: ExprQIf not implemented"
-      ExprSIf ifNode => assert_total $ idris_crash "Desugar.idr: desugarExpressionNode: ExprSIf not implemented"
-      ExprMatch matchNode => assert_total $ idris_crash "Desugar.idr: desugarExpressionNode: ExprMatch not implemented"
-      ExprQMatch matchNode => assert_total $ idris_crash "Desugar.idr: desugarExpressionNode: ExprQMatch not implemented"
-      ExprSMatch matchNode => assert_total $ idris_crash "Desugar.idr: desugarExpressionNode: ExprSMatch not implemented"
+      ExprQIf ifNode => notImplemented __FILE__ {function = "desugarExpressionNode"} {feature = "ExprQIf"}
+      ExprSIf ifNode => notImplemented __FILE__ {function = "desugarExpressionNode"} {feature = "ExprSIf"}
+      ExprMatch matchNode => notImplemented __FILE__ {function = "desugarExpressionNode"} {feature = "ExprMatch"}
+      ExprQMatch matchNode => notImplemented __FILE__ {function = "desugarExpressionNode"} {feature = "ExprQMatch"}
+      ExprSMatch matchNode => notImplemented __FILE__ {function = "desugarExpressionNode"} {feature = "ExprSMatch"}
       ExprLoop body => ExprLoop (desugarBlockExpression body)
       ExprWhile condition body => ExprWhile (desugarNestedExpression condition) (desugarBlockExpression body)
       ExprFor pattern iterator body => ExprFor (desugarPattern pattern) (desugarNestedExpression iterator) (desugarBlockExpression body)
@@ -460,13 +461,13 @@ desugarItem : SurfaceItem -> CanonicalItem
 desugarItem (MkAstNode itemInfo metadata item) =
   canonicalAstNode itemInfo WrittenCode $
     case item of
-      ItemModule declaration => assert_total $ idris_crash "Desugar.idr: desugarItem: ItemModule not implemented."
-      ItemUse declaration => assert_total $ idris_crash "Desugar.idr: desugarItem: ItemUse not implemented."
+      ItemModule declaration => notImplemented __FILE__ {function = "desugarItem"} {feature = "ItemModule"}
+      ItemUse declaration => notImplemented __FILE__ {function = "desugarItem"} {feature = "ItemUse"}
       ItemConst declaration => ItemConst $ desugarConstDeclaration declaration
-      ItemEnum declaration => assert_total $ idris_crash "Desugar.idr: desugarItem: ItemEnum not implemented"
-      ItemQEnum declaration => assert_total $ idris_crash "Desugar.idr: desugarItem: ItemQEnum not implemented"
-      ItemStruct declaration => assert_total $ idris_crash "Desugar.idr: desugarItem: ItemStruct not implemented"
-      ItemImpl declaration => assert_total $ idris_crash "Desugar.idr: desugarItem: ItemImpl not implemented"
+      ItemEnum declaration => notImplemented __FILE__ {function = "desugarItem"} {feature = "ItemEnum"}
+      ItemQEnum declaration => notImplemented __FILE__ {function = "desugarItem"} {feature = "ItemQEnum"}
+      ItemStruct declaration => notImplemented __FILE__ {function = "desugarItem"} {feature = "ItemStruct"}
+      ItemImpl declaration => notImplemented __FILE__ {function = "desugarItem"} {feature = "ItemImpl"}
       ItemFunction declaration => ItemFunction $ desugarFunctionDeclaration declaration
     where
       desugarConstDeclaration : ConstDeclarationNode SurfaceAstPhase -> ConstDeclarationNode CanonicalAstPhase

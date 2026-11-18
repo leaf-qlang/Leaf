@@ -1,5 +1,6 @@
 module Compiler.Frontend.TypeChecker.TypeCheck
 
+import Compiler.Helper
 import Control.Monad.State
 import Data.List
 import Data.SortedMap
@@ -9,7 +10,6 @@ import Compiler.Frontend.ScopeAndNameResolver.Data
 import Compiler.Frontend.TypeChecker.Phases.BodyCheck                -- phase B
 import Compiler.Frontend.TypeChecker.Data
 import Compiler.Frontend.TypeChecker.Phases.EffectsCheck             -- phase E
-import Compiler.Frontend.TypeChecker.Helper
 import Compiler.Frontend.TypeChecker.Phases.OwnershipCheck           -- phase C
 import Compiler.Frontend.TypeChecker.Phases.SignatureCheck           -- phase A
 import Compiler.Frontend.TypeChecker.PreludeSignatures
@@ -28,32 +28,32 @@ import Compiler.Frontend.Syntax.Name
 -- Item Helpers
 --------------------------------------------------------------------------------
 
-itemSymbolId : ResolvedItem -> SymbolId
-itemSymbolId item =
+getItemSymbolId : ResolvedItem -> SymbolId
+getItemSymbolId item =
   case item.nodeValue of
     ItemFunction declaration => declaration.functionName.nodeValue.nameNodeSymbolId
     ItemConst declaration    => declaration.constName.nodeValue.nameNodeSymbolId
-    ItemModule _             => notImplemented "itemSymbol" "ItemModule"
-    ItemUse _                => notImplemented "itemSymbol" "ItemUse"
-    ItemEnum _               => notImplemented "itemSymbol" "ItemEnum"
-    ItemQEnum _              => notImplemented "itemSymbol" "ItemQEnum"
-    ItemStruct _             => notImplemented "itemSymbol" "ItemStruct"
-    ItemImpl _               => notImplemented "itemSymbol" "ItemImpl"
+    ItemModule _             => notImplemented __FILE__ "getItemSymbolId" "ItemModule"
+    ItemUse _                => notImplemented __FILE__ "getItemSymbolId" "ItemUse"
+    ItemEnum _               => notImplemented __FILE__ "getItemSymbolId" "ItemEnum"
+    ItemQEnum _              => notImplemented __FILE__ "getItemSymbolId" "ItemQEnum"
+    ItemStruct _             => notImplemented __FILE__ "getItemSymbolId" "ItemStruct"
+    ItemImpl _               => notImplemented __FILE__ "getItemSymbolId" "ItemImpl"
 
-itemNameSpan : ResolvedItem -> SourceSpan
-itemNameSpan item =
+getItemNameSpan : ResolvedItem -> SourceSpan
+getItemNameSpan item =
   case item.nodeValue of
     ItemFunction declaration => declaration.functionName.astInfo.span
     ItemConst declaration    => declaration.constName.astInfo.span
-    ItemModule _             => notImplemented "itemNameSpan" "ItemModule"
-    ItemUse _                => notImplemented "itemNameSpan" "ItemUse"
-    ItemEnum _               => notImplemented "itemNameSpan" "ItemEnum"
-    ItemQEnum _              => notImplemented "itemNameSpan" "ItemQEnum"
-    ItemStruct _             => notImplemented "itemNameSpan" "ItemStruct"
-    ItemImpl _               => notImplemented "itemNameSpan" "ItemImpl"
+    ItemModule _             => notImplemented __FILE__ "getItemNameSpan" "ItemModule"
+    ItemUse _                => notImplemented __FILE__ "getItemNameSpan" "ItemUse"
+    ItemEnum _               => notImplemented __FILE__ "getItemNameSpan" "ItemEnum"
+    ItemQEnum _              => notImplemented __FILE__ "getItemNameSpan" "ItemQEnum"
+    ItemStruct _             => notImplemented __FILE__ "getItemNameSpan" "ItemStruct"
+    ItemImpl _               => notImplemented __FILE__ "getItemNameSpan" "ItemImpl"
 
-sameItem : ResolvedItem -> ResolvedItem -> Bool
-sameItem a b = a.astInfo.nodeId == b.astInfo.nodeId
+isSameItem : ResolvedItem -> ResolvedItem -> Bool
+isSameItem a b = a.astInfo.nodeId == b.astInfo.nodeId
 
 --------------------------------------------------------------------------------
 -- Seeding
@@ -93,7 +93,7 @@ seedTypeCheckerState resolvedModule items =
     (seedPresetSymbolTypes (seedTypeTables resolvedModule.tables))
     Nothing
     emptyInferenceState
-    (fromList (map (\item => (itemSymbolId item, item)) items))
+    (fromList (map (\item => (getItemSymbolId item, item)) items))
     empty
     empty
 
@@ -108,18 +108,18 @@ seedTypeCheckerState resolvedModule items =
 resolutionCycleTypeError : TypeTables -> List (ResolvedItem, SymbolId) -> TypeError
 resolutionCycleTypeError tables stuck =
   case stuck of
-    [] => unreachable {function = "resolutionCycleError"} {reason = "a round without progress has stuck items"}
+    [] => unreachable __FILE__ {function = "resolutionCycleError"} {reason = "a round without progress has stuck items"}
     (first, firstWait) :: _ =>
-      CyclicDeclaration (map symbolName (loopFrom (S (length stuck)) [] firstWait)) (itemNameSpan first)
+      CyclicDeclaration (map symbolName (loopFrom (S (length stuck)) [] firstWait)) (getItemNameSpan first)
   where
     symbolName : SymbolId -> String
     symbolName symbolId =
       case lookup symbolId tables.symbols of
         Just symbol => symbol.declaredName
-        Nothing => unreachable "resolutionCycleError" "a cycle references an unknown symbol"
+        Nothing => unreachable __FILE__ "resolutionCycleError" "a cycle references an unknown symbol"
 
     waits : List (SymbolId, SymbolId)
-    waits = map (\(item, waitingFor) => (itemSymbolId item, waitingFor)) stuck
+    waits = map (\(item, waitingFor) => (getItemSymbolId item, waitingFor)) stuck
 
     -- `visited` holds the symbols walked so far, most recent first.
     loopFrom : (fuel : Nat) -> (visited : List SymbolId) -> SymbolId -> List SymbolId
@@ -132,16 +132,15 @@ resolutionCycleTypeError tables stuck =
                Nothing   => reverse (symbol :: visited)
 
 --------------------------------------------------------------------------------
--- Passes A and B, in runBodyAndSignatureCheck
+-- Passes A and B
 --------------------------------------------------------------------------------
 
--- What passes A and B still have to do, each list in source order.
-record WorkTodo where
-  constructor MkWorkTodo
-  signatures : List ResolvedItem     -- pass A has not recorded the signature yet
-  bodies     : List ResolvedItem     -- pass B has not checked the body or initializer yet
+record RemainingWorkTodo where
+  constructor MkRemainingWorkTodo
+  signatures : List ResolvedItem     -- pass A has not recorded the signature yet, in source order
+  bodies     : List ResolvedItem     -- pass B has not checked the body or initializer yet, in source order
 
-noRemaining : WorkTodo -> Nat
+noRemaining : RemainingWorkTodo -> Nat
 noRemaining work = length work.signatures + length work.bodies
 
 -- A blocked check leaves the state exactly as it was so retrying next round is safe.
@@ -166,15 +165,15 @@ attemptAllChecks checkFunction (item :: items) = do
 -- One round: pass A on every pending signature, then pass B on every pending
 -- body whose signature is recorded. Each productive round completes at least
 -- one of the 2n entries, so 2n + 1 runBodyAndSignatureCheck always suffice.
-runBodyAndSignatureChecks : (fuel : Nat) -> WorkTodo -> StateT TypeCheckerState (Either CheckFailure) ()
-runBodyAndSignatureChecks _ (MkWorkTodo [] []) = pure ()
-runBodyAndSignatureChecks Z _ = unreachable {function = "runBodyAndSignatureCheck"} {reason = "every productive round completes an entry"}
+runBodyAndSignatureChecks : (fuel : Nat) -> RemainingWorkTodo -> StateT TypeCheckerState (Either CheckFailure) ()
+runBodyAndSignatureChecks _ (MkRemainingWorkTodo [] []) = pure ()
+runBodyAndSignatureChecks Z _ = unreachable __FILE__ {function = "runBodyAndSignatureCheck"} {reason = "every productive round completes an entry"}
 runBodyAndSignatureChecks (S fuel) work = do
   stuckSignatures <- attemptAllChecks checkSignature work.signatures
-  let waitingForSignature = \item => any (sameItem item . fst) stuckSignatures
+  let waitingForSignature = \item => any (isSameItem item . fst) stuckSignatures
   stuckBodies <- attemptAllChecks checkBody (filter (not . waitingForSignature) work.bodies)
-  let stillPending = \item => waitingForSignature item || any (sameItem item . fst) stuckBodies
-      next = MkWorkTodo (map fst stuckSignatures) (filter stillPending work.bodies)
+  let stillPending = \item => waitingForSignature item || any (isSameItem item . fst) stuckBodies
+      next = MkRemainingWorkTodo (map fst stuckSignatures) (filter stillPending work.bodies)
   if noRemaining next < noRemaining work
     then runBodyAndSignatureChecks fuel next
     else do
@@ -183,10 +182,10 @@ runBodyAndSignatureChecks (S fuel) work = do
 
 resolveAndCheckTypes : TypeCheckerState -> List ResolvedItem -> Either TypeError TypeTables
 resolveAndCheckTypes seededState items =
-  case execStateT seededState (runBodyAndSignatureChecks (2 * length items + 1) (MkWorkTodo items items)) of
+  case execStateT seededState (runBodyAndSignatureChecks (2 * length items + 1) (MkRemainingWorkTodo items items)) of
     Right finalState      => Right finalState.tables
     Left (Failed typeErr) => Left typeErr
-    Left (Blocked _)      => unreachable {function = "resolveAndCheckTypes"} {reason = "attemptCheck catches every block"}
+    Left (Blocked _)      => unreachable __FILE__ {function = "resolveAndCheckTypes"} {reason = "attemptCheck catches every block"}
 
 --------------------------------------------------------------------------------
 -- The pipeline

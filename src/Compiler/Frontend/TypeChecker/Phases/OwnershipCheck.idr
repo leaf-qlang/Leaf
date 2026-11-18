@@ -1,12 +1,12 @@
 module Compiler.Frontend.TypeChecker.Phases.OwnershipCheck
 
+import Compiler.Helper
 import Data.List1
 import Data.SortedMap
 
 import Control.Monad.State
 import Compiler.Frontend.ScopeAndNameResolver.Data
 import Compiler.Frontend.TypeChecker.Data
-import Compiler.Frontend.TypeChecker.Helper
 import Compiler.Frontend.TypeChecker.State
 import Compiler.Frontend.TypeChecker.Type
 import Compiler.Frontend.ASTData
@@ -63,7 +63,7 @@ typecheckPattern (MkAstNode patternInfo (MkProvenanceMetadata provenance) patter
       PatternLiteral literal =>
         PatternLiteral (typecheckAstNode literal)
       PatternParenthesized innerPattern =>
-        unreachable {function = "typecheckPattern"} {reason = "parenthesized patterns should have been removed during desugaring"}
+        unreachable __FILE__ {function = "typecheckPattern"} {reason = "parenthesized patterns should have been removed during desugaring"}
       PatternTuple elementPatterns =>
         PatternTuple (map recur elementPatterns)
       PatternArray elementPatterns =>
@@ -104,11 +104,11 @@ mutual
 --      ExprPath path => ExprPath (typecheckPath path)
 --      ExprBuiltin builtin => ExprBuiltin builtin
 --      ExprSelf selfReceiver => ExprSelf selfReceiver
---      ExprParenthesized inner => unreachable {function = "typecheckExpressionNode"} {reason = "parenthesized expressions should have been removed during desugaring"}
+--      ExprParenthesized inner => unreachable __FILE__ {function = "typecheckExpressionNode"} {reason = "parenthesized expressions should have been removed during desugaring"}
 --      ExprTuple elements => ExprTuple (map typecheckNestedExpression elements)
 --      ExprArray elements => ExprArray (map typecheckNestedExpression elements)
 --      ExprRepeatedArray element count => ExprRepeatedArray (typecheckNestedExpression element) (typecheckNestedExpression count)
---      ExprStructLiteral path fields => notImplemented {function = "typecheckExpressionNode"} {feature = "ExprStructLiteral"}
+--      ExprStructLiteral path fields => notImplemented __FILE__ {function = "typecheckExpressionNode"} {feature = "ExprStructLiteral"}
 --      ExprCall callee arguments => ExprCall (typecheckNestedExpression callee) (map typecheckNestedExpression arguments)
 --      ExprMethodCall receiver name arguments => ExprMethodCall (typecheckNestedExpression receiver) (typecheckMemberName name) (map typecheckNestedExpression arguments)
 --      ExprField object name => ExprField (typecheckNestedExpression object) (typecheckMemberName name)
@@ -120,11 +120,11 @@ mutual
 --      ExprCast operand target => ExprCast (typecheckNestedExpression operand) (typecheckType target)
 --      ExprBlock block => ExprBlock (typecheckBlockExpression block)
 --      ExprIf ifNode => ExprIf (typecheckIfNode ifNode)
---      ExprQIf ifNode => notImplemented {function = "typecheckExpressionNode"} {feature = "ExprQIf"}
---      ExprSIf ifNode => notImplemented {function = "typecheckExpressionNode"} {feature = "ExprSIf"}
---      ExprMatch matchNode => notImplemented {function = "typecheckExpressionNode"} {feature = "ExprMatch"}
---      ExprQMatch matchNode => notImplemented {function = "typecheckExpressionNode"} {feature = "ExprQMatch"}
---      ExprSMatch matchNode => notImplemented {function = "typecheckExpressionNode"} {feature = "ExprSMatch"}
+--      ExprQIf ifNode => notImplemented __FILE__ {function = "typecheckExpressionNode"} {feature = "ExprQIf"}
+--      ExprSIf ifNode => notImplemented __FILE__ {function = "typecheckExpressionNode"} {feature = "ExprSIf"}
+--      ExprMatch matchNode => notImplemented __FILE__ {function = "typecheckExpressionNode"} {feature = "ExprMatch"}
+--      ExprQMatch matchNode => notImplemented __FILE__ {function = "typecheckExpressionNode"} {feature = "ExprQMatch"}
+--      ExprSMatch matchNode => notImplemented __FILE__ {function = "typecheckExpressionNode"} {feature = "ExprSMatch"}
 --      ExprLoop body => ExprLoop (typecheckBlockExpression body)
 --      ExprWhile condition body => ExprWhile (typecheckNestedExpression condition) (typecheckBlockExpression body)
 --      ExprFor pattern iterator body => ExprFor (typecheckPattern pattern) (typecheckNestedExpression iterator) (typecheckBlockExpression body)
@@ -191,7 +191,7 @@ mutual
 --        TyUnit =>
 --          TyUnit
 --        TyParenthesized innerType =>
---          unreachable {function = "typecheckType"} {reason = "parenthesized types should have been removed during desugaring"}
+--          unreachable __FILE__ {function = "typecheckType"} {reason = "parenthesized types should have been removed during desugaring"}
 --        TyTuple elementTypes =>
 --          TyTuple (map typecheckNestedType elementTypes)
 --        TyArray elementType sizeExpression =>
@@ -334,15 +334,15 @@ typecheckFunctionBody (MkAstNode functionBodyAstInfo (MkProvenanceMetadata prove
 typecheckItem : ResolvedItem -> StateT TypeCheckerState (Either TypeError) TypedItem
 typecheckItem (MkAstNode itemInfo metadata item) = do
   resolvedItem <- case item of
-      ItemModule declaration => notImplemented {function = "typecheckItem"} {feature = "ItemModule"}
-      ItemUse declaration => notImplemented {function = "typecheckItem"} {feature = "ItemUse"}
+      ItemModule declaration => notImplemented __FILE__ {function = "typecheckItem"} {feature = "ItemModule"}
+      ItemUse declaration => notImplemented __FILE__ {function = "typecheckItem"} {feature = "ItemUse"}
       ItemConst declaration => do
         typedDeclaration <- typecheckConstDeclaration declaration
         pure $ ItemConst typedDeclaration
-      ItemEnum declaration => notImplemented {function = "typecheckItem"} {feature = "ItemEnum"}
-      ItemQEnum declaration => notImplemented {function = "typecheckItem"} {feature = "ItemQEnum"}
-      ItemStruct declaration => notImplemented {function = "typecheckItem"} {feature = "ItemStruct"}
-      ItemImpl declaration => notImplemented {function = "typecheckItem"} {feature = "ItemImpl"}
+      ItemEnum declaration => notImplemented __FILE__ {function = "typecheckItem"} {feature = "ItemEnum"}
+      ItemQEnum declaration => notImplemented __FILE__ {function = "typecheckItem"} {feature = "ItemQEnum"}
+      ItemStruct declaration => notImplemented __FILE__ {function = "typecheckItem"} {feature = "ItemStruct"}
+      ItemImpl declaration => notImplemented __FILE__ {function = "typecheckItem"} {feature = "ItemImpl"}
       ItemFunction declaration => do
         typedDeclaration <- typecheckFunctionDeclaration declaration
         pure $ ItemFunction typedDeclaration
