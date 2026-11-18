@@ -17,9 +17,7 @@ general fn phase_kickback() -> bit {
     X(&q1);
 
     // Apply controlled U1(0.785) with q0 as control and q1 as target.
-    ctrl(&q0) {
-        U1(0.785, &q1);
-    }
+    ctrl(&q0).apply(U1)(0.785, &q1);
 
     // Interference step on the control qubit.
     H(&q0);

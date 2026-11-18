@@ -17,9 +17,7 @@ unitary fn balanced_oracle(
 
     X(&q0);
 
-    ctrl(&q0) {
-        X(&q1);
-    }
+    ctrl(&q0).apply(X)(&q1);
 
     X(&q0);
 

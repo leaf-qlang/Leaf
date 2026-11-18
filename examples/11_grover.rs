@@ -4,9 +4,7 @@ unitary fn oracle(inputs: &[qbit], ancilla: &qbit) {
     ctrl(
         &inputs[0], &inputs[1], &inputs[2], &inputs[3],
         &inputs[4], &inputs[5], &inputs[6]
-    ).on(bs"1011111") {
-        X(ancilla);
-    }
+    ).on(bs"1011111").apply(X)(ancilla);
 }
 
 // Implement inversion about the mean, up to an overall global phase.
@@ -24,9 +22,7 @@ unitary fn grover_diffusion_operator(inputs: &[qbit]) {
     ctrl(
         &inputs[0], &inputs[1], &inputs[2],
         &inputs[3], &inputs[4], &inputs[5]
-    ).on(bs"111111") {
-        Z(&inputs[6]);
-    }
+    ).on(bs"111111").apply(Z)(&inputs[6]);
 
     for i in 0..7 {
         X(&inputs[i]);
