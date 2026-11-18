@@ -7,20 +7,20 @@ Higher priority:
 
 - Lean 4 code generation.
 - Modules and imports.
-- Uncomputation support.
+- Uncomputation support, enable: `:=`, `uncompute`, `scratch`.
+- Add support for `affine` qubits.
 - Add a classical expression language to Idris2 DSL.
 - Handle supports adjoint/ctrl function clauses.
-- Support for adjoint() operation.
-- Support for `ctrl` blocks: `ctrl(...) { ... }` and `ctrl(...).on(...) { ... }`. The callable form `ctrl(...).apply(f)` is supported.
-- `affine` & `scratch` qubits.
+- Support for `adjoint` operation.
+- Support for `ctrl` blocks: `ctrl(...) { ... }`. The callable form `ctrl(...).apply(f)` is supported.
 - Quantum contracts.
-- Rust style generic types and generic const parameters.
 - Quantum conditionals.
   - `qif`+`qelse` & `qmatch`.
   - `sif`+`selse` & `smatch`.
 
 Other:
 
+- Rust style generic types and generic const parameters.
 - Rust style built-in methods.
 - Quantum Boolean data and Boolean coherent operations.
 - Signed/unsigned quantum integers and quantum arithmetic.
