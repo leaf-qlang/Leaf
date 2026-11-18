@@ -30,7 +30,6 @@ Other:
   - `enum`
   - `qenum`
   - `struct` + `impl` blocks.
-- Recursion.
 - Recursive data structures.
 - Documentation comments.
 
