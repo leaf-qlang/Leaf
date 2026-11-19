@@ -88,57 +88,54 @@ data Gate : Nat -> Type where
   UGate   : UnitaryGate n -> Gate n
   Measure : (q : Fin n) -> Gate n
   Reset   : (q : Fin n) -> Gate n
+  Discard : (q : Fin n) -> Gate n
 
 public export
-targetsUnitary : UnitaryGate n -> (m ** Vect m (Fin n))
-targetsUnitary (Id q)                    = (_ ** [q])
-targetsUnitary (X q)                     = (_ ** [q])
-targetsUnitary (Y q)                     = (_ ** [q])
-targetsUnitary (Z q)                     = (_ ** [q])
-targetsUnitary (H q)                     = (_ ** [q])
-targetsUnitary (S q)                     = (_ ** [q])
-targetsUnitary (SDG q)                   = (_ ** [q])
-targetsUnitary (T q)                     = (_ ** [q])
-targetsUnitary (TDG q)                   = (_ ** [q])
-targetsUnitary (SX q)                    = (_ ** [q])
-targetsUnitary (SXDG q)                  = (_ ** [q])
-targetsUnitary (RX _ q)                  = (_ ** [q])
-targetsUnitary (RY _ q)                  = (_ ** [q])
-targetsUnitary (RZ _ q)                  = (_ ** [q])
-targetsUnitary (U _ _ _ q)               = (_ ** [q])
-targetsUnitary (U1 _ q)                  = (_ ** [q])
-targetsUnitary (U2 _ _ q)                = (_ ** [q])
-targetsUnitary (U3 _ _ _ q)              = (_ ** [q])
-targetsUnitary (CX _ t)                  = (_ ** [t])
-targetsUnitary (CY _ t)                  = (_ ** [t])
-targetsUnitary (CZ _ t)                  = (_ ** [t])
-targetsUnitary (CH _ t)                  = (_ ** [t])
-targetsUnitary (CS _ t)                  = (_ ** [t])
-targetsUnitary (CSDG _ t)                = (_ ** [t])
-targetsUnitary (CT _ t)                  = (_ ** [t])
-targetsUnitary (CTDG _ t)                = (_ ** [t])
-targetsUnitary (CSX _ t)                 = (_ ** [t])
-targetsUnitary (CSXDG _ t)               = (_ ** [t])
-targetsUnitary (CRX _ _ t)               = (_ ** [t])
-targetsUnitary (CRY _ _ t)               = (_ ** [t])
-targetsUnitary (CRZ _ _ t)               = (_ ** [t])
-targetsUnitary (CU1 _ _ t)               = (_ ** [t])
-targetsUnitary (CU2 _ _ _ t)             = (_ ** [t])
-targetsUnitary (CU3 _ _ _ _ t)           = (_ ** [t])
-targetsUnitary (SWAP a b)                = (_ ** [a, b])
-targetsUnitary (RXX _ a b)               = (_ ** [a, b])
-targetsUnitary (RYY _ a b)               = (_ ** [a, b])
-targetsUnitary (RZZ _ a b)               = (_ ** [a, b])
-targetsUnitary (RZX _ a b)               = (_ ** [a, b])
-targetsUnitary (CCX _ _ t)               = (_ ** [t])
-targetsUnitary (CSWAP _ a b)             = (_ ** [a, b])
-targetsUnitary (Controlled _ _ inner)    = targetsUnitary inner
-
-public export
-targets : Gate n -> (m ** Vect m (Fin n))
-targets (UGate u)    = targetsUnitary u
-targets (Measure q)  = (_ ** [q])
-targets (Reset q)    = (_ ** [q])
+wiresUnitary : UnitaryGate n -> (m ** Vect m (Fin n))
+wiresUnitary (Id q)                    = (_ ** [q])
+wiresUnitary (X q)                     = (_ ** [q])
+wiresUnitary (Y q)                     = (_ ** [q])
+wiresUnitary (Z q)                     = (_ ** [q])
+wiresUnitary (H q)                     = (_ ** [q])
+wiresUnitary (S q)                     = (_ ** [q])
+wiresUnitary (SDG q)                   = (_ ** [q])
+wiresUnitary (T q)                     = (_ ** [q])
+wiresUnitary (TDG q)                   = (_ ** [q])
+wiresUnitary (SX q)                    = (_ ** [q])
+wiresUnitary (SXDG q)                  = (_ ** [q])
+wiresUnitary (RX _ q)                  = (_ ** [q])
+wiresUnitary (RY _ q)                  = (_ ** [q])
+wiresUnitary (RZ _ q)                  = (_ ** [q])
+wiresUnitary (U _ _ _ q)               = (_ ** [q])
+wiresUnitary (U1 _ q)                  = (_ ** [q])
+wiresUnitary (U2 _ _ q)                = (_ ** [q])
+wiresUnitary (U3 _ _ _ q)              = (_ ** [q])
+wiresUnitary (CX c t)                  = (2 ** [c, t])
+wiresUnitary (CY c t)                  = (2 ** [c, t])
+wiresUnitary (CZ c t)                  = (2 ** [c, t])
+wiresUnitary (CH c t)                  = (2 ** [c, t])
+wiresUnitary (CS c t)                  = (2 ** [c, t])
+wiresUnitary (CSDG c t)                = (2 ** [c, t])
+wiresUnitary (CT c t)                  = (2 ** [c, t])
+wiresUnitary (CTDG c t)                = (2 ** [c, t])
+wiresUnitary (CSX c t)                 = (2 ** [c, t])
+wiresUnitary (CSXDG c t)               = (2 ** [c, t])
+wiresUnitary (CRX _ c t)               = (2 ** [c, t])
+wiresUnitary (CRY _ c t)               = (2 ** [c, t])
+wiresUnitary (CRZ _ c t)               = (2 ** [c, t])
+wiresUnitary (CU1 _ c t)               = (2 ** [c, t])
+wiresUnitary (CU2 _ _ c t)             = (2 ** [c, t])
+wiresUnitary (CU3 _ _ _ c t)           = (2 ** [c, t])
+wiresUnitary (SWAP a b)                = (_ ** [a, b])
+wiresUnitary (RXX _ a b)               = (_ ** [a, b])
+wiresUnitary (RYY _ a b)               = (_ ** [a, b])
+wiresUnitary (RZZ _ a b)               = (_ ** [a, b])
+wiresUnitary (RZX _ a b)               = (_ ** [a, b])
+wiresUnitary (CCX c1 c2 t)             = (3 ** [c1, c2, t])
+wiresUnitary (CSWAP c a b)             = (3 ** [c, a, b])
+wiresUnitary (Controlled {k} controlWires _ inner) =
+  let (innerWireCount ** innerWires) = wiresUnitary inner
+  in (k + innerWireCount ** controlWires ++ innerWires)
 
 public export
 mkControlled :
@@ -146,7 +143,7 @@ mkControlled :
   (cs : Vect k (Fin n)) ->
   (qsts : Vect k QState) ->
   (inner : UnitaryGate n) ->
-  {auto distinct : AllDistinct cs} ->                                 -- keeps the control wires pairwise distinct
-  {auto disjoint : Disjoint cs (snd (targetsUnitary inner))} ->       -- checks that none of those control wires overlap the targets
+  {auto distinct : AllDistinct cs} ->                               -- keeps the control wires pairwise distinct
+  {auto disjoint : Disjoint cs (snd (wiresUnitary inner))} ->       -- checks that controls do not overlap any inner gate wire
   UnitaryGate n
 mkControlled cs bs inner = Controlled cs bs inner

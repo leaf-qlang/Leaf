@@ -206,6 +206,6 @@ ctrl : {n : Nat} ->
   (bs : Vect k QState) ->              -- required polarities (True = |1>, False = |0>)
   (inner : UnitaryGate n) ->         -- gate to be controlled
   (distinct : AllDistinct cs) ->
-  (disjoint : Disjoint cs (snd (targetsUnitary inner))) ->
+  (disjoint : Disjoint cs (snd (wiresUnitary inner))) ->
   Builder n ()
 ctrl cs bs inner distinct disjoint = modify (Helpers.ctrl cs bs inner distinct disjoint)

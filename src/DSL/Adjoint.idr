@@ -83,25 +83,12 @@ adjointUnitary (CCX c1 c2 t {d12} {d1t} {d2t}) =
 adjointUnitary (CSWAP c a b {ab} {ca} {cb}) =
   CSWAP c a b {ab = ab} {ca = ca} {cb = cb}
 
--- Controlled wrapper: adjoint just adjoints the inner gate
 adjointUnitary (Controlled cs bs inner) =
   Controlled cs bs (adjointUnitary inner)
 
 public export
 adjointGate : Gate n -> Maybe (Gate n)
 adjointGate (UGate u)   = Just (UGate (adjointUnitary u))
-adjointGate (Measure _) = Nothing   -- not unitary
-adjointGate (Reset   _) = Nothing   -- not unitary
-
-  -- -- 1 control on |1⟩ (classic single control)
-  -- let g1 : Gate n = mkControlled [c] [True] (X t)
-  -- -- 1 control on |0⟩ (negative control)
-  -- let g2 : Gate n = mkControlled [c] [False] (H t)
-  -- -- 2 controls, mixed polarities
-  -- let g3 : Gate n = mkControlled [c1, c2] [True, False] (RZ theta t)
-  -- -- Add a control to a 2-qbit gate (e.g., controlled-SWAP)
-  -- let g4 : Gate n = mkControlled [c] [True] (SWAP a b)
-  -- -- Nesting: add another control later (e.g., build CCCX)
-  -- let g5 : Gate n = mkControlled [d] [True] (mkControlled [c] [True] (X t))
-  -- -- Controlled parametric gate (e.g., CU3)
-  -- let g6 : Gate n = mkControlled [c] [True] (U3 th ph lam t)
+adjointGate (Measure _) = Nothing      -- not unitary
+adjointGate (Reset   _) = Nothing      -- not unitary
+adjointGate (Discard   _) = Nothing    -- not unitary

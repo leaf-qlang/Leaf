@@ -217,7 +217,7 @@ ctrl :
   (bs : Vect k QState) ->              -- required polarities (True = |1>, False = |0>)
   (inner : UnitaryGate n) ->         -- gate to be controlled
   (distinct : AllDistinct cs) ->
-  (disjoint : Disjoint cs (snd (targetsUnitary inner))) ->
+  (disjoint : Disjoint cs (snd (wiresUnitary inner))) ->
   Circuit n n ->
   Circuit n n
 ctrl cs bs inner distinct disjoint circ =
