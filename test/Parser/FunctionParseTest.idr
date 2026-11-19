@@ -1,6 +1,6 @@
 module Parser.FunctionParseTest
 
-import Expect
+import TestFramework
 import Parser.Helper
 
 %default total

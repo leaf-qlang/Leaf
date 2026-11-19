@@ -12,7 +12,7 @@ import Compiler.Frontend.Syntax.Common
 export
 recordNodeScope : NodeId -> StateT ScopeTables (Either ResolutionError) ()
 recordNodeScope nodeId = modify $ \tables =>
-  { nodeScopes := insert nodeId tables.currentScope tables.nodeScopes } tables
+  { nodeScopes := insert nodeId tables.currentScopeId tables.nodeScopes } tables
 
 export
 symbolVisibility : Maybe (AstNode CanonicalAstPhase VisibilityQualifier) -> SymbolVisibility
@@ -28,7 +28,7 @@ data BindingRetrievalResult
 export
 retrieveSymbolBinding : String -> ScopeTables -> BindingRetrievalResult
 retrieveSymbolBinding symbolName tables =
-  search (length (SortedMap.toList tables.scopes)) tables.currentScope
+  search (length (SortedMap.toList tables.scopes)) tables.currentScopeId
   where
     search : Nat -> ScopeId -> BindingRetrievalResult
     search Z _ = UnresolvedBinding

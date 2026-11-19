@@ -13,7 +13,7 @@ import Compiler.Frontend.Syntax.AST
 import Compiler.Frontend.Token
 import Compiler.Frontend.Utils.ASTDebugPrinter
 import Compiler.Frontend.Utils.ASTPrettyPrinter
-import Expect
+import TestFramework
 import public Parser.DebugDump
 import public Parser.FixtureSource
 
@@ -56,13 +56,13 @@ parseAndPrettyPrintLax = map showSourceFileLax . lexThenParse
 ||| A source already in the printer's spacing, which strict style prints back
 ||| exactly as written.
 export
-printsUnchangedStrict : String -> Expectation (Either String String)
+printsUnchangedStrict : String -> Diagnostic (Either String String)
 printsUnchangedStrict source = parseAndPrettyPrintStrict source `shouldBe` Right source
 
 ||| A source already in the printer's spacing, which lax style prints back
 ||| exactly as written.
 export
-printsUnchangedLax : String -> Expectation (Either String String)
+printsUnchangedLax : String -> Diagnostic (Either String String)
 printsUnchangedLax source = parseAndPrettyPrintLax source `shouldBe` Right source
 
 ||| The message the user is shown, which carries the file and the error's start,
@@ -104,7 +104,7 @@ inBothStyles : (PrettyStyle -> a) -> List a
 inBothStyles render = map render [PrettyLax, PrettyStrict]
 
 export
-sameInBothStyles : (PrettyStyle -> a) -> a -> Expectation (List a)
+sameInBothStyles : (PrettyStyle -> a) -> a -> Diagnostic (List a)
 sameInBothStyles render expected = inBothStyles render `shouldBe` [expected, expected]
 
 --------------------------------------------------------------------------------

@@ -452,6 +452,16 @@ nonConstantUse source = case resolveSource source of
   Left err => Left (show err)
   Right _ => Left "Expected LocalValueUsedAsConstant, but resolution succeeded"
 
+-- Returns the written type path and coordinates of the expected
+-- UnresolvedTypePath diagnostic.
+export
+unresolvedTypePath : String -> Either String (String, (Nat, Nat, Nat, Nat))
+unresolvedTypePath source = case resolveSource source of
+  Left (ResolutionFailure (UnresolvedTypePath typePathText typePathSpan)) =>
+    Right (typePathText, coordinates typePathSpan)
+  Left err => Left (show err)
+  Right _ => Left "Expected UnresolvedTypePath, but resolution succeeded"
+
 -- Every value reference resolves to a symbol with the given kind, in source order.
 export
 valueReferenceKinds : ResolvedModule -> Maybe (List (String, String))

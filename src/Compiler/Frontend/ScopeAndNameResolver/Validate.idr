@@ -222,8 +222,8 @@ validateFinalState resolved =
   let scopeErrors = case lookup resolved.rootScopeId resolved.tables.scopes of
         Just scope => case scope.kind of
           ModuleScope =>
-            check (resolved.tables.currentScope == resolved.rootScopeId)
-                  (UnrestoredCurrentScope resolved.rootScopeId resolved.tables.currentScope) ++
+            check (resolved.tables.currentScopeId == resolved.rootScopeId)
+                  (UnrestoredCurrentScope resolved.rootScopeId resolved.tables.currentScopeId) ++
             (case resolved.tables.currentScopeKind of
                ModuleScope => []
                _ => [InvalidCurrentScopeKind resolved.rootScopeId])
@@ -231,8 +231,8 @@ validateFinalState resolved =
         Nothing => []
       moduleErrors = case lookup resolved.rootSymbolId resolved.tables.symbols of
         Just symbol => if isModule symbol.symbolKind
-          then check (resolved.tables.currentModule == resolved.rootSymbolId)
-                     (UnrestoredCurrentModule resolved.rootSymbolId resolved.tables.currentModule)
+          then check (resolved.tables.currentModuleSymbolId == resolved.rootSymbolId)
+                     (UnrestoredCurrentModule resolved.rootSymbolId resolved.tables.currentModuleSymbolId)
           else []
         Nothing => []
       constErrors = case resolved.tables.constContextBoundary of

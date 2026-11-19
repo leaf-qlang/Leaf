@@ -8,8 +8,8 @@ depends = leaf,
           ilex,
           parser
 
-modules = Expect,
-          Backend.OpenQASM3.SerializerTest,
+modules = TestFramework,
+          Backend.OpenQasm3SerializerTest,
           Lexer.LexerTest,
           Parser.DebugDump,
           Parser.ExpressionParseTest,
@@ -38,7 +38,7 @@ modules = Expect,
           TypeChecker.Phases.TypedAstTranslationTest,
           TypeChecker.TypeCheckTest,
           TypeChecker.TypeTranslationTest,
-          CompileCodeExamples,
+          Examples.CompileCodeExamples,
           Run
 
 main = Run

@@ -18,7 +18,7 @@ import Data.List1
 import Data.Maybe
 import Data.SnocList
 import Data.SortedMap
-import Expect
+import TestFramework
 
 %default total
 
@@ -32,10 +32,12 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
       [ "fn f() {}\nfn f() {}"
       , "const N: i32 = 1;\nfn f() { let mut N = 2; }"
       , "fn f(n: i32) {\n  [0; n];\n}"
+      , "fn f(config: my_module::Config) {}"
       ] `shouldBe`
       [ "Resolution: A duplicate declaration for name: 'f' declared in 'resolution-test.lf:2:4' was found; the previous declaration is in 'resolution-test.lf:1:4'."
       , "Resolution: The mutable binding for name: 'N' in 'resolution-test.lf:2:18' cannot shadow the constant declared in 'resolution-test.lf:1:7'."
-      , "Resolution: The local: 'n' used in 'resolution-test.lf:2:7' is not a constant and cannot be used in an array length or repeat count; it is declared in 'resolution-test.lf:1:6'."
+      , "Resolution: The local: 'n' used in 'resolution-test.lf:2:7' is not a constant and cannot be used in an array length, in a repeat count from an array declaration or in the qubits register size argument for qalloc; it is declared in 'resolution-test.lf:1:6'."
+      , "Resolution: Could not find a type declaration for the type or type path: 'my_module::Config' in 'resolution-test.lf:1:14'. Leaf does not support named types yet!."
       ]
 
   test "declarations, reads and writes agree between AST and reference tables" $
@@ -481,8 +483,8 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
             (case privateSymbol.visibility of ModuleVisibility => True; _ => False) &&
             all (\name => isNothing (lookup (symbolId name) resolved.tables.localVarsMeta))
               [con.constName, fn.functionName, privateFn.functionName] &&
-            resolved.tables.currentScope == resolved.rootScopeId &&
-            resolved.tables.currentModule == resolved.rootSymbolId &&
+            resolved.tables.currentScopeId == resolved.rootScopeId &&
+            resolved.tables.currentModuleSymbolId == resolved.rootSymbolId &&
             (case resolved.tables.currentScopeKind of ModuleScope => True; _ => False))) `shouldBe` Right True
 
   test "self-initialization without an outer binding is unresolved" $
@@ -1240,6 +1242,70 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
   test "a parameter shadows a module function inside the return type" $
     nonConstantUse "const fn n() -> i32 { 2 }\nfn f(n: i32) -> [i32; n()] {}"
       `shouldBe` Right ("n", (2, 23, 2, 24), (2, 6, 2, 7))
+
+  -- A qalloc count is a constant context, like an array length or repeat count.
+  test "a qalloc count cannot use an outer parameter" $
+    nonConstantUse "fn f(n: usize) { let qs = qalloc(n); }"
+      `shouldBe` Right ("n", (1, 34, 1, 35), (1, 6, 1, 7))
+
+  test "a qalloc count may use a top-level constant" $
+    checkSource "const N: usize = 2; fn f() { let qs = qalloc(N); }" valueReferenceKinds
+      `shouldBe` Right [("N", "constant")]
+
+  test "a qalloc count may use a local it declares itself" $
+    checkSource "fn f() { let qs = qalloc({ let k = 2; k }); }" valueReferenceKinds
+      `shouldBe` Right [("k", "local")]
+
+  test "a local initializer inside a qalloc count cannot use an outer parameter" $
+    nonConstantUse "fn f(n: usize) { let qs = qalloc({ let k = n; k }); }"
+      `shouldBe` Right ("n", (1, 44, 1, 45), (1, 6, 1, 7))
+
+  test "a local inside a qalloc count may shadow an outer parameter" $
+    checkSource "fn f(n: usize) { let qs = qalloc({ let n = 2; n }); }" valueReferenceKinds
+      `shouldBe` Right [("n", "local")]
+
+  test "a parameter shadows a module function inside a qalloc count" $
+    nonConstantUse "const fn n() -> usize { 2 } fn f(n: usize) { let qs = qalloc(n()); }"
+      `shouldBe` Right ("n", (1, 62, 1, 63), (1, 34, 1, 35))
+
+  test "leaving a qalloc count restores ordinary parameter access" $
+    checkSource "fn g(qs: [qbit; 2], n: usize) {} fn f(n: usize) { g(qalloc(2), n); n; }" (\resolved => do
+      kinds <- valueReferenceKinds resolved
+      pure (kinds, isNothing resolved.tables.constContextBoundary))
+      `shouldBe` Right ([("g", "function"), ("n", "parameter"), ("n", "parameter")], True)
+
+  -- Leaf has no type declarations yet, so every written type path is unresolved.
+  test "a simple type path in a parameter type is unresolved" $
+    unresolvedTypePath "fn f(person: Person) {}"
+      `shouldBe` Right ("Person", (1, 14, 1, 20))
+
+  test "a simple type path in a return type is unresolved" $
+    unresolvedTypePath "fn f() -> Person {}"
+      `shouldBe` Right ("Person", (1, 11, 1, 17))
+
+  test "a simple type path in a local annotation is unresolved" $
+    unresolvedTypePath "fn f() { let person: Person; }"
+      `shouldBe` Right ("Person", (1, 22, 1, 28))
+
+  test "a simple type path in a cast target is unresolved" $
+    unresolvedTypePath "fn f(x: i32) { x as Person; }"
+      `shouldBe` Right ("Person", (1, 21, 1, 27))
+
+  test "a qualified type path in a parameter type is unresolved" $
+    unresolvedTypePath "fn f(person: my_module::Config) {}"
+      `shouldBe` Right ("my_module::Config", (1, 14, 1, 31))
+
+  test "a qualified type path in a return type is unresolved" $
+    unresolvedTypePath "fn f() -> my_module::Config {}"
+      `shouldBe` Right ("my_module::Config", (1, 11, 1, 28))
+
+  test "a qualified type path in a local annotation is unresolved" $
+    unresolvedTypePath "fn f() { let person: my_module::Config; }"
+      `shouldBe` Right ("my_module::Config", (1, 22, 1, 39))
+
+  test "a qualified type path in a cast target is unresolved" $
+    unresolvedTypePath "fn f(x: i32) { x as my_module::Config; }"
+      `shouldBe` Right ("my_module::Config", (1, 21, 1, 38))
 
   -- As in Rust (E0070), assigning to a constant or function is a type error,
   -- not a resolution error: the target resolves to that item.

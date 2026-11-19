@@ -1,6 +1,6 @@
 module TypeChecker.Phases.EffectsCheckTest
 
-import Expect
+import TestFramework
 
 import Compiler.Frontend.TypeChecker.Data
 import Compiler.Frontend.Syntax.Common

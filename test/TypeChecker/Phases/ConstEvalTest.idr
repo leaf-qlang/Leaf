@@ -1,6 +1,6 @@
 module TypeChecker.Phases.ConstEvalTest
 
-import Expect
+import TestFramework
 
 import Compiler.Frontend.TypeChecker.Data
 import TypeChecker.Helper

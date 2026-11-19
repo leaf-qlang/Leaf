@@ -11,7 +11,7 @@ import ScopeAndNameResolution.PreludeTestHelper
 import Data.List
 import Data.Maybe
 import Data.SortedMap
-import Expect
+import TestFramework
 
 %default total
 

@@ -1,6 +1,6 @@
 module Validator.PostParseValidationTest
 
-import Expect
+import TestFramework
 
 import Compiler.Frontend.ASTPhases
 import Compiler.Frontend.Validator.PostParseValidation

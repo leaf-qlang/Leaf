@@ -42,11 +42,14 @@ record ScopeTables where
   memberScopes     : SortedMap SymbolId ScopeId                    -- Given a symbol, which scope contains its members? Member example: const and functions inside a module
   references       : SortedMap SymbolId (SnocList SymbolReference)
   -- Resolver traversal state.
-  currentScope         : ScopeId                                   -- current scope while threading ScopeTables through the State monad
-  currentScopeKind     : ScopeKind
-  currentModule        : SymbolId                                  -- module enclosing the current scope
-  constContextBoundary : Maybe ScopeId                             -- scope enclosing innermost array length or repeat count where a name cannot be a local parameter
-
+  currentScopeId        : ScopeId                                  -- current scope while threading ScopeTables through the State monad
+  currentScopeKind      : ScopeKind
+  currentModuleSymbolId : SymbolId                                 -- module enclosing the current scope
+  constContextBoundary  : Maybe ScopeId                            -- while resolving the innermost array length, a repeat count in array declaration syntax or qalloc() 
+                                                                   -- allocation register size, the scope enclosing it; locals and parameters declared in this outer scope 
+                                                                   -- or its ancestors cannot be used here:
+                                                                   -- ex: let a = [0; n];  is rejected because n is declared outside the boundary
+                                                                   -- ex: let b = [0; { let k = 2; k }]; is allowed by this check because k is declared inside the expression
 public export
 (.nextSymbolId) : ScopeTables -> SymbolId
 (.nextSymbolId) tables =
@@ -72,6 +75,7 @@ record ResolvedModule where
 public export
 data ResolutionError
   = UnresolvedName String SourceSpan                                    -- No matching declaration is visible at the use site
+  | UnresolvedTypePath String SourceSpan                                -- Written type path: `Person`, `my_module::Config`. Leaf has no named types yet.
   | DuplicateDeclaration String (List SymbolId) SourceSpan SourceSpan   -- Current name span, then the previous declaration name span.
                                                                         -- Declarations conflict in the same scope and namespace,
   | InaccessibleSymbol String SymbolId SourceSpan                       -- Declaration exists but visibility rules prohibit access,
@@ -79,7 +83,8 @@ data ResolutionError
   | BindingShadowsConstant String SymbolId SourceSpan SourceSpan        -- An explicit mutable binder cannot shadow a visible constant.
                                                                         -- Immutable bare names instead resolve to constant patterns.
   | LocalValueUsedAsConstant String SymbolId SourceSpan SourceSpan      -- Use span, then the local's declaration name span. As in Rust (E0435),
-                                                                        -- array lengths and repeat counts cannot use enclosing locals,
+                                                                        -- array lengths, repeat counts in array declaration syntax, qalloc() allocation register size 
+                                                                        -- cannot use local variables declared in enclosing scope (upstream).
 
 -- Guide for future extensions:
 -- IllegalCapture String SourceSpan                         -- Nested functions are forbidden from capturing enclosing locals,
@@ -98,6 +103,8 @@ export
 showResolutionError : ResolutionError -> String
 showResolutionError (UnresolvedName name sourceSpan) =
   "Could not find a matching declaration for this name: '\{name}' in '\{sourceSpan}'."
+showResolutionError (UnresolvedTypePath typePathText sourceSpan) =
+  "Could not find a type declaration for the type or type path: '\{typePathText}' in '\{sourceSpan}'. Leaf does not support named types yet!."
 showResolutionError (DuplicateDeclaration name symbolIds sourceSpan previousSpan) =
   "A duplicate declaration for name: '\{name}' declared in '\{sourceSpan}' was found; the previous declaration is in '\{previousSpan}'."
 showResolutionError (InaccessibleSymbol name _ sourceSpan) =
@@ -105,7 +112,7 @@ showResolutionError (InaccessibleSymbol name _ sourceSpan) =
 showResolutionError (BindingShadowsConstant name _ sourceSpan constantSpan) =
   "The mutable binding for name: '\{name}' in '\{sourceSpan}' cannot shadow the constant declared in '\{constantSpan}'."
 showResolutionError (LocalValueUsedAsConstant name _ sourceSpan localSpan) =
-  "The local: '\{name}' used in '\{sourceSpan}' is not a constant and cannot be used in an array length or repeat count; it is declared in '\{localSpan}'."
+  "The local: '\{name}' used in '\{sourceSpan}' is not a constant and cannot be used in an array length, in a repeat count from an array declaration or in the qubits register size argument for qalloc; it is declared in '\{localSpan}'."
 
 export
 implementation Show ResolutionError where

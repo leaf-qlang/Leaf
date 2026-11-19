@@ -1,6 +1,6 @@
 module TypeChecker.Phases.TypedAstTranslationTest
 
-import Expect
+import TestFramework
 
 import TypeChecker.Helper
 

@@ -1,6 +1,6 @@
 module TypeChecker.Phases.OwnershipCheckTest
 
-import Expect
+import TestFramework
 
 import Compiler.Frontend.TypeChecker.Data
 import Compiler.Frontend.Syntax.Common

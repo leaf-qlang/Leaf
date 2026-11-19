@@ -1,7 +1,7 @@
 module TypeChecker.NumericTest
 
 import Data.Maybe
-import Expect
+import TestFramework
 
 import Compiler.Frontend.Prelude
 import Compiler.Frontend.TypeChecker.Data

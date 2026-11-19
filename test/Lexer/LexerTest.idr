@@ -1,7 +1,7 @@
 module Lexer.LexerTest
 
 import Text.Bounds
-import Expect
+import TestFramework
 
 import Compiler.Frontend.Token
 import Compiler.Frontend.Lexer.Error

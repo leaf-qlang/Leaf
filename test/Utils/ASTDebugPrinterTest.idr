@@ -22,7 +22,7 @@ import Compiler.Frontend.Token
 import Compiler.Frontend.Utils.ASTDebugPrinter
 import Compiler.Frontend.Utils.ASTPrettyPrinter
 import Compiler.Frontend.Utils.SourceText
-import Expect
+import TestFramework
 import Parser.Fixtures
 import Parser.Helper
 

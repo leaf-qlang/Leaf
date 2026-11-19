@@ -1,6 +1,6 @@
-module Backend.OpenQASM3.SerializerTest
+module Backend.OpenQasm3SerializerTest
 
-import Expect
+import TestFramework
 
 import Data.Fin
 import Data.Vect

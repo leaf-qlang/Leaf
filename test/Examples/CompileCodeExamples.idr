@@ -1,4 +1,4 @@
-module CompileCodeExamples
+module Examples.CompileCodeExamples
 
 import Data.String
 import System.Directory

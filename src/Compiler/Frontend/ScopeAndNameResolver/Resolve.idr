@@ -24,6 +24,7 @@ import Compiler.Frontend.Syntax.Name
 import Compiler.Frontend.Syntax.Operator
 import Compiler.Frontend.Syntax.Pattern
 import Compiler.Frontend.Syntax.Type
+import Compiler.Frontend.Token
 
 %default total
 
@@ -66,12 +67,12 @@ rejectLocalNameUsedInConstantRole nameText useSpan binding = do
         else pure ()
     _ => pure ()
 
--- Resolves an array length or repeat count, restoring any enclosing context afterwards.
+-- Resolves an (array length/array repeat count/qalloc register allocation size) argument with restoring any enclosing context afterwards.
 withConstContext : StateT ScopeTables (Either ResolutionError) a -> StateT ScopeTables (Either ResolutionError) a
 withConstContext resolveConstant = do
   scopeTables <- get
   let enclosingBoundary = scopeTables.constContextBoundary
-  put $ { constContextBoundary := Just scopeTables.currentScope } scopeTables
+  put $ { constContextBoundary := Just scopeTables.currentScopeId } scopeTables
   result <- resolveConstant
   modify $ \scopeTables => { constContextBoundary := enclosingBoundary } scopeTables
   pure result
@@ -81,7 +82,7 @@ withConstContext resolveConstant = do
 withChildScope : ScopeKind -> ScopeOrigin -> StateT ScopeTables (Either ResolutionError) a -> StateT ScopeTables (Either ResolutionError) a
 withChildScope childScopeKind childScopeOrigin resolveInChildScope = do
   scopeTables <- get
-  let enclosingScopeId = scopeTables.currentScope
+  let enclosingScopeId = scopeTables.currentScopeId
   let enclosingScopeKind = scopeTables.currentScopeKind
   let childScopeId = scopeTables.nextScopeId
   let childScopeInfo = MkScopeInfo
@@ -92,14 +93,14 @@ withChildScope childScopeKind childScopeOrigin resolveInChildScope = do
         empty empty empty [<]
   put $
     {
-      currentScope := childScopeId,
+      currentScopeId := childScopeId,
       currentScopeKind := childScopeKind,
       scopes := insert childScopeId childScopeInfo scopeTables.scopes
     } scopeTables
   result <- resolveInChildScope
   modify $ \scopeTables =>
     {
-      currentScope := enclosingScopeId,
+      currentScopeId := enclosingScopeId,
       currentScopeKind := enclosingScopeKind
     } scopeTables
   pure result
@@ -124,8 +125,8 @@ declareLocalName symbolKind contextNode bindingMutability
         symbolKind
         ()
         nameText
-        scopeTables.currentScope
-        scopeTables.currentModule
+        scopeTables.currentScopeId
+        scopeTables.currentModuleSymbolId
         LexicalVisibility
         (SourceSymbol nameInfo)
   let variableMutability = case bindingMutability of
@@ -141,7 +142,7 @@ declareLocalName symbolKind contextNode bindingMutability
   let symbolReference = MkSymbolReference
         symbolId
         nameInfo
-        scopeTables.currentScope
+        scopeTables.currentScopeId
         contextNode
         DeclarationReference
         nameText
@@ -156,7 +157,7 @@ declareLocalName symbolKind contextNode bindingMutability
       symbols := insert symbolId symbolInfo scopeTables.symbols,
       localVarsMeta := insert symbolId localVarQualifiers scopeTables.localVarsMeta,
       references := insert symbolId [< symbolReference] scopeTables.references,
-      scopes := updateExisting bindInScope scopeTables.currentScope scopeTables.scopes
+      scopes := updateExisting bindInScope scopeTables.currentScopeId scopeTables.scopes
     } scopeTables
   pure $ resolveNode nameInfo metadata $
     MkResolvedNameNode nameText symbolId
@@ -182,7 +183,7 @@ resolveName contextNode role
   let symbolReference = MkSymbolReference
         boundSymbolId
         nameInfo
-        scopeTables.currentScope
+        scopeTables.currentScopeId
         contextNode
         role
         nameText
@@ -366,7 +367,9 @@ mutual
       ExprStructLiteral path fields => notImplemented __FILE__ {function = "resolveExpressionNode"} {feature = "struct literals (ExprStructLiteral)"}
       ExprCall callee arguments => do
         resolvedCallee <- resolveNestedExpression callee
-        resolvedArguments <- traverse resolveNestedExpression arguments
+        resolvedArguments <- case callee.nodeValue of
+             ExprBuiltin BuiltinQAlloc => withConstContext (traverse resolveNestedExpression arguments)
+             _ => traverse resolveNestedExpression arguments
         pure $ ExprCall resolvedCallee resolvedArguments
       ExprMethodCall receiver name arguments => do
         let MkAstNode nameInfo _ _ = name
@@ -443,8 +446,7 @@ mutual
         pure $ ExprAdjoint resolvedAdjoint
     where
       resolveNestedExpression : CanonicalExpr -> StateT ScopeTables (Either ResolutionError) ResolvedExpr
-      resolveNestedExpression nestedExpression =
-        resolveExpression (assert_smaller expression nestedExpression)
+      resolveNestedExpression nestedExpression = resolveExpression (assert_smaller expression nestedExpression)
 
       resolveBlockExpression : CanonicalBlock -> StateT ScopeTables (Either ResolutionError) ResolvedBlock
       resolveBlockExpression
@@ -555,7 +557,13 @@ mutual
                             StateT ScopeTables (Either ResolutionError) (AstNode ResolvedAstPhase ResolvedPathNode)
         resolveTypePath nodeId (MkAstNode pathInfo _ (MkPathNode firstSegment remainingSegments)) = do
           recordNodeScope pathInfo.nodeId
-          notImplemented __FILE__ {function = "resolveTypePath"} {feature = "type paths (needed for modules and structs)"}
+          -- Leaf has no type declarations or modules yet, so no type path can name a type.
+          let writtenTypePathText = concat (intersperse "::" (map pathSegmentText (firstSegment :: remainingSegments)))
+          lift $ Left $ UnresolvedTypePath writtenTypePathText pathInfo.span
+          where
+            pathSegmentText : CanonicalPathSegment -> String
+            pathSegmentText (MkAstNode _ _ (PathSegmentName segmentText)) = segmentText
+            pathSegmentText (MkAstNode _ _ PathSegmentSelf) = "self"
         resolveNestedType : CanonicalTy -> StateT ScopeTables (Either ResolutionError) ResolvedTy
         resolveNestedType nestedType = resolveType (assert_smaller typeNode nestedType)
         resolveParameter : CanonicalAstNode (FunctionTypeParameterNode CanonicalAstPhase (CanonicalAstNode (ExpressionNode CanonicalAstPhase))) ->
@@ -715,8 +723,8 @@ declareValueSymbol itemInfo symbolKind visibility (MkAstNode nameInfo _ (MkNameN
   recordNodeScope itemInfo.nodeId
   scopeTables <- get
   let symbolId = scopeTables.nextSymbolId
-  let currentScope = scopeTables.currentScope
-  let existingBinding = lookup currentScope scopeTables.scopes >>= \scope => lookup nameText scope.valueBindings
+  let currentScopeId = scopeTables.currentScopeId
+  let existingBinding = lookup currentScopeId scopeTables.scopes >>= \scope => lookup nameText scope.valueBindings
   case existingBinding of
     Just binding => case binding.introducedAt of
       Just previousSpan =>
@@ -730,11 +738,11 @@ declareValueSymbol itemInfo symbolKind visibility (MkAstNode nameInfo _ (MkNameN
         symbolKind
         ()
         nameText
-        currentScope
-        scopeTables.currentModule
+        currentScopeId
+        scopeTables.currentModuleSymbolId
         visibility
         (SourceSymbol itemInfo)
-  let symbolReference = MkSymbolReference symbolId nameInfo currentScope itemInfo.nodeId DeclarationReference nameText
+  let symbolReference = MkSymbolReference symbolId nameInfo currentScopeId itemInfo.nodeId DeclarationReference nameText
   let scopeBinding = MkScopeBinding nameText (Just nameInfo.span) symbolId DeclaredBinding visibility
   let bindInScope : ScopeInfo -> ScopeInfo
       bindInScope scope =
@@ -746,7 +754,7 @@ declareValueSymbol itemInfo symbolKind visibility (MkAstNode nameInfo _ (MkNameN
     {
       symbols := insert symbolId symbolInfo scopeTables.symbols,
       references := insert symbolId [< symbolReference] scopeTables.references,
-      scopes := updateExisting bindInScope currentScope scopeTables.scopes
+      scopes := updateExisting bindInScope currentScopeId scopeTables.scopes
     } scopeTables
 
 -- First pass over a scope's items: declares every item name before any item body
@@ -771,7 +779,7 @@ resolveDeclaredValueName : CanonicalName -> StateT ScopeTables (Either Resolutio
 resolveDeclaredValueName (MkAstNode nameInfo metadata (MkNameNode nameText)) = do
   recordNodeScope nameInfo.nodeId
   scopeTables <- get
-  let declaredBinding = lookup scopeTables.currentScope scopeTables.scopes >>= \scope => lookup nameText scope.valueBindings
+  let declaredBinding = lookup scopeTables.currentScopeId scopeTables.scopes >>= \scope => lookup nameText scope.valueBindings
   case declaredBinding of
     Just binding => pure $ resolveNode nameInfo metadata $ MkResolvedNameNode nameText binding.target
     Nothing => unreachable __FILE__ {function = "resolveDeclaredValueName"} {reason = "item name was not declared by declareItem"}
@@ -855,8 +863,8 @@ registerPrelude = do
         SymbolModule
         ()
         "<prelude>"
-        scopeTables.currentScope
-        scopeTables.currentModule
+        scopeTables.currentScopeId
+        scopeTables.currentModuleSymbolId
         PublicVisibility
         PreludeSymbol
   let preludeScopeInfo = MkScopeInfo
@@ -878,7 +886,7 @@ registerPrelude = do
     {
       symbols := insert preludeModuleId preludeModuleInfo scopeTables.symbols,
       scopes := insert preludeScopeId preludeScopeInfo $
-        updateExisting attachPrelude scopeTables.currentScope scopeTables.scopes,
+        updateExisting attachPrelude scopeTables.currentScopeId scopeTables.scopes,
       memberScopes := insert preludeModuleId preludeScopeId scopeTables.memberScopes
     } scopeTables
   traverse_ (declarePreludeFunction preludeScopeId preludeModuleId) preludeFunctionNames

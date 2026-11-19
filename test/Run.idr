@@ -3,10 +3,11 @@ module Run
 import Data.String
 import System
 
-import Backend.OpenQASM3.SerializerTest
-import CompileCodeExamples
-import CompileCodeExamplesTest
+import Backend.OpenQasm3SerializerTest
+import Examples.CompileCodeExamples
+import Examples.CompileCodeExamplesTest
 import Desugarer.DesugaringTest
+import TestFramework
 import Lexer.LexerTest
 import Parser.ExpressionParseTest
 import Parser.FunctionParseTest
@@ -23,7 +24,7 @@ import Validator.PostParseValidationTest
 suites : List (String, IO Bool)
 suites =
   [ ("Lexer.LexerTest", runLexerTests)
-  , ("Backend.OpenQASM3.SerializerTest", runSerializerTests)
+  , ("Backend.OpenQasm3SerializerTest", runSerializerTests)
   , ("Parser.ExpressionParseTest", runExpressionParseTests)
   , ("Utils.ASTDebugPrinterTest", runASTDebugPrinterTests)
   , ("Utils.ASTPrettyPrinterTest", runASTPrettyPrinterTests)
@@ -36,7 +37,7 @@ suites =
   , ("ScopeAndNameResolution.ValidationTest", runResolutionValidationTests)
   , ("TypeChecker.NumericTest", runNumericTests)
   , ("TypeChecker.TypeTranslationTest", runTypeTranslationTests)
-  , ("CompileCodeExamplesTest", runCompileCodeExamplesTests)
+  , ("Examples.CompileCodeExamplesTest", runCompileCodeExamplesTests)
   ]
 
 ||| Runs every suite, even after one fails, and then compiles the examples.
@@ -51,7 +52,7 @@ main = do
         putStrLn err
         exitFailure
   case map fst (filter (not . snd) results) of
-    [] => putStrLn "All tests completed."
+    [] => putStrLn (coloredText {colorCode = "94"} {text = "All tests completed."})  -- light blue
     failed => do
-      putStrLn "Failing suites: \{joinBy ", " failed}"
+      putStrLn (coloredText {colorCode = "38;5;169"} {text = "Failing suites: \{joinBy ", " failed}"})  -- pink
       exitFailure

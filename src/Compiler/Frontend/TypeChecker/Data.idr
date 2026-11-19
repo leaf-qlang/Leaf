@@ -61,7 +61,7 @@ data BuiltinForm                           -- which documented overload of a bui
 public export
 data Callee
   = FunctionCall SymbolId                  -- declared, prelude or associated function named at the call
-  | MethodCall SymbolId                    -- resolved method, including built-in tensor
+  | MethodCall SymbolId                    -- resolved method
   | ValueCall                              -- a function-typed value: parameter, adjoint(f), ctrl(..).apply(f)
   | BuiltinCall Builtin BuiltinForm
 
@@ -99,9 +99,9 @@ record TypeTables where
 --------------------------------------------------------------------------------
 -- Ownership
 --------------------------------------------------------------------------------
--- Filled by the third pass from the typed AST. An access event records what an
--- operation does to a place; whether that is legal, and whether it is the
--- place's last use, is decided by the ownership analysis over control flow.
+-- Filled by the OwnershipCheck pass from the typed AST. An access event records
+-- what an operation does to a place; whether that is legal, and whether it is
+-- the place's last use, is decided by the ownership analysis over control flow.
 --------------------------------------------------------------------------------
 
 public export

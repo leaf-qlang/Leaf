@@ -15,7 +15,7 @@ import Compiler.Frontend.Syntax.Type
 import Compiler.Frontend.Token
 import Compiler.Frontend.Utils.ASTDebugPrinter
 import Compiler.Frontend.Utils.ASTPrettyPrinter
-import Expect
+import TestFramework
 import Parser.Fixtures
 import Parser.Helper
 
@@ -49,11 +49,11 @@ roundTripFailures source = do
     reparsesAs : CanonicalSourceFile -> String -> Bool
     reparsesAs canonical text = either (const False) (sameSyntax canonical . desugarSurfaceSyntax) (lexThenParse text)
 
-roundTrips : String -> Expectation (Either String (List String))
+roundTrips : String -> Diagnostic (Either String (List String))
 roundTrips source = roundTripFailures source `shouldBe` Right []
 
 ||| A source that lax style prints exactly as written, and that round trips.
-printsAsWritten : String -> Expectation (Either String String, Either String (List String))
+printsAsWritten : String -> Diagnostic (Either String String, Either String (List String))
 printsAsWritten source = (parseAndPrettyPrintLax source, roundTripFailures source) `shouldBe` (Right source, Right [])
 
 ||| Whether the lax rendering of the canonical tree, where every source
@@ -68,7 +68,7 @@ canonicalHasAll fragments source = do
     [] => Right ()
     missing => Left "missing \{show missing} from: \{printed}"
 
-canonicalContains : List String -> String -> Expectation (Either String ())
+canonicalContains : List String -> String -> Diagnostic (Either String ())
 canonicalContains fragments source = canonicalHasAll fragments source `shouldBe` Right ()
 
 comparisonOperators : List String

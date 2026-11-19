@@ -46,9 +46,9 @@ preludeLayout resolved = do
     | _ => Nothing
   let bindings = map snd (SortedMap.toList preludeScope.valueBindings)
   pure $
-    tables.currentScope == resolved.rootScopeId &&
+    tables.currentScopeId == resolved.rootScopeId &&
     isModuleScope tables.currentScopeKind &&
-    tables.currentModule == resolved.rootSymbolId &&
+    tables.currentModuleSymbolId == resolved.rootSymbolId &&
     isModuleScope root.kind && isModuleScope preludeScope.kind &&
     (case preludeScope.origin of PreludeScope => True; _ => False) &&
     isNothing preludeScope.parent &&

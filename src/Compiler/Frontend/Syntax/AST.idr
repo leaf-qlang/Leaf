@@ -474,9 +474,8 @@ mutual
 
     -- A non-shadowable builtin in expression (usually callee) position:
     -- qalloc, measr, reset, discard, uncompute, weaken, barrier, ...
-    -- These are ordinary calls -- ExprCall (ExprBuiltin BuiltinMeasr) [q] --
-    -- with NO dedicated per-builtin nodes; only ctrl/adjoint have real
-    -- grammar of their own (below).
+    -- These are ordinary function calls, only ctrl/adjoint have a grammar
+    -- of their own (below)
     ExprBuiltin :
          (builtinFunction : Builtin)
       -> ExpressionNode phase

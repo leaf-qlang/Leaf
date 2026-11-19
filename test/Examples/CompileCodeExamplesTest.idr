@@ -1,6 +1,6 @@
-module CompileCodeExamplesTest
+module Examples.CompileCodeExamplesTest
 
-import Expect
+import TestFramework
 
 import Compiler.Frontend.ScopeAndNameResolver.Data
 import Main
@@ -46,7 +46,7 @@ runCompileCodeExamplesTests = runTests $ Test.do
 
   test "the source compilation pipeline reports locals used in constant expressions" $
     compile "fn f(n: i32) {\n  [0; n];\n}" `shouldBe`
-      Left "The local: 'n' used in 'test-fixture.rs:2:7' is not a constant and cannot be used in an array length or repeat count; it is declared in 'test-fixture.rs:1:6'."
+      Left "The local: 'n' used in 'test-fixture.rs:2:7' is not a constant and cannot be used in an array length, in a repeat count from an array declaration or in the qubits register size argument for qalloc; it is declared in 'test-fixture.rs:1:6'."
 
   -- The lexer never sees the filename, so the pipeline prefixes it.
   test "the source compilation pipeline reports lexer failures" $

@@ -12,7 +12,7 @@ import ScopeAndNameResolution.Helper
 import Data.List
 import Data.SnocList
 import Data.SortedMap
-import Expect
+import TestFramework
 
 %default total
 
@@ -437,11 +437,11 @@ runResolutionValidationTests = runTests $ Test.do
       ([], sort (map show [ScopeParentCycle (MkScopeId 3), ScopeParentCycle (MkScopeId 5)]))
 
   test "resolution must restore the root scope cursor" $
-    diagnostics ({ tables.currentScope := MkScopeId 1 } validModule) `shouldBe`
+    diagnostics ({ tables.currentScopeId := MkScopeId 1 } validModule) `shouldBe`
       [show (UnrestoredCurrentScope (MkScopeId 0) (MkScopeId 1))]
 
   test "resolution must restore the root module cursor" $
-    diagnostics ({ tables.currentModule := MkSymbolId 1 } validModule) `shouldBe`
+    diagnostics ({ tables.currentModuleSymbolId := MkSymbolId 1 } validModule) `shouldBe`
       [show (UnrestoredCurrentModule (MkSymbolId 0) (MkSymbolId 1))]
 
   test "resolution must restore the ModuleScope cursor kind" $
@@ -453,9 +453,9 @@ runResolutionValidationTests = runTests $ Test.do
       [show (UnrestoredConstContext (MkScopeId 1))]
 
   test "all unrestored cursor fields are reported together" $
-    diagnostics ({ tables.currentScope := MkScopeId 1,
+    diagnostics ({ tables.currentScopeId := MkScopeId 1,
                    tables.currentScopeKind := BlockScope,
-                   tables.currentModule := MkSymbolId 1 } validModule) `shouldBe`
+                   tables.currentModuleSymbolId := MkSymbolId 1 } validModule) `shouldBe`
       map show [UnrestoredCurrentScope (MkScopeId 0) (MkScopeId 1),
                 InvalidCurrentScopeKind (MkScopeId 0),
                 UnrestoredCurrentModule (MkSymbolId 0) (MkSymbolId 1)]

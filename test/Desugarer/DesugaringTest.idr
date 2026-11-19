@@ -1,6 +1,6 @@
 module Desugarer.DesugaringTest
 
-import Expect
+import TestFramework
 
 import Desugarer.Helper
 

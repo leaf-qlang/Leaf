@@ -1,6 +1,6 @@
 module TypeChecker.Phases.SignatureCheckTest
 
-import Expect
+import TestFramework
 
 import Compiler.Frontend.TypeChecker.Data
 import Compiler.Frontend.TypeChecker.Type

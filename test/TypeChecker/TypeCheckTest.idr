@@ -1,7 +1,7 @@
 module TypeChecker.TypeCheckTest
 
 import System.File
-import Expect
+import TestFramework
 
 import Compiler.Frontend.TypeChecker.Data
 import TypeChecker.Helper
