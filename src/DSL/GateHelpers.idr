@@ -4,7 +4,7 @@ import Data.Fin
 import Data.Vect
 import DSL.Gates
 import DSL.Circuit
-import DSL.Control
+import public DSL.Control
 import DSL.Core
 
 %default total
@@ -216,11 +216,11 @@ ctrl :
   (cs : Vect k (Fin n)) ->           -- control wires
   (bs : Vect k QState) ->              -- required polarities (True = |1>, False = |0>)
   (inner : UnitaryGate n) ->         -- gate to be controlled
-  (distinct : AllDistinct cs) ->
-  (disjoint : Disjoint cs (snd (wiresUnitary inner))) ->
+  {auto 0 distinct : AllDistinct cs} ->
+  {auto 0 disjoint : Disjoint cs (snd (wiresUnitary inner))} ->
   Circuit n n ->
   Circuit n n
-ctrl cs bs inner distinct disjoint circ =
+ctrl cs bs inner {distinct} {disjoint} circ =
   let uCtrl : UnitaryGate n
       uCtrl = mkControlled cs bs inner
         {distinct = distinct}

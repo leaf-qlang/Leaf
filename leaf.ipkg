@@ -69,7 +69,6 @@ modules = Main,
           DSL.Core,
           DSL.Examples.Deutsch1,
           DSL.Examples.Deutsch2,
-          DSL.Examples.SampleCircuit,
           DSL.GateHelpers,
           DSL.Gates,
           DSL.Helpers

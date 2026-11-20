@@ -4,7 +4,7 @@ import public Control.Monad.State
 import Data.Fin
 import Data.Vect
 import public DSL.Circuit
-import DSL.Control
+import public DSL.Control
 import DSL.Core
 import DSL.Gates
 import DSL.GateHelpers as Helpers
@@ -205,7 +205,8 @@ ctrl : {n : Nat} ->
   (cs : Vect k (Fin n)) ->           -- control wires
   (bs : Vect k QState) ->              -- required polarities (True = |1>, False = |0>)
   (inner : UnitaryGate n) ->         -- gate to be controlled
-  (distinct : AllDistinct cs) ->
-  (disjoint : Disjoint cs (snd (wiresUnitary inner))) ->
+  {auto 0 distinct : AllDistinct cs} ->
+  {auto 0 disjoint : Disjoint cs (snd (wiresUnitary inner))} ->
   Builder n ()
-ctrl cs bs inner distinct disjoint = modify (Helpers.ctrl cs bs inner distinct disjoint)
+ctrl cs bs inner {distinct} {disjoint} =
+  modify (Helpers.ctrl cs bs inner {distinct = distinct} {disjoint = disjoint})

@@ -4,6 +4,8 @@ import Data.String
 import System
 
 import Backend.OpenQasm3SerializerTest
+import DSL.IntrinsicProofsTest
+import DSL.TypeLevelReductionTest
 import Examples.CompileCodeExamples
 import Examples.CompileCodeExamplesTest
 import Desugarer.DesugaringTest

@@ -8,11 +8,6 @@ import DSL.GateHelpers
 
 %default total
 
--- Let proof search establish that wire 0 differs from wire 1.
-%hint
-zeroNotSuccessor : {n : Nat} -> {q : Fin n} -> Not (FZ = FS q)
-zeroNotSuccessor Refl impossible
-
 public export
 constantOracle : Circuit 2 2
 constantOracle = emptyCircuit
