@@ -57,20 +57,69 @@ checkTypeIsSized = walk False
           traverse_ (\result => walk False (assert_smaller typeNode result)) returnType
 
 
+||| True when the callee names the prelude function Param, not a user declaration that shadows it.
+isPreludeParamFunction : ResolvedExpr -> StateT TypeCheckerState (Either CheckFailure) Bool
+isPreludeParamFunction (MkAstNode calleeInfo calleeMetadata (ExprName (MkAstNode nameInfo nameMetadata calleeName))) = do
+  checkerState <- get
+  case lookup calleeName.nameNodeSymbolId checkerState.tables.symbols of
+    Just symbolInfo =>
+      case symbolInfo.origin of
+        PreludeSymbol => pure (symbolInfo.declaredName == "Param")
+        _ => pure False
+    Nothing => pure False
+isPreludeParamFunction _ = pure False
+
 checkExpressionNode : ExpressionNode ResolvedAstPhase -> StateT TypeCheckerState (Either CheckFailure) ()
 checkExpressionNode expression =
   case expression of
-    ExprLiteral literal => ?checkExpressionLiteralHole
+    ExprLiteral (MkAstNode literalAstInfo literalMetadata literalNode) => do
+      case literalNode of
+        LiteralIntegerRaw rawSpelling => ?checkExpressionLiteralIntegerHole
+        LiteralFloatRaw rawSpelling => ?checkExpressionLiteralFloatHole
+        -- Param("name") is accepted in the ExprCall case without visiting its argument,
+        -- so any string literal reaching this point is used in another context.
+        LiteralStringRaw rawSpelling => notImplemented __FILE__ {function = "checkExpressionNode"} {feature = "string literal used outside Param()"}
+        LiteralByteRaw rawSpelling => ?checkExpressionLiteralByteHole
+        LiteralByteStringRaw rawSpelling => ?checkExpressionLiteralByteStringHole
+        LiteralBasisStringRaw rawSpelling => ?checkExpressionLiteralBasisStringHole
+        LiteralBoolean value => ?checkExpressionLiteralBooleanHole
+        LiteralUnit => ?checkExpressionLiteralUnitHole
+        LiteralQuantumState basisStateName => ?checkExpressionLiteralQuantumStateHole
     ExprName name => ?checkExpressionNameHole
     ExprPath path => ?checkExpressionPathHole
-    ExprBuiltin builtin => ?checkExpressionBuiltinHole
+    ExprBuiltin builtin => do
+      case builtin of
+        BuiltinBarrier => ?checkExpressionBuiltinBarrierHole
+        BuiltinCtrl => ?checkExpressionBuiltinCtrlHole
+        BuiltinOn => ?checkExpressionBuiltinOnHole
+        BuiltinApply => ?checkExpressionBuiltinApplyHole
+        BuiltinBasis => notImplemented __FILE__ {function = "checkExpressionNode"} {feature = "basis builtin function"}
+        BuiltinClean => notImplemented __FILE__ {function = "checkExpressionNode"} {feature = "clean builtin function"}
+        BuiltinDiscard => ?checkExpressionBuiltinDiscardHole
+        BuiltinIsolated => notImplemented __FILE__ {function = "checkExpressionNode"} {feature = "isolated builtin function"}
+        BuiltinLen => ?checkExpressionBuiltinLenHole
+        BuiltinMeasr => ?checkExpressionBuiltinMeasrHole
+        BuiltinProduct => notImplemented __FILE__ {function = "checkExpressionNode"} {feature = "product builtin function"}
+        BuiltinQAlloc => ?checkExpressionBuiltinQAllocHole
+        BuiltinReset => ?checkExpressionBuiltinResetHole
+        BuiltinRev => ?checkExpressionBuiltinRevHole
+        BuiltinTensor => notImplemented __FILE__ {function = "checkExpressionNode"} {feature = "tensor builtin function"}
+        BuiltinSeparable => notImplemented __FILE__ {function = "checkExpressionNode"} {feature = "separable builtin function"}
+        BuiltinStabilized => notImplemented __FILE__ {function = "checkExpressionNode"} {feature = "stabilized builtin function"}
+        BuiltinUncompute => notImplemented __FILE__ {function = "checkExpressionNode"} {feature = "uncompute builtin function"}
+        BuiltinWeaken => notImplemented __FILE__ {function = "checkExpressionNode"} {feature = "weaken builtin function"}
+
     ExprSelf selfReceiver => ?checkExpressionSelfHole
     ExprParenthesized inner => ?checkExpressionParenthesizedHole
     ExprTuple elements => ?checkExpressionTupleHole
     ExprArray elements => ?checkExpressionArrayHole
     ExprRepeatedArray element count => ?checkExpressionRepeatedArrayHole
     ExprStructLiteral path fields => ?checkExpressionStructLiteralHole
-    ExprCall callee arguments => ?checkExpressionCallHole
+    ExprCall callee arguments => do
+      calleeIsPreludeParam <- isPreludeParamFunction callee
+      case (calleeIsPreludeParam, arguments) of
+        (True, [MkAstNode argumentInfo argumentMetadata (ExprLiteral (MkAstNode literalAstInfo literalMetadata (LiteralStringRaw parameterName)))]) => pure ()
+        _ => ?checkExpressionCallHole
     ExprMethodCall receiver name arguments => ?checkExpressionMethodCallHole
     ExprField object name => ?checkExpressionFieldHole
     ExprTupleIndex tuple indexText => ?checkExpressionTupleIndexHole
@@ -96,10 +145,20 @@ checkExpressionNode expression =
     ExprAdjoint adjoint => ?checkExpressionAdjointHole
 
 checkExpression : ResolvedExpr -> StateT TypeCheckerState (Either CheckFailure) ()
-checkExpression (MkAstNode expressionInfo (MkProvenanceMetadata provenance) expressionNode) = pure ()
+checkExpression (MkAstNode expressionInfo (MkProvenanceMetadata provenance) expressionNode) = checkExpressionNode expressionNode
 
-checkBlock : Block ResolvedAstPhase ->  StateT TypeCheckerState (Either CheckFailure) ()
-checkBlock (MkAstNode functionBodyAstInfo (MkProvenanceMetadata provenance) (MkBlockNode blockInnerDocs blockStatements finalExpression)) = pure ()
+checkStatement : Statement ResolvedAstPhase -> StateT TypeCheckerState (Either CheckFailure) ()
+checkStatement (MkAstNode statementAstInfo (MkProvenanceMetadata provenance) statementNode) = do
+  case statementNode of
+    StatementLet (MkLetBindingNode qualifiers pattern typeAnnotation initializer) => ?statementlet
+    StatementAssignment (MkAssignmentNode assignmentTarget assignmentOperator assignmentValue) => ?statemnassignment
+    StatementSemiExpression statementExpression => checkExpression statementExpression
+    StatementExpression statementExpression => checkExpression statementExpression
+
+checkFunctionBody : Block ResolvedAstPhase ->  StateT TypeCheckerState (Either CheckFailure) ()
+checkFunctionBody (MkAstNode functionBodyAstInfo (MkProvenanceMetadata provenance) (MkBlockNode blockInnerDocs blockStatements finalExpression)) = do
+      (traverse_ checkStatement blockStatements)
+      (traverse_ checkExpression finalExpression)
 
 checkFunctionDeclaration : FunctionDeclarationNode ResolvedAstPhase -> StateT TypeCheckerState (Either CheckFailure) ()
 checkFunctionDeclaration
@@ -115,7 +174,7 @@ checkFunctionDeclaration
       supportClause
       contractClauses
       functionBody
-    ) = checkBlock functionBody
+    ) = checkFunctionBody functionBody
 
 checkConstDeclaration : ConstDeclarationNode ResolvedAstPhase ->  StateT TypeCheckerState (Either CheckFailure) ()
 checkConstDeclaration (MkConstDeclarationNode constDocs constVisibility constName constType constValue) = checkExpression constValue
