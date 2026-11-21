@@ -32,13 +32,13 @@ resolveNode : AstInfo -> ProvenanceMetadata -> a -> ResolvedAstNode a
 resolveNode astInfo (MkProvenanceMetadata provenance) = resolvedAstNode astInfo provenance
 
 resolveAstNode : {a : Type} -> AstNode CanonicalAstPhase a -> AstNode ResolvedAstPhase a
-resolveAstNode (MkAstNode docInfo metadata value) = resolveNode docInfo metadata value
+resolveAstNode (MkAstNode astInfo metadata nodeValue) = resolveNode astInfo metadata nodeValue
 
 visibleConstantBinding : String -> ScopeTables -> Maybe ScopeBinding
 visibleConstantBinding nameText scopeTables =
   case retrieveSymbolBinding nameText scopeTables of
-    Binding binding => case map (.symbolKind) (lookup binding.target scopeTables.symbols) of
-      Just SymbolConstant => Just binding
+    Binding scopeBinding => case map (.symbolKind) (lookup scopeBinding.target scopeTables.symbols) of
+      Just SymbolConstant => Just scopeBinding
       _ => Nothing
     _ => Nothing
 
@@ -46,22 +46,22 @@ rejectConstantShadowing : String -> SourceSpan -> StateT ScopeTables (Either Res
 rejectConstantShadowing nameText binderSpan = do
   scopeTables <- get
   case visibleConstantBinding nameText scopeTables of
-    Just binding => case binding.introducedAt of
-      Just constantSpan =>
-        lift $ Left $ BindingShadowsConstant nameText binding.target binderSpan constantSpan
+    Just constantBinding => case constantBinding.introducedAt of
+      Just constantDeclarationSpan =>
+        lift $ Left $ BindingShadowsConstant nameText constantBinding.target binderSpan constantDeclarationSpan
       -- Constants are only declared from source, which always records the name span.
       Nothing => unreachable __FILE__ {function = "rejectConstantShadowing"} {reason = "constant binding has no introduction span"}
     Nothing => pure ()
 
 rejectLocalNameUsedInConstantRole : String -> SourceSpan -> ScopeBinding -> StateT ScopeTables (Either ResolutionError) ()
-rejectLocalNameUsedInConstantRole nameText useSpan binding = do
+rejectLocalNameUsedInConstantRole nameText useSpan nameBinding = do
   scopeTables <- get
-  case (scopeTables.constContextBoundary, lookup binding.target scopeTables.symbols) of
-    (Just boundary, Just symbol) =>
-      if isLocalSymbolKind symbol.symbolKind && isScopeOrAncestor symbol.declaringScope boundary scopeTables
-        then case binding.introducedAt of
-          Just localSpan =>
-            lift $ Left $ LocalValueUsedAsConstant nameText binding.target useSpan localSpan
+  case (scopeTables.constContextBoundary, lookup nameBinding.target scopeTables.symbols) of
+    (Just constContextBoundary, Just boundSymbolInfo) =>
+      if isLocalSymbolKind boundSymbolInfo.symbolKind && isScopeOrAncestor boundSymbolInfo.declaringScope constContextBoundary scopeTables
+        then case nameBinding.introducedAt of
+          Just localDeclarationSpan =>
+            lift $ Left $ LocalValueUsedAsConstant nameText nameBinding.target useSpan localDeclarationSpan
           -- Locals and parameters are only declared from source, which always records the name span.
           Nothing => unreachable __FILE__ {function = "rejectLocalNameUsedInConstantRole"} {reason = "local binding has no introduction span"}
         else pure ()
@@ -71,11 +71,11 @@ rejectLocalNameUsedInConstantRole nameText useSpan binding = do
 withConstContext : StateT ScopeTables (Either ResolutionError) a -> StateT ScopeTables (Either ResolutionError) a
 withConstContext resolveConstant = do
   scopeTables <- get
-  let enclosingBoundary = scopeTables.constContextBoundary
+  let enclosingConstContextBoundary = scopeTables.constContextBoundary
   put $ { constContextBoundary := Just scopeTables.currentScopeId } scopeTables
-  result <- resolveConstant
-  modify $ \scopeTables => { constContextBoundary := enclosingBoundary } scopeTables
-  pure result
+  resolvedConstant <- resolveConstant
+  modify $ \tablesAfterConstant => { constContextBoundary := enclosingConstContextBoundary } tablesAfterConstant
+  pure resolvedConstant
 
 -- Runs an action inside a new child scope of the current scope, restoring the
 -- enclosing scope and scope kind afterwards.
@@ -97,13 +97,13 @@ withChildScope childScopeKind childScopeOrigin resolveInChildScope = do
       currentScopeKind := childScopeKind,
       scopes := insert childScopeId childScopeInfo scopeTables.scopes
     } scopeTables
-  result <- resolveInChildScope
-  modify $ \scopeTables =>
+  childScopeResult <- resolveInChildScope
+  modify $ \tablesAfterChildScope =>
     {
       currentScopeId := enclosingScopeId,
       currentScopeKind := enclosingScopeKind
-    } scopeTables
-  pure result
+    } tablesAfterChildScope
+  pure childScopeResult
 
 -- Declares a let/for binder or a function parameter in the current scope.
 -- Callers must first go through resolveConstantPatternName: an immutable bare
@@ -146,29 +146,29 @@ declareLocalName symbolKind contextNode bindingMutability
         contextNode
         DeclarationReference
         nameText
-  let bindInScope : ScopeInfo -> ScopeInfo
-      bindInScope scope =
+  let bindInCurrentScope : ScopeInfo -> ScopeInfo
+      bindInCurrentScope scopeInfo =
         {
-          valueBindings := insert nameText scopeBinding scope.valueBindings,
-          declaredSymbolsInOrder := scope.declaredSymbolsInOrder :< symbolId
-        } scope
-  modify $ \scopeTables =>
+          valueBindings := insert nameText scopeBinding scopeInfo.valueBindings,
+          declaredSymbolsInOrder := scopeInfo.declaredSymbolsInOrder :< symbolId
+        } scopeInfo
+  modify $ \currentTables =>
     {
-      symbols := insert symbolId symbolInfo scopeTables.symbols,
-      localVarsMeta := insert symbolId localVarQualifiers scopeTables.localVarsMeta,
-      references := insert symbolId [< symbolReference] scopeTables.references,
-      scopes := updateExisting bindInScope scopeTables.currentScopeId scopeTables.scopes
-    } scopeTables
+      symbols := insert symbolId symbolInfo currentTables.symbols,
+      localVarsMeta := insert symbolId localVarQualifiers currentTables.localVarsMeta,
+      references := insert symbolId [< symbolReference] currentTables.references,
+      scopes := updateExisting bindInCurrentScope currentTables.currentScopeId currentTables.scopes
+    } currentTables
   pure $ resolveNode nameInfo metadata $
     MkResolvedNameNode nameText symbolId
 
 -- Resolves a use of an already visible name and records the reference.
 -- Declarations go through declareLocalName or declareValueSymbol instead.
 resolveName : (contextNode : NodeId)
-  -> (role : ReferenceRole)
+  -> (referenceRole : ReferenceRole)
   -> CanonicalName
   -> StateT ScopeTables (Either ResolutionError) ResolvedName
-resolveName contextNode role
+resolveName contextNode referenceRole
     (MkAstNode nameInfo metadata (MkNameNode nameText)) = do
   recordNodeScope nameInfo.nodeId
   scopeTables <- get
@@ -185,13 +185,13 @@ resolveName contextNode role
         nameInfo
         scopeTables.currentScopeId
         contextNode
-        role
+        referenceRole
         nameText
-  modify $ \scopeTables =>
-    let existingReferences = fromMaybe [<] (lookup boundSymbolId scopeTables.references)
+  modify $ \currentTables =>
+    let existingReferences = fromMaybe [<] (lookup boundSymbolId currentTables.references)
     in {
-       references := insert boundSymbolId (existingReferences :< symbolReference) scopeTables.references
-    } scopeTables
+       references := insert boundSymbolId (existingReferences :< symbolReference) currentTables.references
+    } currentTables
   pure $ resolveNode nameInfo metadata $
     MkResolvedNameNode nameText boundSymbolId
 
@@ -199,29 +199,29 @@ resolveName contextNode role
 -- Explicit `mut` requests a binding and may not shadow a constant.
 resolveConstantPatternName : NodeId -> Maybe Mutability -> CanonicalName ->
                             StateT ScopeTables (Either ResolutionError) (Maybe ResolvedName)
-resolveConstantPatternName context mutability name = do
-  case mutability of
-    Just Mutable => rejectConstantShadowing name.nodeValue.nameNodeText name.astInfo.span
+resolveConstantPatternName contextNode bindingMutability binderName = do
+  case bindingMutability of
+    Just Mutable => rejectConstantShadowing binderName.nodeValue.nameNodeText binderName.astInfo.span
     Nothing => pure ()
   scopeTables <- get
-  case visibleConstantBinding name.nodeValue.nameNodeText scopeTables of
-    Just _ => map Just (resolveName context PatternReference name)
+  case visibleConstantBinding binderName.nodeValue.nameNodeText scopeTables of
+    Just _ => map Just (resolveName contextNode PatternReference binderName)
     Nothing => pure Nothing
 
 resolveParameterName : NodeId -> Maybe Mutability -> CanonicalName ->
                        StateT ScopeTables (Either ResolutionError) ResolvedName
-resolveParameterName context mutability name = do
-  constant <- resolveConstantPatternName context mutability name
-  case constant of
-    Just resolvedConstant => pure resolvedConstant
-    Nothing => declareLocalName SymbolFunctionParameter context mutability name
+resolveParameterName contextNode bindingMutability parameterName = do
+  constantPatternName <- resolveConstantPatternName contextNode bindingMutability parameterName
+  case constantPatternName of
+    Just resolvedConstantName => pure resolvedConstantName
+    Nothing => declareLocalName SymbolFunctionParameter contextNode bindingMutability parameterName
 
 resolveAttribute : CanonicalAttribute -> ResolvedAttribute
-resolveAttribute (MkAstNode attributeInfo metadata (MkAttributeNode name arguments)) =
+resolveAttribute (MkAstNode attributeInfo metadata (MkAttributeNode attributeName attributeArguments)) =
   resolveNode attributeInfo metadata $
     MkAttributeNode
-      (resolveAstNode name)
-      (map (map resolveAstNode) arguments)
+      (resolveAstNode attributeName)
+      (map (map resolveAstNode) attributeArguments)
 
 resolvePath : CanonicalPath -> StateT ScopeTables (Either ResolutionError) ResolvedPath
 resolvePath (MkAstNode pathAstInfo metadata (MkPathNode firstSegment remainingSegments)) = do
@@ -243,15 +243,15 @@ resolvePatternUnchecked (MkAstNode patternInfo metadata patternNode) = do
   resolvedPatternNode <- case patternNode of
     PatternWildcard =>
       pure PatternWildcard
-    PatternName mutability binderName => do
-      constant <- resolveConstantPatternName patternInfo.nodeId mutability binderName
-      case constant of
-        Just name =>
-          pure $ PatternPath $ resolveNode name.astInfo name.metadata $
-            MkResolvedPathNode name.nodeValue.nameNodeText [] name.nodeValue.nameNodeSymbolId
+    PatternName bindingMutability binderName => do
+      constantPatternName <- resolveConstantPatternName patternInfo.nodeId bindingMutability binderName
+      case constantPatternName of
+        Just constantName =>
+          pure $ PatternPath $ resolveNode constantName.astInfo constantName.metadata $
+            MkResolvedPathNode constantName.nodeValue.nameNodeText [] constantName.nodeValue.nameNodeSymbolId
         Nothing => do
-          resolvedBinderName <- declareLocalName SymbolLocalBinding patternInfo.nodeId mutability binderName
-          pure $ PatternName mutability resolvedBinderName
+          resolvedBinderName <- declareLocalName SymbolLocalBinding patternInfo.nodeId bindingMutability binderName
+          pure $ PatternName bindingMutability resolvedBinderName
     PatternPath valuePath =>
       notImplemented __FILE__ {function = "resolvePatternUnchecked"} {feature = "path patterns (needed for modules)"}
       --pure $ PatternPath (resolvePath valuePath)
@@ -260,11 +260,11 @@ resolvePatternUnchecked (MkAstNode patternInfo metadata patternNode) = do
     PatternParenthesized innerPattern =>
       unreachable __FILE__ {function = "resolvePatternUnchecked"} {reason = "parenthesized patterns should have been removed during desugaring"}
     PatternTuple elementPatterns => do
-      resolvedElements <- traverse recur elementPatterns
-      pure $ PatternTuple resolvedElements
+      resolvedElementPatterns <- traverse recur elementPatterns
+      pure $ PatternTuple resolvedElementPatterns
     PatternArray elementPatterns => do
-      resolvedElements <- traverse recur elementPatterns
-      pure $ PatternArray resolvedElements
+      resolvedElementPatterns <- traverse recur elementPatterns
+      pure $ PatternArray resolvedElementPatterns
     PatternStruct structPath fieldPatterns => do
       notImplemented __FILE__ {function = "resolvePatternUnchecked"} {feature = "struct patterns"}
       --resolvedFields <- traverse resolveStructPatternField fieldPatterns
@@ -276,8 +276,8 @@ resolvePatternUnchecked (MkAstNode patternInfo metadata patternNode) = do
   pure $ resolveNode patternInfo metadata resolvedPatternNode
   where
     recur : CanonicalPattern -> StateT ScopeTables (Either ResolutionError) ResolvedPattern
-    recur pattern =
-      resolvePatternUnchecked (assert_smaller patternNode pattern)
+    recur nestedPattern =
+      resolvePatternUnchecked (assert_smaller patternNode nestedPattern)
 
     --resolveStructPatternField : CanonicalStructPatternField -> StateT ScopeTables (Either ResolutionError) ResolvedStructPatternField
     --resolveStructPatternField (MkAstNode fieldInfo metadata fieldNode) = do
@@ -297,27 +297,28 @@ resolvePatternUnchecked (MkAstNode patternInfo metadata patternNode) = do
 -- Check a complete pattern/parameter list after classifying names. Repeated
 -- constant references are legal; only local/parameter declarations are binders.
 rejectDuplicateBindings : List ResolvedName -> StateT ScopeTables (Either ResolutionError) ()
-rejectDuplicateBindings names = do
+rejectDuplicateBindings binderNames = do
   scopeTables <- get
-  lift $ checkNames scopeTables empty names
+  lift $ checkBinderNames scopeTables empty binderNames
   where
-    checkNames : ScopeTables -> SortedMap String ResolvedName -> List ResolvedName -> Either ResolutionError ()
-    checkNames _ _ [] = Right ()
-    checkNames scopeTables seen (name :: rest) =
-      case lookup name.nodeValue.nameNodeSymbolId scopeTables.symbols of
-        Just symbol => if isLocalSymbolKind symbol.symbolKind
-          then case lookup name.nodeValue.nameNodeText seen of
-            Just first => Left $ DuplicateDeclaration name.nodeValue.nameNodeText
-              [first.nodeValue.nameNodeSymbolId] name.astInfo.span first.astInfo.span
-            Nothing => checkNames scopeTables (insert name.nodeValue.nameNodeText name seen) rest
-          else checkNames scopeTables seen rest
-        Nothing => checkNames scopeTables seen rest
+    -- `firstBinderByName` maps each binder name seen so far to its first occurrence.
+    checkBinderNames : ScopeTables -> (firstBinderByName : SortedMap String ResolvedName) -> List ResolvedName -> Either ResolutionError ()
+    checkBinderNames _ _ [] = Right ()
+    checkBinderNames scopeTables firstBinderByName (binderName :: remainingBinderNames) =
+      case lookup binderName.nodeValue.nameNodeSymbolId scopeTables.symbols of
+        Just binderSymbolInfo => if isLocalSymbolKind binderSymbolInfo.symbolKind
+          then case lookup binderName.nodeValue.nameNodeText firstBinderByName of
+            Just firstBinder => Left $ DuplicateDeclaration binderName.nodeValue.nameNodeText
+              [firstBinder.nodeValue.nameNodeSymbolId] binderName.astInfo.span firstBinder.astInfo.span
+            Nothing => checkBinderNames scopeTables (insert binderName.nodeValue.nameNodeText binderName firstBinderByName) remainingBinderNames
+          else checkBinderNames scopeTables firstBinderByName remainingBinderNames
+        Nothing => checkBinderNames scopeTables firstBinderByName remainingBinderNames
 
 resolvePattern : CanonicalPattern -> StateT ScopeTables (Either ResolutionError) ResolvedPattern
-resolvePattern pattern = do
-  resolved <- resolvePatternUnchecked pattern
-  rejectDuplicateBindings (bindingNames resolved)
-  pure resolved
+resolvePattern canonicalPattern = do
+  resolvedPattern <- resolvePatternUnchecked canonicalPattern
+  rejectDuplicateBindings (bindingNames resolvedPattern)
+  pure resolvedPattern
   where
     -- TODO: when struct and enum patterns are implemented, collect their binders
     -- here too (struct shorthand fields, explicit field patterns, enum tuple
@@ -325,85 +326,85 @@ resolvePattern pattern = do
     -- Duplicate parameters of impl methods must also be checked once ItemImpl is
     -- resolved, since Compiler.Frontend.Validator.PostParseValidation no longer reports them.
     bindingNames : ResolvedPattern -> List ResolvedName
-    bindingNames (MkAstNode _ _ pattern) = case pattern of
-      PatternName _ name => [name]
-      PatternTuple elements => concatMap (\nested => bindingNames (assert_smaller pattern nested)) (forget elements)
-      PatternArray elements => concatMap (\nested => bindingNames (assert_smaller pattern nested)) elements
+    bindingNames (MkAstNode _ _ patternNode) = case patternNode of
+      PatternName _ binderName => [binderName]
+      PatternTuple elementPatterns => concatMap (\nestedPattern => bindingNames (assert_smaller patternNode nestedPattern)) (forget elementPatterns)
+      PatternArray elementPatterns => concatMap (\nestedPattern => bindingNames (assert_smaller patternNode nestedPattern)) elementPatterns
       _ => []
 
 -- Establish all signature names before resolving any parameter types, so a
 -- later parameter also receives a non-constant-use diagnostic in array lengths.
 resolveFunctionParameterName : CanonicalFunctionParameter -> StateT ScopeTables (Either ResolutionError) ResolvedName
-resolveFunctionParameterName (MkAstNode parameterInfo _ (NormalParameter _ mutability name _)) = do
+resolveFunctionParameterName (MkAstNode parameterInfo _ (NormalParameter _ parameterMutability parameterName _)) = do
   recordNodeScope parameterInfo.nodeId
-  resolveParameterName parameterInfo.nodeId (map (.nodeValue) mutability) name
+  resolveParameterName parameterInfo.nodeId (map (.nodeValue) parameterMutability) parameterName
 resolveFunctionParameterName (MkAstNode _ _ (ReceiverParameter _ _)) =
   notImplemented __FILE__ {function = "resolveFunctionParameterName"} {feature = "receiver parameters (self, &self, &mut self)"}
 
 mutual
   resolveExpressionNode : AstInfo -> ExpressionNode CanonicalAstPhase -> StateT ScopeTables (Either ResolutionError) (ExpressionNode ResolvedAstPhase)
-  resolveExpressionNode expressionInfo expression =
-    case expression of
+  resolveExpressionNode expressionInfo expressionNode =
+    case expressionNode of
       ExprLiteral literal => pure $ ExprLiteral (resolveAstNode literal)
-      ExprName name => do
-        resolvedName <- resolveName expressionInfo.nodeId ValueReference name
+      ExprName valueName => do
+        resolvedName <- resolveName expressionInfo.nodeId ValueReference valueName
         pure $ ExprName resolvedName
-      ExprPath path => do
-        resolvedPath <- resolvePath path
+      ExprPath valuePath => do
+        resolvedPath <- resolvePath valuePath
         pure $ ExprPath resolvedPath
       ExprBuiltin builtin => pure $ ExprBuiltin builtin
       ExprSelf () => notImplemented __FILE__ {function = "resolveExpressionNode"} {feature = "self expressions"}
-      ExprParenthesized inner => unreachable __FILE__ {function = "resolveExpressionNode"} {reason = "parenthesized expressions should have been removed during desugaring"}
-      ExprTuple elements => do
-        resolvedElements <- traverse resolveNestedExpression elements
-        pure $ ExprTuple resolvedElements
-      ExprArray elements => do
-        resolvedElements <- traverse resolveNestedExpression elements
-        pure $ ExprArray resolvedElements
-      ExprRepeatedArray element count => do
-        resolvedElement <- resolveNestedExpression element
-        resolvedCount <- withConstContext (resolveNestedExpression count)
-        pure $ ExprRepeatedArray resolvedElement resolvedCount
-      ExprStructLiteral path fields => notImplemented __FILE__ {function = "resolveExpressionNode"} {feature = "struct literals (ExprStructLiteral)"}
+      ExprParenthesized _ => unreachable __FILE__ {function = "resolveExpressionNode"} {reason = "parenthesized expressions should have been removed during desugaring"}
+      ExprTuple elementExpressions => do
+        resolvedElementExpressions <- traverse resolveNestedExpression elementExpressions
+        pure $ ExprTuple resolvedElementExpressions
+      ExprArray elementExpressions => do
+        resolvedElementExpressions <- traverse resolveNestedExpression elementExpressions
+        pure $ ExprArray resolvedElementExpressions
+      ExprRepeatedArray repeatedElement repeatCount => do
+        resolvedRepeatedElement <- resolveNestedExpression repeatedElement
+        resolvedRepeatCount <- withConstContext (resolveNestedExpression repeatCount)
+        pure $ ExprRepeatedArray resolvedRepeatedElement resolvedRepeatCount
+      ExprStructLiteral _ _ => notImplemented __FILE__ {function = "resolveExpressionNode"} {feature = "struct literals (ExprStructLiteral)"}
       ExprCall callee arguments => do
         resolvedCallee <- resolveNestedExpression callee
         resolvedArguments <- case callee.nodeValue of
              ExprBuiltin BuiltinQAlloc => withConstContext (traverse resolveNestedExpression arguments)
              _ => traverse resolveNestedExpression arguments
         pure $ ExprCall resolvedCallee resolvedArguments
-      ExprMethodCall receiver name arguments => do
-        let MkAstNode nameInfo _ _ = name
-        recordNodeScope nameInfo.nodeId
+      ExprMethodCall receiver methodName arguments => do
+        let MkAstNode methodNameInfo _ _ = methodName
+        recordNodeScope methodNameInfo.nodeId
         resolvedReceiver <- resolveNestedExpression receiver
         resolvedArguments <- traverse resolveNestedExpression arguments
-        pure $ ExprMethodCall resolvedReceiver (resolveAstNode name) resolvedArguments
-      ExprField object name => do
-        let MkAstNode nameInfo _ _ = name
-        recordNodeScope nameInfo.nodeId
-        resolvedObject <- resolveNestedExpression object
-        pure $ ExprField resolvedObject (resolveAstNode name)
+        pure $ ExprMethodCall resolvedReceiver (resolveAstNode methodName) resolvedArguments
+      ExprField accessedObject fieldName => do
+        let MkAstNode fieldNameInfo _ _ = fieldName
+        recordNodeScope fieldNameInfo.nodeId
+        resolvedAccessedObject <- resolveNestedExpression accessedObject
+        pure $ ExprField resolvedAccessedObject (resolveAstNode fieldName)
       ExprTupleIndex tuple indexText => do
         resolvedTuple <- resolveNestedExpression tuple
         pure $ ExprTupleIndex resolvedTuple indexText
-      ExprIndex object index => do
-        resolvedObject <- resolveNestedExpression object
+      ExprIndex indexedObject index => do
+        resolvedIndexedObject <- resolveNestedExpression indexedObject
         resolvedIndex <- resolveNestedExpression index
-        pure $ ExprIndex resolvedObject resolvedIndex
-      ExprUnary operator operand => do
+        pure $ ExprIndex resolvedIndexedObject resolvedIndex
+      ExprUnary unaryOperator operand => do
         resolvedOperand <- resolveNestedExpression operand
-        pure $ ExprUnary (resolveAstNode operator) resolvedOperand
-      ExprBinary operator left right => do
-        resolvedLeft <- resolveNestedExpression left
-        resolvedRight <- resolveNestedExpression right
-        pure $ ExprBinary (resolveAstNode operator) resolvedLeft resolvedRight
-      ExprRange start operator end => do
-        resolvedStart <- traverse resolveNestedExpression start
-        resolvedEnd <- traverse resolveNestedExpression end
-        pure $ ExprRange resolvedStart (resolveAstNode operator) resolvedEnd
-      ExprCast operand target => do
-        resolvedOperand <- resolveNestedExpression operand
-        resolvedTarget <- resolveType target
-        pure $ ExprCast resolvedOperand resolvedTarget
+        pure $ ExprUnary (resolveAstNode unaryOperator) resolvedOperand
+      ExprBinary binaryOperator leftOperand rightOperand => do
+        resolvedLeftOperand <- resolveNestedExpression leftOperand
+        resolvedRightOperand <- resolveNestedExpression rightOperand
+        pure $ ExprBinary (resolveAstNode binaryOperator) resolvedLeftOperand resolvedRightOperand
+      ExprRange rangeStart rangeOperator rangeEnd => do
+        resolvedRangeStart <- traverse resolveNestedExpression rangeStart
+        resolvedRangeEnd <- traverse resolveNestedExpression rangeEnd
+        pure $ ExprRange resolvedRangeStart (resolveAstNode rangeOperator) resolvedRangeEnd
+      ExprCast castOperand castTargetType => do
+        resolvedCastOperand <- resolveNestedExpression castOperand
+        resolvedCastTargetType <- resolveType castTargetType
+        pure $ ExprCast resolvedCastOperand resolvedCastTargetType
       ExprBlock block => do
         resolvedBlock <- resolveBlockExpression block
         pure $ ExprBlock resolvedBlock
@@ -415,29 +416,29 @@ mutual
       ExprMatch matchNode => notImplemented __FILE__ {function = "resolveExpressionNode"} {feature = "ExprMatch"}
       ExprQMatch matchNode => notImplemented __FILE__ {function = "resolveExpressionNode"} {feature = "ExprQMatch"}
       ExprSMatch matchNode => notImplemented __FILE__ {function = "resolveExpressionNode"} {feature = "ExprSMatch"}
-      ExprLoop body => do
-        resolvedBody <- resolveBlockExpression body
-        pure $ ExprLoop resolvedBody
-      ExprWhile condition body => do
-        resolvedCondition <- resolveNestedExpression condition
-        resolvedBody <- resolveBlockExpression body
-        pure $ ExprWhile resolvedCondition resolvedBody
-      ExprFor pattern iterator body => do
-        resolvedIterator <- resolveNestedExpression iterator
+      ExprLoop loopBody => do
+        resolvedLoopBody <- resolveBlockExpression loopBody
+        pure $ ExprLoop resolvedLoopBody
+      ExprWhile loopCondition loopBody => do
+        resolvedLoopCondition <- resolveNestedExpression loopCondition
+        resolvedLoopBody <- resolveBlockExpression loopBody
+        pure $ ExprWhile resolvedLoopCondition resolvedLoopBody
+      ExprFor binderPattern iterable loopBody => do
+        resolvedIterable <- resolveNestedExpression iterable
         -- The pattern scope originates from the for expression; its body block
         -- gets its own BlockScope originating from the block node.
-        (resolvedPattern, resolvedBody) <- withChildScope ForScope (SourceScope expressionInfo) $ do
-          resolvedPattern <- resolvePattern pattern
-          resolvedBody <- resolveBlockExpression body
-          pure (resolvedPattern, resolvedBody)
-        pure $ ExprFor resolvedPattern resolvedIterator resolvedBody
-      ExprBreak value => do
-        resolvedValue <- traverse resolveNestedExpression value
-        pure $ ExprBreak resolvedValue
+        (resolvedBinderPattern, resolvedLoopBody) <- withChildScope ForScope (SourceScope expressionInfo) $ do
+          resolvedBinderPattern <- resolvePattern binderPattern
+          resolvedLoopBody <- resolveBlockExpression loopBody
+          pure (resolvedBinderPattern, resolvedLoopBody)
+        pure $ ExprFor resolvedBinderPattern resolvedIterable resolvedLoopBody
+      ExprBreak breakValue => do
+        resolvedBreakValue <- traverse resolveNestedExpression breakValue
+        pure $ ExprBreak resolvedBreakValue
       ExprContinue => pure ExprContinue
-      ExprReturn value => do
-        resolvedValue <- traverse resolveNestedExpression value
-        pure $ ExprReturn resolvedValue
+      ExprReturn returnValue => do
+        resolvedReturnValue <- traverse resolveNestedExpression returnValue
+        pure $ ExprReturn resolvedReturnValue
       ExprCtrl control => do
         resolvedControl <- resolveControlExpressionNode control
         pure $ ExprCtrl resolvedControl
@@ -446,14 +447,14 @@ mutual
         pure $ ExprAdjoint resolvedAdjoint
     where
       resolveNestedExpression : CanonicalExpr -> StateT ScopeTables (Either ResolutionError) ResolvedExpr
-      resolveNestedExpression nestedExpression = resolveExpression (assert_smaller expression nestedExpression)
+      resolveNestedExpression nestedExpression = resolveExpression (assert_smaller expressionNode nestedExpression)
 
       resolveBlockExpression : CanonicalBlock -> StateT ScopeTables (Either ResolutionError) ResolvedBlock
       resolveBlockExpression
         (MkAstNode blockAstInfo metadata (MkBlockNode blockInnerDocs blockStatements finalExpression)) = do
         (resolvedStatements, resolvedFinalExpression) <- withChildScope BlockScope (SourceScope blockAstInfo) $ do
           recordNodeScope blockAstInfo.nodeId
-          resolvedStatements <- traverse (\statement => resolveStatement (assert_smaller expression statement)) blockStatements
+          resolvedStatements <- traverse (\statement => resolveStatement (assert_smaller expressionNode statement)) blockStatements
           resolvedFinalExpression <- traverse resolveNestedExpression finalExpression
           pure (resolvedStatements, resolvedFinalExpression)
         pure $ resolveNode blockAstInfo metadata $
@@ -510,17 +511,17 @@ mutual
     pure $ resolveNode expressionInfo metadata resolvedExpressionNode
 
   resolveType : Ty CanonicalAstPhase (Expr CanonicalAstPhase) -> StateT ScopeTables (Either ResolutionError) (Ty ResolvedAstPhase (Expr ResolvedAstPhase))
-  resolveType (MkAstNode tyAstInfo metadata typeNode) = do
-    recordNodeScope tyAstInfo.nodeId
-    resolvedType <- case typeNode of
+  resolveType (MkAstNode typeAstInfo metadata typeNode) = do
+    recordNodeScope typeAstInfo.nodeId
+    resolvedTypeNode <- case typeNode of
         TyPrimitive primitiveName => do
           pure $ TyPrimitive primitiveName
         TyPath typePath => do
-          resolvedPath <- resolveTypePath tyAstInfo.nodeId typePath
+          resolvedPath <- resolveTypePath typePath
           pure $ TyPath resolvedPath
         TyUnit => do
           pure TyUnit
-        TyParenthesized innerType => do
+        TyParenthesized _ => do
           unreachable __FILE__ {function = "resolveType"} {reason = "parenthesized types should have been removed during desugaring"}
         TyTuple elementTypes => do
           resolvedElementTypes <- traverse resolveNestedType elementTypes
@@ -535,27 +536,27 @@ mutual
           resolvedElementType <- resolveNestedType elementType
           pure $ TySlice resolvedElementType
         TyReference borrowKind referencedType => do
-          resolvedReferenceType <- resolveNestedType referencedType
+          resolvedReferencedType <- resolveNestedType referencedType
           pure $ TyReference
             (resolveAstNode borrowKind)
-            resolvedReferenceType
+            resolvedReferencedType
         TyQualified quantumUsageQualifier qualifiedType => do
           resolvedQualifiedType <- resolveNestedType qualifiedType
           pure $ TyQualified
             (resolveAstNode quantumUsageQualifier)
             resolvedQualifiedType
         TyFunction functionEffect functionParameters returnType => do
-          resolvedFunctionParameters <- traverse resolveParameter functionParameters
+          resolvedFunctionParameters <- traverse resolveFunctionTypeParameter functionParameters
           resolvedReturnType <- traverse resolveNestedType returnType
           pure $ TyFunction
             (map resolveAstNode functionEffect)
             resolvedFunctionParameters
             resolvedReturnType
-    pure $ resolveNode tyAstInfo metadata resolvedType
+    pure $ resolveNode typeAstInfo metadata resolvedTypeNode
       where
-        resolveTypePath : NodeId -> AstNode CanonicalAstPhase (PathNode CanonicalAstPhase) ->
+        resolveTypePath : AstNode CanonicalAstPhase (PathNode CanonicalAstPhase) ->
                             StateT ScopeTables (Either ResolutionError) (AstNode ResolvedAstPhase ResolvedPathNode)
-        resolveTypePath nodeId (MkAstNode pathInfo _ (MkPathNode firstSegment remainingSegments)) = do
+        resolveTypePath (MkAstNode pathInfo _ (MkPathNode firstSegment remainingSegments)) = do
           recordNodeScope pathInfo.nodeId
           -- Leaf has no type declarations or modules yet, so no type path can name a type.
           let writtenTypePathText = concat (intersperse "::" (map pathSegmentText (firstSegment :: remainingSegments)))
@@ -566,21 +567,21 @@ mutual
             pathSegmentText (MkAstNode _ _ PathSegmentSelf) = "self"
         resolveNestedType : CanonicalTy -> StateT ScopeTables (Either ResolutionError) ResolvedTy
         resolveNestedType nestedType = resolveType (assert_smaller typeNode nestedType)
-        resolveParameter : CanonicalAstNode (FunctionTypeParameterNode CanonicalAstPhase (CanonicalAstNode (ExpressionNode CanonicalAstPhase))) ->
+        resolveFunctionTypeParameter : CanonicalAstNode (FunctionTypeParameterNode CanonicalAstPhase (CanonicalAstNode (ExpressionNode CanonicalAstPhase))) ->
            StateT ScopeTables (Either ResolutionError) $ ResolvedAstNode (FunctionTypeParameterNode ResolvedAstPhase (ResolvedAstNode (ExpressionNode ResolvedAstPhase)))
-        resolveParameter (MkAstNode parameterAstInfo metadata (MkFunctionTypeParameterNode parameterName parameterType)) = do
+        resolveFunctionTypeParameter (MkAstNode parameterAstInfo metadata (MkFunctionTypeParameterNode parameterName parameterType)) = do
           recordNodeScope parameterAstInfo.nodeId
-          resolvedNestedType <- resolveNestedType parameterType
+          resolvedParameterType <- resolveNestedType parameterType
           pure $ resolveNode parameterAstInfo metadata $
             -- Not resolveName: a function-type parameter name is never a
             -- symbol (see the comment on FunctionTypeParameterNode in
             -- Syntax/Type.idr), so only its AstNode wrapping is updated.
-            MkFunctionTypeParameterNode (resolveAstNode parameterName) resolvedNestedType
+            MkFunctionTypeParameterNode (resolveAstNode parameterName) resolvedParameterType
 
   resolveLetInitializer : LetInitializerNode CanonicalAstPhase -> StateT ScopeTables (Either ResolutionError) (LetInitializerNode ResolvedAstPhase)
-  resolveLetInitializer (MkLetInitializerNode marker value) = do
-    resolvedValue <- resolveExpression value
-    pure $ MkLetInitializerNode (resolveAstNode marker) resolvedValue
+  resolveLetInitializer (MkLetInitializerNode initializerMarker initializerValue) = do
+    resolvedInitializerValue <- resolveExpression initializerValue
+    pure $ MkLetInitializerNode (resolveAstNode initializerMarker) resolvedInitializerValue
 
   resolveAssignmentTarget : CanonicalAstNode (AssignmentTargetNode CanonicalAstPhase) -> StateT ScopeTables (Either ResolutionError) (ResolvedAstNode (AssignmentTargetNode ResolvedAstPhase))
   resolveAssignmentTarget (MkAstNode assignmentTargetAstInfo metadata assignmentTargetNode) = do
@@ -613,25 +614,25 @@ mutual
   resolveStatement (MkAstNode statementAstInfo metadata statementNode) = do
     recordNodeScope statementAstInfo.nodeId
     resolvedStatementNode <- case statementNode of
-        StatementLet (MkLetBindingNode qualifiers pattern typeAnnotation initializer) => do
-          resolvedTypeAnnotation <- traverse (\ty => resolveType (assert_smaller statementNode ty)) typeAnnotation
-          resolvedInitializer <- traverse (\init => resolveLetInitializer (assert_smaller statementNode init)) initializer
+        StatementLet (MkLetBindingNode letQualifiers letPattern typeAnnotation letInitializer) => do
+          resolvedTypeAnnotation <- traverse (\annotationType => resolveType (assert_smaller statementNode annotationType)) typeAnnotation
+          resolvedInitializer <- traverse (\initializer => resolveLetInitializer (assert_smaller statementNode initializer)) letInitializer
           -- New bindings are visible only after their annotation and initializer.
-          resolvedPattern <- resolvePattern pattern
+          resolvedPattern <- resolvePattern letPattern
           pure $ StatementLet $
             MkLetBindingNode
-              (map resolveAstNode qualifiers)
+              (map resolveAstNode letQualifiers)
               resolvedPattern
               resolvedTypeAnnotation
               resolvedInitializer
         StatementAssignment (MkAssignmentNode assignmentTarget assignmentOperator assignmentValue) => do
           resolvedAssignmentTarget <- resolveAssignmentTarget assignmentTarget
-          resolvedExpression <- resolveExpression assignmentValue
+          resolvedAssignmentValue <- resolveExpression assignmentValue
           pure $ StatementAssignment $
             MkAssignmentNode
               resolvedAssignmentTarget
               (resolveAstNode assignmentOperator)
-              resolvedExpression
+              resolvedAssignmentValue
         StatementSemiExpression statementExpression => do
           resolvedExpression <- resolveExpression statementExpression
           pure $ StatementSemiExpression resolvedExpression
@@ -663,7 +664,7 @@ resolveSignedPauliTerm (MkAstNode termInfo metadata (MkSignedPauliTermNode sign 
 resolveContractPredicate : CanonicalContractPredicate -> StateT ScopeTables (Either ResolutionError) ResolvedContractPredicate
 resolveContractPredicate (MkAstNode predicateInfo metadata predicateNode) = do
   recordNodeScope predicateInfo.nodeId
-  resolvedContract <- case predicateNode of
+  resolvedPredicateNode <- case predicateNode of
     ContractClean qbitArgument => do
       resolvedQbitArgument <- resolveExpression qbitArgument
       pure $ ContractClean resolvedQbitArgument
@@ -690,45 +691,45 @@ resolveContractPredicate (MkAstNode predicateInfo metadata predicateNode) = do
       pure $ ContractStabilized
         resolvedQbitArgument
         resolvedStabilizerTerms
-  pure $ resolveNode predicateInfo metadata resolvedContract
+  pure $ resolveNode predicateInfo metadata resolvedPredicateNode
 
 resolveContractClause : ContractClause CanonicalAstPhase (Expr CanonicalAstPhase) -> StateT ScopeTables (Either ResolutionError) (ContractClause ResolvedAstPhase (Expr ResolvedAstPhase))
 resolveContractClause (MkAstNode contractAstInfo metadata contractClauseNode) = do
   recordNodeScope contractAstInfo.nodeId
-  resolvedClause <- case contractClauseNode of
+  resolvedClauseNode <- case contractClauseNode of
       RequiresClause predicate => do
         resolvedContractPredicate <- resolveContractPredicate predicate
         pure $ RequiresClause resolvedContractPredicate
       EnsuresClause predicate => do
         resolvedContractPredicate <- resolveContractPredicate predicate
         pure $ EnsuresClause resolvedContractPredicate
-  pure $ resolveNode contractAstInfo metadata resolvedClause
+  pure $ resolveNode contractAstInfo metadata resolvedClauseNode
 
 resolveFunctionBody : Block CanonicalAstPhase -> StateT ScopeTables (Either ResolutionError) (Block ResolvedAstPhase)
 resolveFunctionBody (MkAstNode _ _ (MkBlockNode _ _ (Just _))) =
   unreachable __FILE__ {function = "resolveFunctionBody"} {reason = "the final expression of a function body should have been desugared to a statement"}
 resolveFunctionBody (MkAstNode functionBodyAstInfo metadata (MkBlockNode blockInnerDocs blockStatements Nothing)) = do
-  resolvedBlockStatement <- withChildScope BlockScope (SourceScope functionBodyAstInfo) $ do
+  resolvedBlockStatements <- withChildScope BlockScope (SourceScope functionBodyAstInfo) $ do
     recordNodeScope functionBodyAstInfo.nodeId
     traverse resolveStatement blockStatements
   pure $ resolveNode functionBodyAstInfo metadata $ MkBlockNode
       (map resolveAstNode blockInnerDocs)
-      resolvedBlockStatement
+      resolvedBlockStatements
       Nothing
 
 -- Adds a value-namespace declaration to the current scope.
 -- Fails with DuplicateDeclaration if the scope already declares the same name.
 declareValueSymbol : AstInfo -> SymbolKind -> SymbolVisibility -> CanonicalName -> StateT ScopeTables (Either ResolutionError) ()
-declareValueSymbol itemInfo symbolKind visibility (MkAstNode nameInfo _ (MkNameNode nameText)) = do
+declareValueSymbol itemInfo symbolKind declaredVisibility (MkAstNode nameInfo _ (MkNameNode nameText)) = do
   recordNodeScope itemInfo.nodeId
   scopeTables <- get
   let symbolId = scopeTables.nextSymbolId
   let currentScopeId = scopeTables.currentScopeId
-  let existingBinding = lookup currentScopeId scopeTables.scopes >>= \scope => lookup nameText scope.valueBindings
+  let existingBinding = lookup currentScopeId scopeTables.scopes >>= \scopeInfo => lookup nameText scopeInfo.valueBindings
   case existingBinding of
-    Just binding => case binding.introducedAt of
-      Just previousSpan =>
-        lift $ Left $ DuplicateDeclaration nameText [binding.target] nameInfo.span previousSpan
+    Just previousBinding => case previousBinding.introducedAt of
+      Just previousDeclarationSpan =>
+        lift $ Left $ DuplicateDeclaration nameText [previousBinding.target] nameInfo.span previousDeclarationSpan
       -- Source declarations always record their name span. Prelude bindings
       -- live in the parent scope and cannot be a same-scope conflict here.
       Nothing => unreachable __FILE__ {function = "declareValueSymbol"} {reason = "existing source declaration has no introduction span"}
@@ -740,28 +741,28 @@ declareValueSymbol itemInfo symbolKind visibility (MkAstNode nameInfo _ (MkNameN
         nameText
         currentScopeId
         scopeTables.currentModuleSymbolId
-        visibility
+        declaredVisibility
         (SourceSymbol itemInfo)
   let symbolReference = MkSymbolReference symbolId nameInfo currentScopeId itemInfo.nodeId DeclarationReference nameText
-  let scopeBinding = MkScopeBinding nameText (Just nameInfo.span) symbolId DeclaredBinding visibility
-  let bindInScope : ScopeInfo -> ScopeInfo
-      bindInScope scope =
+  let scopeBinding = MkScopeBinding nameText (Just nameInfo.span) symbolId DeclaredBinding declaredVisibility
+  let bindInCurrentScope : ScopeInfo -> ScopeInfo
+      bindInCurrentScope scopeInfo =
         {
-          valueBindings := insert nameText scopeBinding scope.valueBindings,
-          declaredSymbolsInOrder := scope.declaredSymbolsInOrder :< symbolId
-        } scope
-  modify $ \scopeTables =>
+          valueBindings := insert nameText scopeBinding scopeInfo.valueBindings,
+          declaredSymbolsInOrder := scopeInfo.declaredSymbolsInOrder :< symbolId
+        } scopeInfo
+  modify $ \currentTables =>
     {
-      symbols := insert symbolId symbolInfo scopeTables.symbols,
-      references := insert symbolId [< symbolReference] scopeTables.references,
-      scopes := updateExisting bindInScope currentScopeId scopeTables.scopes
-    } scopeTables
+      symbols := insert symbolId symbolInfo currentTables.symbols,
+      references := insert symbolId [< symbolReference] currentTables.references,
+      scopes := updateExisting bindInCurrentScope currentScopeId currentTables.scopes
+    } currentTables
 
 -- First pass over a scope's items: declares every item name before any item body
 -- is resolved, so items can refer to each other regardless of declaration order.
 declareItem : CanonicalItem -> StateT ScopeTables (Either ResolutionError) ()
-declareItem (MkAstNode itemInfo _ item) =
-  case item of
+declareItem (MkAstNode itemInfo _ itemNode) =
+  case itemNode of
     ItemModule declaration => notImplemented __FILE__ {function = "declareItem"} {feature = "ItemModule"}
     ItemUse declaration => notImplemented __FILE__ {function = "declareItem"} {feature = "ItemUse"}
     ItemConst (MkConstDeclarationNode _ constVisibility constName _ _) =>
@@ -779,29 +780,29 @@ resolveDeclaredValueName : CanonicalName -> StateT ScopeTables (Either Resolutio
 resolveDeclaredValueName (MkAstNode nameInfo metadata (MkNameNode nameText)) = do
   recordNodeScope nameInfo.nodeId
   scopeTables <- get
-  let declaredBinding = lookup scopeTables.currentScopeId scopeTables.scopes >>= \scope => lookup nameText scope.valueBindings
+  let declaredBinding = lookup scopeTables.currentScopeId scopeTables.scopes >>= \scopeInfo => lookup nameText scopeInfo.valueBindings
   case declaredBinding of
-    Just binding => pure $ resolveNode nameInfo metadata $ MkResolvedNameNode nameText binding.target
+    Just itemBinding => pure $ resolveNode nameInfo metadata $ MkResolvedNameNode nameText itemBinding.target
     Nothing => unreachable __FILE__ {function = "resolveDeclaredValueName"} {reason = "item name was not declared by declareItem"}
 
 -- Second pass over a scope's items: resolves each item against the scope that
 -- declareItem has already populated with all item names.
 resolveItem : CanonicalItem -> StateT ScopeTables (Either ResolutionError) ResolvedItem
-resolveItem (MkAstNode itemInfo metadata item) = do
-  resolvedItem <- case item of
+resolveItem (MkAstNode itemInfo metadata itemNode) = do
+  resolvedItemNode <- case itemNode of
     ItemModule declaration => notImplemented __FILE__ {function = "resolveItem"} {feature = "ItemModule"}
     ItemUse declaration => notImplemented __FILE__ {function = "resolveItem"} {feature = "ItemUse"}
-    ItemConst declaration => do
-      resolvedDeclaration <- resolveConstDeclaration declaration
-      pure $ ItemConst resolvedDeclaration
+    ItemConst constDeclaration => do
+      resolvedConstDeclaration <- resolveConstDeclaration constDeclaration
+      pure $ ItemConst resolvedConstDeclaration
     ItemEnum declaration => notImplemented __FILE__ {function = "resolveItem"} {feature = "ItemEnum"}
     ItemQEnum declaration => notImplemented __FILE__ {function = "resolveItem"} {feature = "ItemQEnum"}
     ItemStruct declaration => notImplemented __FILE__ {function = "resolveItem"} {feature = "ItemStruct"}
     ItemImpl declaration => notImplemented __FILE__ {function = "resolveItem"} {feature = "ItemImpl"}
-    ItemFunction declaration => do
-      resolvedDeclaration <- resolveFunctionDeclaration declaration
-      pure $ ItemFunction resolvedDeclaration
-  pure $ resolveNode itemInfo metadata resolvedItem
+    ItemFunction functionDeclaration => do
+      resolvedFunctionDeclaration <- resolveFunctionDeclaration functionDeclaration
+      pure $ ItemFunction resolvedFunctionDeclaration
+  pure $ resolveNode itemInfo metadata resolvedItemNode
   where
     resolveConstDeclaration : ConstDeclarationNode CanonicalAstPhase -> StateT ScopeTables (Either ResolutionError) (ConstDeclarationNode ResolvedAstPhase)
     resolveConstDeclaration (MkConstDeclarationNode constDocs constVisibility constName constType constValue) = do
@@ -834,7 +835,7 @@ resolveItem (MkAstNode itemInfo metadata item) = do
         withChildScope FunctionScope (SourceScope itemInfo) $ do
           resolvedParameterNames <- traverse resolveFunctionParameterName functionParameters
           rejectDuplicateBindings resolvedParameterNames
-          resolvedParameters <- traverse (\(name, parameter) => resolveFunctionParameter name parameter)
+          resolvedParameters <- traverse (\(resolvedParameterName, parameter) => resolveFunctionParameter resolvedParameterName parameter)
                                          (zip resolvedParameterNames functionParameters)
           resolvedReturnType <- traverse resolveType returnType
           resolvedContracts <- traverse resolveContractClause contractClauses
@@ -876,66 +877,66 @@ registerPrelude = do
         empty
         empty
         [<]
-  let attachPrelude : ScopeInfo -> ScopeInfo
-      attachPrelude scope =
+  let attachPreludeAsParent : ScopeInfo -> ScopeInfo
+      attachPreludeAsParent scopeInfo =
         {
           parent := Just preludeScopeId,
-          declaredSymbolsInOrder := scope.declaredSymbolsInOrder :< preludeModuleId
-        } scope
-  modify $ \scopeTables =>
+          declaredSymbolsInOrder := scopeInfo.declaredSymbolsInOrder :< preludeModuleId
+        } scopeInfo
+  modify $ \currentTables =>
     {
-      symbols := insert preludeModuleId preludeModuleInfo scopeTables.symbols,
+      symbols := insert preludeModuleId preludeModuleInfo currentTables.symbols,
       scopes := insert preludeScopeId preludeScopeInfo $
-        updateExisting attachPrelude scopeTables.currentScopeId scopeTables.scopes,
-      memberScopes := insert preludeModuleId preludeScopeId scopeTables.memberScopes
-    } scopeTables
+        updateExisting attachPreludeAsParent currentTables.currentScopeId currentTables.scopes,
+      memberScopes := insert preludeModuleId preludeScopeId currentTables.memberScopes
+    } currentTables
   traverse_ (declarePreludeFunction preludeScopeId preludeModuleId) preludeFunctionNames
   where
     declarePreludeFunction : ScopeId -> SymbolId -> String -> StateT ScopeTables (Either ResolutionError) ()
-    declarePreludeFunction scopeId moduleId nameText = do
+    declarePreludeFunction preludeScopeId preludeModuleId preludeFunctionName = do
       scopeTables <- get
       let symbolId = scopeTables.nextSymbolId
       let symbolInfo = MkSymbolInfo
             symbolId
             SymbolFunction
             ()
-            nameText
-            scopeId
-            moduleId
+            preludeFunctionName
+            preludeScopeId
+            preludeModuleId
             PublicVisibility
             PreludeSymbol
       let scopeBinding = MkScopeBinding
-            nameText
+            preludeFunctionName
             Nothing
             symbolId
             PreludeBinding
             PublicVisibility
-      let bindInScope : ScopeInfo -> ScopeInfo
-          bindInScope scope =
+      let bindInPreludeScope : ScopeInfo -> ScopeInfo
+          bindInPreludeScope scopeInfo =
             {
-              valueBindings := insert nameText scopeBinding scope.valueBindings,
-              declaredSymbolsInOrder := scope.declaredSymbolsInOrder :< symbolId
-            } scope
-      modify $ \scopeTables =>
+              valueBindings := insert preludeFunctionName scopeBinding scopeInfo.valueBindings,
+              declaredSymbolsInOrder := scopeInfo.declaredSymbolsInOrder :< symbolId
+            } scopeInfo
+      modify $ \currentTables =>
         {
-          symbols := insert symbolId symbolInfo scopeTables.symbols,
-          scopes := updateExisting bindInScope scopeId scopeTables.scopes
-        } scopeTables
+          symbols := insert symbolId symbolInfo currentTables.symbols,
+          scopes := updateExisting bindInPreludeScope preludeScopeId currentTables.scopes
+        } currentTables
 
 ||| Perform symbol and scope resolution over the canonical AST of
 ||| a source file, starting from the scope of the root module.
 export
 resolveCanonicalSyntax : CanonicalSourceFile -> Either ResolutionError ResolvedModule
-resolveCanonicalSyntax (MkAstNode fileInfo metadata (MkSourceFileNode docs items)) = do
-  (scopeTables, resolvedItems) <- runStateT initialScopeTables $ do
+resolveCanonicalSyntax (MkAstNode fileInfo metadata (MkSourceFileNode fileDocs sourceFileItems)) = do
+  (finalScopeTables, resolvedItems) <- runStateT initialScopeTables $ do
     registerPrelude
-    traverse_ declareItem items
-    traverse resolveItem items
+    traverse_ declareItem sourceFileItems
+    traverse resolveItem sourceFileItems
   pure $ MkResolvedModule
     moduleSymbolId
     moduleScopeId
-    (resolveNode fileInfo metadata $ MkSourceFileNode (map resolveAstNode docs) resolvedItems)
-    scopeTables
+    (resolveNode fileInfo metadata $ MkSourceFileNode (map resolveAstNode fileDocs) resolvedItems)
+    finalScopeTables
   where
     moduleScopeId = MkScopeId 0
     moduleSymbolId = MkSymbolId 0

@@ -49,12 +49,12 @@ unsupportedExpressions =
 
 ||| Each expression is a function body, `fn f() {...}`, so it starts at column 9.
 unsupportedExpressionTests : List TestResult
-unsupportedExpressionTests = concatMap rejected unsupportedExpressions
+unsupportedExpressionTests = concatMap rejectionTest unsupportedExpressions
   where
-    rejected : (String, String, String) -> List TestResult
-    rejected (token, rest, message) =
-      test "\{token}\{rest} is rejected: \{message}" $
-        parseErrorDetails "fn f() {\{token}\{rest}}" `shouldBe`
+    rejectionTest : (String, String, String) -> List TestResult
+    rejectionTest (token, followingText, message) =
+      test "\{token}\{followingText} is rejected: \{message}" $
+        parseErrorDetails "fn f() {\{token}\{followingText}}" `shouldBe`
           parseErrorAt (1, 9) (1, 9 + length token) message
 
 ||| Each form whose element may be followed only by a separator or by the

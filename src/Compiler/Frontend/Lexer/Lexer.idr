@@ -69,12 +69,12 @@ positionMapInput =
     replaceBareCarriageReturns : List Char -> List Char
     replaceBareCarriageReturns [] =
       []
-    replaceBareCarriageReturns ('\r' :: '\n' :: remaining) =
-      '\r' :: '\n' :: replaceBareCarriageReturns remaining
-    replaceBareCarriageReturns ('\r' :: remaining) =
-      '\n' :: replaceBareCarriageReturns remaining
-    replaceBareCarriageReturns (character :: remaining) =
-      character :: replaceBareCarriageReturns remaining
+    replaceBareCarriageReturns ('\r' :: '\n' :: remainingCharacters) =
+      '\r' :: '\n' :: replaceBareCarriageReturns remainingCharacters
+    replaceBareCarriageReturns ('\r' :: remainingCharacters) =
+      '\n' :: replaceBareCarriageReturns remainingCharacters
+    replaceBareCarriageReturns (character :: remainingCharacters) =
+      character :: replaceBareCarriageReturns remainingCharacters
 
 --------------------------------------------------------------------------------
 -- Main entry point: lexFile
@@ -87,9 +87,9 @@ positionMapInput =
 --------------------------------------------------------------------------------
 public export
 lexFile : String -> Either (Bounded LexerError) (List (Bounded Token))
-lexFile inputString =
-  let pm := stringPositionMap (positionMapInput inputString)
-  in case runLeafLexer inputString of
+lexFile sourceText =
+  let positionMap := stringPositionMap (positionMapInput sourceText)
+  in case runLeafLexer sourceText of
     Left byteBoundedError =>
       Left (toBounded (map translateInnerLexerError byteBoundedError))
 

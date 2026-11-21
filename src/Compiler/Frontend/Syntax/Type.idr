@@ -242,35 +242,35 @@ Ty phase arraySizeExprType = AstNode phase (TyNode phase arraySizeExprType)
 --     owned positions: `qbit`, `affine qbit`
 --------------------------------------------------------------------------------
 
--- Applies `onOwned` to every owned position, rebuilding the type around the results.
+-- Applies `visitOwnedPosition` to every owned position, rebuilding the type around the results.
 traverseOwnedPositions :
      {0 phase : AstPhase}
   -> {0 arraySizeExprType : Type}
   -> Applicative f
-  => (onOwned : Ty phase arraySizeExprType -> f (Ty phase arraySizeExprType))
+  => (visitOwnedPosition : Ty phase arraySizeExprType -> f (Ty phase arraySizeExprType))
   -> Ty phase arraySizeExprType
   -> f (Ty phase arraySizeExprType)
-traverseOwnedPositions onOwned typeAstNode@(MkAstNode typeInfo metadata typeNode) =
+traverseOwnedPositions visitOwnedPosition typeAstNode@(MkAstNode typeInfo metadata typeNode) =
   case typeNode of
-    TyPrimitive TypPrimQbit => onOwned typeAstNode
-    TyQualified _ _ => onOwned typeAstNode
-    TyParenthesized innerType => rebuild . TyParenthesized <$> recur innerType
-    TyTuple elementTypes => rebuild . TyTuple <$> traverse recur elementTypes
+    TyPrimitive TypPrimQbit => visitOwnedPosition typeAstNode
+    TyQualified _ _ => visitOwnedPosition typeAstNode
+    TyParenthesized innerType => rebuildWithSameNodeInfo . TyParenthesized <$> recur innerType
+    TyTuple elementTypes => rebuildWithSameNodeInfo . TyTuple <$> traverse recur elementTypes
     TyArray elementType sizeExpression =>
-      rebuild . (\element => TyArray element sizeExpression) <$> recur elementType
-    TySlice elementType => rebuild . TySlice <$> recur elementType
+      rebuildWithSameNodeInfo . (\traversedElementType => TyArray traversedElementType sizeExpression) <$> recur elementType
+    TySlice elementType => rebuildWithSameNodeInfo . TySlice <$> recur elementType
     _ => pure typeAstNode
   where
-    rebuild : TyNode phase arraySizeExprType -> Ty phase arraySizeExprType
-    rebuild = MkAstNode typeInfo metadata
+    rebuildWithSameNodeInfo : TyNode phase arraySizeExprType -> Ty phase arraySizeExprType
+    rebuildWithSameNodeInfo = MkAstNode typeInfo metadata
 
     recur : Ty phase arraySizeExprType -> f (Ty phase arraySizeExprType)
-    recur nestedType = traverseOwnedPositions onOwned (assert_smaller typeAstNode nestedType)
+    recur nestedType = traverseOwnedPositions visitOwnedPosition (assert_smaller typeAstNode nestedType)
 
 ||| Every owned position of a type, in source order.
 export
 ownedPositions : Ty phase arraySizeExprType -> List (Ty phase arraySizeExprType)
-ownedPositions = runConst . traverseOwnedPositions (\position => MkConst [position])
+ownedPositions = runConst . traverseOwnedPositions (\ownedPosition => MkConst [ownedPosition])
 
 ||| Rewrites every owned position of a type.
 export
@@ -283,5 +283,5 @@ mapOwnedPositions rewritePosition = runIdentity . traverseOwnedPositions (Id . r
 ||| The quantum usage qualifier written at an owned position, if any.
 export
 positionQualifier : Ty phase arraySizeExprType -> Maybe (AstNode phase QuantumUsageQualifier)
-positionQualifier (MkAstNode _ _ (TyQualified qualifier _)) = Just qualifier
+positionQualifier (MkAstNode _ _ (TyQualified quantumUsageQualifier _)) = Just quantumUsageQualifier
 positionQualifier _ = Nothing

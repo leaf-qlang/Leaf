@@ -29,10 +29,10 @@ import Compiler.Frontend.Syntax.Name
 --------------------------------------------------------------------------------
 
 getItemSymbolId : ResolvedItem -> SymbolId
-getItemSymbolId item =
-  case item.nodeValue of
-    ItemFunction declaration => declaration.functionName.nodeValue.nameNodeSymbolId
-    ItemConst declaration    => declaration.constName.nodeValue.nameNodeSymbolId
+getItemSymbolId resolvedItem =
+  case resolvedItem.nodeValue of
+    ItemFunction functionDeclaration => functionDeclaration.functionName.nodeValue.nameNodeSymbolId
+    ItemConst constDeclaration       => constDeclaration.constName.nodeValue.nameNodeSymbolId
     ItemModule _             => notImplemented __FILE__ "getItemSymbolId" "ItemModule"
     ItemUse _                => notImplemented __FILE__ "getItemSymbolId" "ItemUse"
     ItemEnum _               => notImplemented __FILE__ "getItemSymbolId" "ItemEnum"
@@ -41,10 +41,10 @@ getItemSymbolId item =
     ItemImpl _               => notImplemented __FILE__ "getItemSymbolId" "ItemImpl"
 
 getItemNameSpan : ResolvedItem -> SourceSpan
-getItemNameSpan item =
-  case item.nodeValue of
-    ItemFunction declaration => declaration.functionName.astInfo.span
-    ItemConst declaration    => declaration.constName.astInfo.span
+getItemNameSpan resolvedItem =
+  case resolvedItem.nodeValue of
+    ItemFunction functionDeclaration => functionDeclaration.functionName.astInfo.span
+    ItemConst constDeclaration       => constDeclaration.constName.astInfo.span
     ItemModule _             => notImplemented __FILE__ "getItemNameSpan" "ItemModule"
     ItemUse _                => notImplemented __FILE__ "getItemNameSpan" "ItemUse"
     ItemEnum _               => notImplemented __FILE__ "getItemNameSpan" "ItemEnum"
@@ -93,7 +93,7 @@ seedTypeCheckerState resolvedModule sourceFileItems =
     (seedPresetSymbolTypes (seedTypeTables resolvedModule.tables))
     Nothing
     emptyInferenceState
-    (fromList (map (\item => (getItemSymbolId item, item)) sourceFileItems))
+    (fromList (map (\sourceFileItem => (getItemSymbolId sourceFileItem, sourceFileItem)) sourceFileItems))
     empty
     empty
 
@@ -154,17 +154,17 @@ attemptCheck itemCheck = do
   case execStateT stateBeforeAttempt itemCheck of
     Right stateAfterAttempt      => put stateAfterAttempt >> pure Nothing
     Left (Blocked awaitedSymbol) => pure (Just awaitedSymbol)
-    Left (Failed typeErr)        => typeError typeErr
+    Left (Failed diagnostic)     => typeError diagnostic
 
 -- The items whose check blocked, each with the symbol it is waiting for.
 attemptAllChecks : (ResolvedItem -> StateT TypeCheckerState (Either CheckFailure) ()) 
     -> List ResolvedItem 
     -> StateT TypeCheckerState (Either CheckFailure) (List (ResolvedItem, SymbolId))
 attemptAllChecks checkItem [] = pure []
-attemptAllChecks checkItem (item :: remainingItems) = do
-  maybeAwaitedSymbol <- attemptCheck (checkItem item)
+attemptAllChecks checkItem (currentItem :: remainingItems) = do
+  maybeAwaitedSymbol <- attemptCheck (checkItem currentItem)
   stuckRemainingItems <- attemptAllChecks checkItem remainingItems
-  pure (maybe stuckRemainingItems (\awaitedSymbol => (item, awaitedSymbol) :: stuckRemainingItems) maybeAwaitedSymbol)
+  pure (maybe stuckRemainingItems (\awaitedSymbol => (currentItem, awaitedSymbol) :: stuckRemainingItems) maybeAwaitedSymbol)
 
 -- One round: pass A on every pending signature, then pass B on every pending
 -- body whose signature is recorded. Each productive round completes at least
@@ -174,9 +174,9 @@ runBodyAndSignatureChecks _ (MkRemainingWorkTodo [] []) = pure ()
 runBodyAndSignatureChecks Z _ = unreachable __FILE__ {function = "runBodyAndSignatureCheck"} {reason = "every productive round completes an entry"}
 runBodyAndSignatureChecks (S remainingRounds) remainingWork = do
   stuckSignatureItems <- attemptAllChecks checkSignature remainingWork.pendingSignatureItems
-  let isWaitingForSignature = \item => any (isSameItem item . fst) stuckSignatureItems
+  let isWaitingForSignature = \pendingItem => any (isSameItem pendingItem . fst) stuckSignatureItems
   stuckBodyItems <- attemptAllChecks checkBody (filter (not . isWaitingForSignature) remainingWork.pendingBodyItems)
-  let isStillPending = \item => isWaitingForSignature item || any (isSameItem item . fst) stuckBodyItems
+  let isStillPending = \pendingItem => isWaitingForSignature pendingItem || any (isSameItem pendingItem . fst) stuckBodyItems
       nextRemainingWork = MkRemainingWorkTodo (map fst stuckSignatureItems) (filter isStillPending remainingWork.pendingBodyItems)
   if remainingTaskCount nextRemainingWork < remainingTaskCount remainingWork
     then runBodyAndSignatureChecks remainingRounds nextRemainingWork
@@ -188,7 +188,7 @@ resolveAndCheckTypes : TypeCheckerState -> List ResolvedItem -> Either TypeError
 resolveAndCheckTypes seededTypeCheckerState sourceFileItems =
   case execStateT seededTypeCheckerState (runBodyAndSignatureChecks (2 * length sourceFileItems + 1) (MkRemainingWorkTodo sourceFileItems sourceFileItems)) of
     Right finalTypeCheckerState => Right finalTypeCheckerState.tables
-    Left (Failed typeErr)       => Left typeErr
+    Left (Failed diagnostic)    => Left diagnostic
     Left (Blocked _)            => unreachable __FILE__ {function = "resolveAndCheckTypes"} {reason = "attemptCheck catches every block"}
 
 --------------------------------------------------------------------------------

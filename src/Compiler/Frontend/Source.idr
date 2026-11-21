@@ -71,6 +71,6 @@ mergeSpans firstSpan secondSpan =
              else MkSourceSpan firstSpan.file firstSpan.start secondSpan.end
   where
     positionAfter : SourcePos -> SourcePos -> Bool
-    positionAfter first second =
-      first.line > second.line ||
-        (first.line == second.line && first.column > second.column)
+    positionAfter firstPosition secondPosition =
+      firstPosition.line > secondPosition.line ||
+        (firstPosition.line == secondPosition.line && firstPosition.column > secondPosition.column)

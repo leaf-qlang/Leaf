@@ -29,106 +29,106 @@ isModuleScope ModuleScope = True
 isModuleScope _ = False
 
 isPreludeModule : ResolvedSymbolInfo -> Bool
-isPreludeModule symbol = case symbol.symbolKind of
-  SymbolModule => isPrelude symbol.origin
+isPreludeModule symbolInfo = case symbolInfo.symbolKind of
+  SymbolModule => isPrelude symbolInfo.origin
   _ => False
 
 -- Check ownership, lexical ancestry and declaration order independently of
 -- the general validator, which deliberately does not require complete tables.
 export
 preludeLayout : ResolvedModule -> Maybe Bool
-preludeLayout resolved = do
-  let tables = resolved.tables
-  root <- lookup resolved.rootScopeId tables.scopes
-  preludeScopeId <- root.parent
-  preludeScope <- lookup preludeScopeId tables.scopes
-  [owner] <- pure (filter isPreludeModule (map snd (SortedMap.toList tables.symbols)))
+preludeLayout resolvedModule = do
+  let scopeTables = resolvedModule.tables
+  rootScope <- lookup resolvedModule.rootScopeId scopeTables.scopes
+  preludeScopeId <- rootScope.parent
+  preludeScope <- lookup preludeScopeId scopeTables.scopes
+  [preludeModuleSymbol] <- pure (filter isPreludeModule (map snd (SortedMap.toList scopeTables.symbols)))
     | _ => Nothing
-  let bindings = map snd (SortedMap.toList preludeScope.valueBindings)
+  let preludeBindings = map snd (SortedMap.toList preludeScope.valueBindings)
   pure $
-    tables.currentScopeId == resolved.rootScopeId &&
-    isModuleScope tables.currentScopeKind &&
-    tables.currentModuleSymbolId == resolved.rootSymbolId &&
-    isModuleScope root.kind && isModuleScope preludeScope.kind &&
+    scopeTables.currentScopeId == resolvedModule.rootScopeId &&
+    isModuleScope scopeTables.currentScopeKind &&
+    scopeTables.currentModuleSymbolId == resolvedModule.rootSymbolId &&
+    isModuleScope rootScope.kind && isModuleScope preludeScope.kind &&
     (case preludeScope.origin of PreludeScope => True; _ => False) &&
     isNothing preludeScope.parent &&
-    owner.declaringScope == resolved.rootScopeId &&
-    owner.declaringModule == resolved.rootSymbolId &&
-    lookup owner.symbolId tables.memberScopes == Just preludeScopeId &&
-    lookup resolved.rootSymbolId tables.memberScopes == Just resolved.rootScopeId &&
-    elem owner.symbolId (root.declaredSymbolsInOrder <>> []) &&
-    sort (map (.writtenName) bindings) == sort preludeFunctionNames &&
-    sort (preludeScope.declaredSymbolsInOrder <>> []) == sort (map (.target) bindings) &&
-    all (validBinding tables preludeScopeId owner.symbolId) bindings
+    preludeModuleSymbol.declaringScope == resolvedModule.rootScopeId &&
+    preludeModuleSymbol.declaringModule == resolvedModule.rootSymbolId &&
+    lookup preludeModuleSymbol.symbolId scopeTables.memberScopes == Just preludeScopeId &&
+    lookup resolvedModule.rootSymbolId scopeTables.memberScopes == Just resolvedModule.rootScopeId &&
+    elem preludeModuleSymbol.symbolId (rootScope.declaredSymbolsInOrder <>> []) &&
+    sort (map (.writtenName) preludeBindings) == sort preludeFunctionNames &&
+    sort (preludeScope.declaredSymbolsInOrder <>> []) == sort (map (.target) preludeBindings) &&
+    all (validBinding scopeTables preludeScopeId preludeModuleSymbol.symbolId) preludeBindings
   where
     validBinding : ScopeTables -> ScopeId -> SymbolId -> ScopeBinding -> Bool
-    validBinding tables scopeId moduleId binding =
-      case lookup binding.target tables.symbols of
+    validBinding scopeTables preludeScopeId preludeModuleId preludeBinding =
+      case lookup preludeBinding.target scopeTables.symbols of
         Nothing => False
-        Just symbol =>
-          (case binding.bindingKind of PreludeBinding => True; _ => False) &&
-          isNothing binding.introducedAt && isPublic binding.bindingVisibility &&
-          (case symbol.symbolKind of SymbolFunction => True; _ => False) &&
-          isPrelude symbol.origin && isPublic symbol.visibility &&
-          symbol.symbolId == binding.target && symbol.declaredName == binding.writtenName &&
-          symbol.declaringScope == scopeId && symbol.declaringModule == moduleId &&
-          isNothing (lookup symbol.symbolId tables.localVarsMeta)
+        Just functionSymbol =>
+          (case preludeBinding.bindingKind of PreludeBinding => True; _ => False) &&
+          isNothing preludeBinding.introducedAt && isPublic preludeBinding.bindingVisibility &&
+          (case functionSymbol.symbolKind of SymbolFunction => True; _ => False) &&
+          isPrelude functionSymbol.origin && isPublic functionSymbol.visibility &&
+          functionSymbol.symbolId == preludeBinding.target && functionSymbol.declaredName == preludeBinding.writtenName &&
+          functionSymbol.declaringScope == preludeScopeId && functionSymbol.declaringModule == preludeModuleId &&
+          isNothing (lookup functionSymbol.symbolId scopeTables.localVarsMeta)
 
 export
 useOrigins : String -> Maybe (List (String, String))
-useOrigins source = do
-  resolved <- resolvedSource source
-  traverse (describe resolved.tables) (valueReferences resolved)
+useOrigins sourceText = do
+  resolvedModule <- resolvedSource sourceText
+  traverse (describeReferenceOrigin resolvedModule.tables) (valueReferences resolvedModule)
   where
-    describe : ScopeTables -> SymbolReference -> Maybe (String, String)
-    describe tables reference = do
-      symbol <- lookup reference.target tables.symbols
-      let origin = if isPrelude symbol.origin then "prelude" else
-            case symbol.symbolKind of
+    describeReferenceOrigin : ScopeTables -> SymbolReference -> Maybe (String, String)
+    describeReferenceOrigin scopeTables reference = do
+      targetSymbol <- lookup reference.target scopeTables.symbols
+      let originDescription = if isPrelude targetSymbol.origin then "prelude" else
+            case targetSymbol.symbolKind of
               SymbolConstant => "other"
-              kind => kindText kind
-      pure (reference.writtenName, origin)
+              symbolKind => kindText symbolKind
+      pure (reference.writtenName, originDescription)
 
 export
 missingName : String -> Maybe String
-missingName source = case expectUnresolvedName source of
-  Right name => Just name
+missingName sourceText = case expectUnresolvedName sourceText of
+  Right unresolvedName => Just unresolvedName
   Left _ => Nothing
 
 export
 constantShadowsPrelude : ResolvedModule -> Maybe Bool
-constantShadowsPrelude resolved = do
-  MkSourceFileNode _ [MkAstNode _ _ (ItemFunction fn), MkAstNode _ _ (ItemConst con)] <- pure resolved.ast.nodeValue
+constantShadowsPrelude resolvedModule = do
+  MkSourceFileNode _ [MkAstNode _ _ (ItemFunction functionDeclaration), MkAstNode _ _ (ItemConst constDeclaration)] <- pure resolvedModule.ast.nodeValue
     | _ => Nothing
-  MkAstNode _ _ (StatementSemiExpression expression) :: _ <- pure fn.functionBody.nodeValue.blockStatements
+  MkAstNode _ _ (StatementSemiExpression sinExpression) :: _ <- pure functionDeclaration.functionBody.nodeValue.blockStatements
     | _ => Nothing
-  ExprName use <- pure expression.nodeValue | _ => Nothing
-  root <- lookup resolved.rootScopeId resolved.tables.scopes
-  preludeId <- root.parent
-  preludeScope <- lookup preludeId resolved.tables.scopes
-  sourceBinding <- lookup "sin" root.valueBindings
+  ExprName sinName <- pure sinExpression.nodeValue | _ => Nothing
+  rootScope <- lookup resolvedModule.rootScopeId resolvedModule.tables.scopes
+  preludeScopeId <- rootScope.parent
+  preludeScope <- lookup preludeScopeId resolvedModule.tables.scopes
+  sourceBinding <- lookup "sin" rootScope.valueBindings
   preludeBinding <- lookup "sin" preludeScope.valueBindings
-  sourceSymbol <- lookup sourceBinding.target resolved.tables.symbols
-  preludeSymbol <- lookup preludeBinding.target resolved.tables.symbols
-  bodyScope <- lookup fn.functionBody.astInfo.nodeId resolved.tables.nodeScopes
-  [reference] <- pure (valueReferences resolved) | _ => Nothing
-  layout <- preludeLayout resolved
-  pure (layout && sourceBinding.target /= preludeBinding.target &&
-        sourceBinding.target == con.constName.nodeValue.nameNodeSymbolId &&
-        use.nodeValue.nameNodeSymbolId == sourceBinding.target &&
+  sourceSymbol <- lookup sourceBinding.target resolvedModule.tables.symbols
+  preludeSymbol <- lookup preludeBinding.target resolvedModule.tables.symbols
+  bodyScope <- lookup functionDeclaration.functionBody.astInfo.nodeId resolvedModule.tables.nodeScopes
+  [sinReference] <- pure (valueReferences resolvedModule) | _ => Nothing
+  preludeLayoutIsValid <- preludeLayout resolvedModule
+  pure (preludeLayoutIsValid && sourceBinding.target /= preludeBinding.target &&
+        sourceBinding.target == constDeclaration.constName.nodeValue.nameNodeSymbolId &&
+        sinName.nodeValue.nameNodeSymbolId == sourceBinding.target &&
         (case sourceBinding.bindingKind of DeclaredBinding => True; _ => False) &&
         (case sourceBinding.bindingVisibility of ModuleVisibility => True; _ => False) &&
         (case sourceSymbol.symbolKind of SymbolConstant => True; _ => False) &&
         (case sourceSymbol.origin of SourceSymbol _ => True; _ => False) &&
-        sourceSymbol.declaringScope == resolved.rootScopeId && sourceSymbol.declaringModule == resolved.rootSymbolId &&
-        isPrelude preludeSymbol.origin && preludeSymbol.declaringScope == preludeId &&
+        sourceSymbol.declaringScope == resolvedModule.rootScopeId && sourceSymbol.declaringModule == resolvedModule.rootSymbolId &&
+        isPrelude preludeSymbol.origin && preludeSymbol.declaringScope == preludeScopeId &&
         (case preludeBinding.bindingKind of PreludeBinding => True; _ => False) &&
         isPublic preludeBinding.bindingVisibility &&
-        reference.target == sourceBinding.target && reference.writtenName == "sin" &&
-        reference.occurrence.nodeId == use.astInfo.nodeId &&
-        spanKey reference.occurrence.span == spanKey use.astInfo.span &&
-        reference.contextNode == expression.astInfo.nodeId && reference.enclosingScope == bodyScope &&
-        lookup expression.astInfo.nodeId resolved.tables.nodeScopes == Just bodyScope &&
-        lookup use.astInfo.nodeId resolved.tables.nodeScopes == Just bodyScope &&
-        isNothing (lookup preludeBinding.target resolved.tables.references) &&
-        length (allReferences resolved) == 3)
+        sinReference.target == sourceBinding.target && sinReference.writtenName == "sin" &&
+        sinReference.occurrence.nodeId == sinName.astInfo.nodeId &&
+        spanKey sinReference.occurrence.span == spanKey sinName.astInfo.span &&
+        sinReference.contextNode == sinExpression.astInfo.nodeId && sinReference.enclosingScope == bodyScope &&
+        lookup sinExpression.astInfo.nodeId resolvedModule.tables.nodeScopes == Just bodyScope &&
+        lookup sinName.astInfo.nodeId resolvedModule.tables.nodeScopes == Just bodyScope &&
+        isNothing (lookup preludeBinding.target resolvedModule.tables.references) &&
+        length (allReferences resolvedModule) == 3)

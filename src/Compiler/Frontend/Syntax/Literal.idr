@@ -73,45 +73,45 @@ TypedLiteral = Literal TypedAstPhase
 ||| e.g. "1_000", "0xff_u8", "0XFF".
 public export
 integerLiteralValue : String -> Maybe Nat
-integerLiteralValue raw =
-  let (base, rest) = splitBase (filter (/= '_') (unpack raw))
-      (digits, suffix) = span (isDigitInBase base) rest
-  in if null digits || not (validSuffix suffix)
+integerLiteralValue rawLiteralText =
+  let (numberBase, digitsAndSuffix) = splitBase (filter (/= '_') (unpack rawLiteralText))
+      (digitCharacters, suffixCharacters) = span (isDigitInBase numberBase) digitsAndSuffix
+  in if null digitCharacters || not (validSuffix suffixCharacters)
        then Nothing
-       else Just $ foldl (\value, digit => value * base + fromMaybe 0 (digitValue digit)) 0 digits
+       else Just $ foldl (\accumulatedValue, digitCharacter => accumulatedValue * numberBase + fromMaybe 0 (digitValue digitCharacter)) 0 digitCharacters
   where
     splitBase : List Char -> (Nat, List Char)
-    splitBase literal@('0' :: baseMarker :: digits) =
+    splitBase literalCharacters@('0' :: baseMarker :: charactersAfterPrefix) =
       case toLower baseMarker of
-        'x' => (16, digits)
-        'o' => (8, digits)
-        'b' => (2, digits)
-        _ => (10, literal)
-    splitBase digits = (10, digits)
+        'x' => (16, charactersAfterPrefix)
+        'o' => (8, charactersAfterPrefix)
+        'b' => (2, charactersAfterPrefix)
+        _ => (10, literalCharacters)
+    splitBase literalCharacters = (10, literalCharacters)
 
     digitValue : Char -> Maybe Nat
-    digitValue c =
-      if isDigit c
-        then Just (cast (ord c - ord '0'))
-        else let lower = toLower c in
-          if lower >= 'a' && lower <= 'f' then Just (cast (ord lower - ord 'a' + 10)) else Nothing
+    digitValue character =
+      if isDigit character
+        then Just (cast (ord character - ord '0'))
+        else let lowercaseCharacter = toLower character in
+          if lowercaseCharacter >= 'a' && lowercaseCharacter <= 'f' then Just (cast (ord lowercaseCharacter - ord 'a' + 10)) else Nothing
 
     isDigitInBase : Nat -> Char -> Bool
-    isDigitInBase base c = maybe False (< base) (digitValue c)
+    isDigitInBase numberBase character = maybe False (< numberBase) (digitValue character)
 
     validSuffix : List Char -> Bool
     validSuffix [] = True
-    validSuffix suffix = pack suffix `elem` ["i8", "i16", "i32", "i64", "i128", "u8", "u16", "u32", "u64", "u128", "usize"]
+    validSuffix suffixCharacters = pack suffixCharacters `elem` ["i8", "i16", "i32", "i64", "i128", "u8", "u16", "u32", "u64", "u128", "usize"]
 
 ||| The integer type named by the suffix of a well-formed integer literal's raw
 ||| spelling, if one was written: "0xff_u8" names u8, "1_000" none. No digit
 ||| or base prefix contains `i` or `u`, so the suffix starts at the first one.
 public export
 integerLiteralSuffixType : String -> Maybe TypPrimName
-integerLiteralSuffixType raw =
-  case break (\c => c == 'i' || c == 'u') (unpack raw) of
+integerLiteralSuffixType rawLiteralText =
+  case break (\character => character == 'i' || character == 'u') (unpack rawLiteralText) of
     (_, []) => Nothing
-    (_, suffix) => typeFromString (pack suffix)
+    (_, suffixCharacters) => typeFromString (pack suffixCharacters)
 
 ||| The current target uses 64-bit pointers, independently of the compiler host.
 public export
@@ -145,10 +145,10 @@ data ArrayLengthProblem
 ||| The problem with an integer literal's raw spelling as an array length, if any.
 public export
 arrayLengthProblem : String -> Maybe ArrayLengthProblem
-arrayLengthProblem raw = do
-  suffixType <- integerLiteralSuffixType raw
+arrayLengthProblem rawLiteralText = do
+  suffixType <- integerLiteralSuffixType rawLiteralText
   if suffixType /= TypPrimUsize
     then Just (NonUsizeLengthSuffix suffixType)
-    else if maybe False (> usizeMaximum) (integerLiteralValue raw)
+    else if maybe False (> usizeMaximum) (integerLiteralValue rawLiteralText)
       then Just (LengthExceedsSuffixType TypPrimUsize usizeMaximum)
       else Nothing

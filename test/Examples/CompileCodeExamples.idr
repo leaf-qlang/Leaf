@@ -9,19 +9,19 @@ import Main
 
 compileLeafFile : String -> IO (Either String ())
 compileLeafFile programFile = do
-  fileResult <- readFile programFile
-  case fileResult of
-    Left fileErr => pure $ Left $ "Failed to read \{programFile}: " ++ show fileErr
-    Right source => pure $ map (const ()) (compileSource programFile source)
+  readResult <- readFile programFile
+  case readResult of
+    Left fileError => pure $ Left $ "Failed to read \{programFile}: " ++ show fileError
+    Right sourceText => pure $ map (const ()) (compileSource programFile sourceText)
 
 compileLeafFiles : String -> List String -> IO (Either String ())
 compileLeafFiles examplesDirectory [] = do
   putStrLn "Finished compiling all code examples."
   pure $ Right ()
 compileLeafFiles examplesDirectory (fileName :: fileNames) = do
-  result <- compileLeafFile $ examplesDirectory ++ "/" ++ fileName
-  case result of
-    Left err => pure $ Left err
+  compilationResult <- compileLeafFile $ examplesDirectory ++ "/" ++ fileName
+  case compilationResult of
+    Left errorMessage => pure $ Left errorMessage
     Right () => 
       do
         putStrLn $ "Successfully compiled: " ++ fileName
@@ -31,8 +31,8 @@ export
 discoverAndCompileExamples : IO (Either String ())
 discoverAndCompileExamples = do
   let examplesDirectory = "examples"
-  Right entries <- listDir examplesDirectory
-    | Left err => pure $ Left $ "Failed to list \{examplesDirectory}: " ++ show err
+  Right directoryEntries <- listDir examplesDirectory
+    | Left errorMessage => pure $ Left $ "Failed to list \{examplesDirectory}: " ++ show errorMessage
   -- Example 8 demonstrates quantum conditionals, which the parser rejects
   -- explicitly until that language feature is implemented.
   let codeExampleFiles =
@@ -40,5 +40,5 @@ discoverAndCompileExamples = do
           (\fileName =>
             isSuffixOf ".rs" fileName &&
             fileName /= "08_deutsch_jozsa_using_quantum_conditional.rs")
-          entries
+          directoryEntries
   compileLeafFiles examplesDirectory (sort codeExampleFiles)

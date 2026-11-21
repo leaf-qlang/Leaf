@@ -28,8 +28,8 @@ import public Parser.FixtureSource
 --------------------------------------------------------------------------------
 
 lexBounded : String -> Either String (List (Bounded Token))
-lexBounded source = case lexFile source of
-  Left located => Left "lexer error: \{located.val}"
+lexBounded sourceText = case lexFile sourceText of
+  Left lexerError => Left "lexer error: \{lexerError.val}"
   Right tokens => Right tokens
 
 ||| The fixture's tokens, without their bounds.
@@ -43,7 +43,7 @@ parseFixture = map (parseFile fixtureFile) . lexBounded
 
 export
 lexThenParse : String -> Either String SurfaceSourceFile
-lexThenParse source = parseFixture source >>= either (Left . showParseError) Right
+lexThenParse sourceText = parseFixture sourceText >>= either (Left . showParseError) Right
 
 export
 parseAndPrettyPrintStrict : String -> Either String String
@@ -57,22 +57,22 @@ parseAndPrettyPrintLax = map showSourceFileLax . lexThenParse
 ||| exactly as written.
 export
 printsUnchangedStrict : String -> Diagnostic (Either String String)
-printsUnchangedStrict source = parseAndPrettyPrintStrict source `shouldBe` Right source
+printsUnchangedStrict sourceText = parseAndPrettyPrintStrict sourceText `shouldBe` Right sourceText
 
 ||| A source already in the printer's spacing, which lax style prints back
 ||| exactly as written.
 export
 printsUnchangedLax : String -> Diagnostic (Either String String)
-printsUnchangedLax source = parseAndPrettyPrintLax source `shouldBe` Right source
+printsUnchangedLax sourceText = parseAndPrettyPrintLax sourceText `shouldBe` Right sourceText
 
 ||| The message the user is shown, which carries the file and the error's start,
 ||| paired with the span's end, which no message shows.
 export
 parseErrorDetails : String -> Either String (String, (Nat, Nat))
-parseErrorDetails source = parseFixture source >>= either (Right . details) parsed
+parseErrorDetails sourceText = parseFixture sourceText >>= either (Right . details) parsed
   where
     details : Located ParseError -> (String, (Nat, Nat))
-    details located = (showParseError located, (located.span.end.line, located.span.end.column))
+    details locatedError = (showParseError locatedError, (locatedError.span.end.line, locatedError.span.end.column))
 
     parsed : SurfaceSourceFile -> Either String (String, (Nat, Nat))
     parsed sourceFile = Left "parsed without error as: \{showSourceFileStrict sourceFile}"
@@ -89,11 +89,11 @@ parseErrorAt (line, column) end message =
 ||| the message says was expected there.
 export
 misplacedNameTests : String -> List (String, Nat, String) -> List TestResult
-misplacedNameTests name = testEach name parseErrorDetails . map expectation
+misplacedNameTests testGroupName = testEach testGroupName parseErrorDetails . map expectation
   where
     expectation : (String, Nat, String) -> (String, Either String (String, (Nat, Nat)))
-    expectation (source, column, expected) =
-      (source, parseErrorAt (1, column) (1, S column) "expected \{expected}, but got identifier \"z\"")
+    expectation (sourceText, column, expectedDescription) =
+      (sourceText, parseErrorAt (1, column) (1, S column) "expected \{expectedDescription}, but got identifier \"z\"")
 
 --------------------------------------------------------------------------------
 -- Printing in both styles
@@ -121,7 +121,7 @@ debugAstOf = map showAstDebug . lexThenParse
 export
 covering
 parseAndListNodeIds : String -> Either String (List Nat)
-parseAndListNodeIds source = debugAstOf source >>= withIds
+parseAndListNodeIds sourceText = debugAstOf sourceText >>= withIds
   where
     withIds : String -> Either String (List Nat)
     withIds dump = maybe (Left "a node heading has no ID in:\n\{dump}") Right (debugNodeSurfaceIds dump)

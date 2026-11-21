@@ -164,7 +164,7 @@ runPostParseValidationTests = runTests $ Test.do
                                "exclusive)")]
 
   -- Repeated names, constant patterns included, are reported by name resolution.
-  testEach "repeated names pass post-parse validation" validationMessages $ map (\source => (source, Right []))
+  testEach "repeated names pass post-parse validation" validationMessages $ map (\sourceText => (sourceText, Right []))
     [ "fn f(x: i32, x: i32) {}"
     , "fn f() {let (x, x) = pair;}"
     , "fn f() {let ((x, y), (z, x)) = value;}"

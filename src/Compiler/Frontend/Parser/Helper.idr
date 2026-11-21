@@ -24,11 +24,11 @@ import Compiler.Frontend.Syntax.Type
 ||| Creates a NodeId with current Id, and returns the next Id for the next node.
 public export
 reserveNodeId : Nat -> (NodeId, Nat)
-reserveNodeId current = (MkNodeId current 0, S current)
+reserveNodeId currentSurfaceId = (MkNodeId currentSurfaceId 0, S currentSurfaceId)
 
 public export
 snocList1 : List1 a -> a -> List1 a
-snocList1 (first ::: rest) value = first ::: (rest ++ [value])
+snocList1 (firstElement ::: remainingElements) appendedElement = firstElement ::: (remainingElements ++ [appendedElement])
 
 -- Text.Bounds positions use zero-based lines and columns, while Leaf's
 -- SourcePos uses one-based lines and columns. There is also an endpoint
@@ -53,24 +53,24 @@ sourceEndPos (P line column) =
 public export
 sourceSpan : {auto sourceFileName : SourceFileName} -> Bounds -> SourceSpan
 sourceSpan NoBounds =
-  let start = MkSourcePos 1 1
-  in MkSourceSpan sourceFileName.fileName start start
-sourceSpan (BS start end) =
-  MkSourceSpan sourceFileName.fileName (sourceStartPos start) (sourceEndPos end)
+  let fileStartPosition = MkSourcePos 1 1
+  in MkSourceSpan sourceFileName.fileName fileStartPosition fileStartPosition
+sourceSpan (BS startPosition lastCharacterPosition) =
+  MkSourceSpan sourceFileName.fileName (sourceStartPos startPosition) (sourceEndPos lastCharacterPosition)
 
 lastItemSpan : SurfaceItem -> List SurfaceItem -> SourceSpan
-lastItemSpan item [] =
-    item.astInfo.span
-lastItemSpan _ (item :: rest) =
-    lastItemSpan item rest
+lastItemSpan currentItem [] =
+    currentItem.astInfo.span
+lastItemSpan _ (nextItem :: remainingItems) =
+    lastItemSpan nextItem remainingItems
 
 public export
 sourceFileInfo : {auto sourceFileName : SourceFileName} -> NodeId -> List SurfaceItem -> AstInfo
-sourceFileInfo nodeId [] =
-    let start = MkSourcePos 1 1 in
-        MkAstInfo nodeId (MkSourceSpan sourceFileName.fileName start start)
-sourceFileInfo nodeId (first :: rest) =
-    MkAstInfo nodeId (mergeSpans first.astInfo.span (lastItemSpan first rest))
+sourceFileInfo sourceFileNodeId [] =
+    let fileStartPosition = MkSourcePos 1 1 in
+        MkAstInfo sourceFileNodeId (MkSourceSpan sourceFileName.fileName fileStartPosition fileStartPosition)
+sourceFileInfo sourceFileNodeId (firstItem :: remainingItems) =
+    MkAstInfo sourceFileNodeId (mergeSpans firstItem.astInfo.span (lastItemSpan firstItem remainingItems))
 
 ||| Legal states reached while collecting a top-level item's declaration prefix.
 ||| Each constructor represents one accepted modifier sequence and retains the
@@ -111,10 +111,10 @@ prefixComponents (PrefixOrdinary visibility) =
   (visibility, NoPrefixConstness, Nothing)
 prefixComponents (PrefixConst visibility constBounds) =
   (visibility, PendingPrefixConstness constBounds, Nothing)
-prefixComponents (PrefixEffect visibility effect) =
-  (visibility, NoPrefixConstness, Just effect)
-prefixComponents (PrefixConstEffect visibility constness effect) =
-  (visibility, LocatedPrefixConstness constness, Just effect)
+prefixComponents (PrefixEffect visibility functionEffect) =
+  (visibility, NoPrefixConstness, Just functionEffect)
+prefixComponents (PrefixConstEffect visibility constness functionEffect) =
+  (visibility, LocatedPrefixConstness constness, Just functionEffect)
 
 public export
 record CommaList a where
@@ -146,9 +146,9 @@ parameterStartSpan :
   -> Maybe (SurfaceAstNode Mutability)
   -> SurfaceName
   -> SourceSpan
-parameterStartSpan (doc :: _) _ _ = doc.astInfo.span
+parameterStartSpan (firstDocComment :: _) _ _ = firstDocComment.astInfo.span
 parameterStartSpan [] (Just mutability) _ = mutability.astInfo.span
-parameterStartSpan [] Nothing name = name.astInfo.span
+parameterStartSpan [] Nothing parameterName = parameterName.astInfo.span
 
 public export
 assignmentOperator : Symbol -> Maybe AssignmentOperator
@@ -233,7 +233,7 @@ public export
 quantumUsageQualifierFromToken : Token -> Maybe QuantumUsageQualifier
 quantumUsageQualifierFromToken token =
   case storageQualifierFromToken token of
-    Just qualifier => storageQuantumUsage qualifier
+    Just storageQualifier => storageQuantumUsage storageQualifier
     Nothing => Nothing
 
 public export
@@ -254,48 +254,48 @@ unsupportedTopLevelItem _ = Nothing
 
 public export
 makeLiteralExpression : SourceFileName => LiteralNode -> Bounds -> Nat -> (SurfaceExpr, Nat)
-makeLiteralExpression literalValue bounds nodeId =
+makeLiteralExpression literalNode bounds nodeId =
   let (expressionNodeId, afterExpressionNodeId) = reserveNodeId nodeId
       (literalNodeId, nextNodeId) = reserveNodeId afterExpressionNodeId
       literal = surfaceAstNode (MkAstInfo literalNodeId (sourceSpan bounds))
-                               literalValue
-      expression = surfaceAstNode (MkAstInfo expressionNodeId (sourceSpan bounds))
-                                  (ExprLiteral literal)
-   in (expression, nextNodeId)
+                               literalNode
+      literalExpression = surfaceAstNode (MkAstInfo expressionNodeId (sourceSpan bounds))
+                                         (ExprLiteral literal)
+   in (literalExpression, nextNodeId)
 
 public export
 makeName : SourceFileName => String -> Bounds -> Nat -> (SurfaceName, Nat)
 makeName nameText bounds nodeId =
   let (nameNodeId, nextNodeId) = reserveNodeId nodeId
-      name = surfaceAstNode (MkAstInfo nameNodeId (sourceSpan bounds)) (MkNameNode nameText)
-   in (name, nextNodeId)
+      surfaceName = surfaceAstNode (MkAstInfo nameNodeId (sourceSpan bounds)) (MkNameNode nameText)
+   in (surfaceName, nextNodeId)
 
 public export
 makeNameExpression : SourceFileName => String -> Bounds -> Nat -> (SurfaceExpr, Nat)
 makeNameExpression nameText bounds nodeId =
   let (expressionNodeId, afterExpressionNodeId) = reserveNodeId nodeId
-      (name, nextNodeId) = makeName nameText bounds afterExpressionNodeId
-      expression = surfaceAstNode (MkAstInfo expressionNodeId (sourceSpan bounds))
-                                  (ExprName name)
-   in (expression, nextNodeId)
+      (surfaceName, nextNodeId) = makeName nameText bounds afterExpressionNodeId
+      nameExpression = surfaceAstNode (MkAstInfo expressionNodeId (sourceSpan bounds))
+                                      (ExprName surfaceName)
+   in (nameExpression, nextNodeId)
 
 public export
 makeBuiltinExpression : SourceFileName => Builtin -> Bounds -> Nat -> (SurfaceExpr, Nat)
 makeBuiltinExpression builtin bounds nodeId =
   let (expressionNodeId, nextNodeId) = reserveNodeId nodeId
-      expression = surfaceAstNode (MkAstInfo expressionNodeId (sourceSpan bounds))
-                                  (ExprBuiltin builtin)
-   in (expression, nextNodeId)
+      builtinExpression = surfaceAstNode (MkAstInfo expressionNodeId (sourceSpan bounds))
+                                         (ExprBuiltin builtin)
+   in (builtinExpression, nextNodeId)
 
 
 public export
 assignmentTargetFromExpression : SurfaceExpr -> Maybe (AssignmentTargetNode SurfaceAstPhase)
-assignmentTargetFromExpression (MkAstNode _ _ expression) =
-  case expression of
-    ExprName name => Just (AssignTargetName name)
-    ExprIndex object index => Just (AssignTargetIndex object index)
-    ExprField object field => Just (AssignTargetField object field)
-    ExprTupleIndex object indexRaw => Just (AssignTargetTupleIndex object indexRaw)
+assignmentTargetFromExpression (MkAstNode _ _ expressionNode) =
+  case expressionNode of
+    ExprName targetName => Just (AssignTargetName targetName)
+    ExprIndex targetObject index => Just (AssignTargetIndex targetObject index)
+    ExprField targetObject fieldName => Just (AssignTargetField targetObject fieldName)
+    ExprTupleIndex targetObject tupleIndexRawText => Just (AssignTargetTupleIndex targetObject tupleIndexRawText)
     _ => Nothing
 
 public export
@@ -310,8 +310,8 @@ isComparisonOperator _ = False
 
 public export
 isUnparenthesizedComparison : SurfaceExpr -> Bool
-isUnparenthesizedComparison (MkAstNode _ _ (ExprBinary operator _ _)) =
-  isComparisonOperator operator.nodeValue
+isUnparenthesizedComparison (MkAstNode _ _ (ExprBinary binaryOperator _ _)) =
+  isComparisonOperator binaryOperator.nodeValue
 isUnparenthesizedComparison _ = False
 
 public export
@@ -336,10 +336,10 @@ emptyStorageQualifiers = MkStorageQualifiers Nothing Nothing [<]
 
 ||| Diagnostic for a qualifier written after one occupying the same slot.
 secondQualifierMessage : (Eq qualifier, Show qualifier) => qualifier -> qualifier -> String
-secondQualifierMessage first second =
-  if first == second
-    then "Duplicate `" ++ show second ++ "` storage qualifier."
-    else "Cannot combine `" ++ show first ++ "` and `" ++ show second ++ "` storage qualifiers."
+secondQualifierMessage firstQualifier secondQualifier =
+  if firstQualifier == secondQualifier
+    then "Duplicate `" ++ show secondQualifier ++ "` storage qualifier."
+    else "Cannot combine `" ++ show firstQualifier ++ "` and `" ++ show secondQualifier ++ "` storage qualifiers."
 
 ||| Adds one located qualifier or returns the diagnostic for an invalid combination.
 public export
@@ -347,22 +347,22 @@ addStorageQualifier :
      StorageQualifiers
   -> SurfaceAstNode QuantumStorageQualifier
   -> Either String StorageQualifiers
-addStorageQualifier qualifiers located =
-  case located.nodeValue of
+addStorageQualifier collectedQualifiers newQualifier =
+  case newQualifier.nodeValue of
     QualifierScratch =>
-      case qualifiers.scratch of
-        Just existing => Left (secondQualifierMessage existing.nodeValue located.nodeValue)
-        Nothing => Right $ MkStorageQualifiers qualifiers.quantumUsage
-          (Just located) (qualifiers.ordered :< located)
-    QualifierLinear => addQuantumUsage
-    QualifierAffine => addQuantumUsage
+      case collectedQualifiers.scratch of
+        Just existingQualifier => Left (secondQualifierMessage existingQualifier.nodeValue newQualifier.nodeValue)
+        Nothing => Right $ MkStorageQualifiers collectedQualifiers.quantumUsage
+          (Just newQualifier) (collectedQualifiers.ordered :< newQualifier)
+    QualifierLinear => addQuantumUsageQualifier
+    QualifierAffine => addQuantumUsageQualifier
   where
-    addQuantumUsage : Either String StorageQualifiers
-    addQuantumUsage =
-      case qualifiers.quantumUsage of
-        Nothing => Right $ MkStorageQualifiers (Just located)
-          qualifiers.scratch (qualifiers.ordered :< located)
-        Just existing => Left (secondQualifierMessage existing.nodeValue located.nodeValue)
+    addQuantumUsageQualifier : Either String StorageQualifiers
+    addQuantumUsageQualifier =
+      case collectedQualifiers.quantumUsage of
+        Nothing => Right $ MkStorageQualifiers (Just newQualifier)
+          collectedQualifiers.scratch (collectedQualifiers.ordered :< newQualifier)
+        Just existingQualifier => Left (secondQualifierMessage existingQualifier.nodeValue newQualifier.nodeValue)
 
 ||| `scratch` describes cleanup at the end of a binding's scope, so it is only
 ||| valid on `let` bindings, never inside a type.
@@ -374,14 +374,14 @@ scratchInTypeMessage = "The `scratch` qualifier is only allowed on `let` binding
 ||| diagnostic for `scratch`.
 public export
 typeQuantumUsageQualifier : QuantumStorageQualifier -> Either String QuantumUsageQualifier
-typeQuantumUsageQualifier qualifier =
-  maybe (Left scratchInTypeMessage) Right (storageQuantumUsage qualifier)
+typeQuantumUsageQualifier storageQualifier =
+  maybe (Left scratchInTypeMessage) Right (storageQuantumUsage storageQualifier)
 
 ||| Diagnostic for a second storage keyword following a quantum usage qualifier
 ||| inside a type: a type holds exactly one quantum usage qualifier.
 secondTypeQualifierMessage : QuantumUsageQualifier -> QuantumStorageQualifier -> String
-secondTypeQualifierMessage first second =
-  either id (secondQualifierMessage first) (typeQuantumUsageQualifier second)
+secondTypeQualifierMessage firstQualifier secondQualifier =
+  either id (secondQualifierMessage firstQualifier) (typeQuantumUsageQualifier secondQualifier)
 
 ||| Diagnostic for a token other than `qbit` following a quantum usage qualifier
 ||| inside a type: a qualifier applies to a single qbit, so a qbit array or
@@ -389,28 +389,28 @@ secondTypeQualifierMessage first second =
 ||| and nothing behind a reference is qualified, so no slice suggestion.
 public export
 qualifiedNonQbitMessage : QuantumUsageQualifier -> Token -> String
-qualifiedNonQbitMessage qualifier token =
+qualifiedNonQbitMessage writtenQualifier token =
   case storageQualifierFromToken token of
-    Just second => secondTypeQualifierMessage qualifier second
+    Just secondQualifier => secondTypeQualifierMessage writtenQualifier secondQualifier
     Nothing =>
       case token of
         TokSym SymLBracket =>
-          written ++ " cannot qualify an array or slice: qualify the qbits of an array instead, e.g. `[" ++
+          qualifierDescription ++ " cannot qualify an array or slice: qualify the qbits of an array instead, e.g. `[" ++
           qualifiedQbit ++ "; 2]`."
         TokSym SymLParen =>
-          written ++ " cannot qualify a parenthesized type or tuple: qualify each qbit inside it instead, e.g. `" ++
+          qualifierDescription ++ " cannot qualify a parenthesized type or tuple: qualify each qbit inside it instead, e.g. `" ++
           qualifiedQbit ++ "` or `(" ++ qualifiedQbit ++ ", " ++ qualifiedQbit ++ ")`."
-        _ => written ++ " can only qualify `qbit`, not " ++ describeToken token ++ "."
+        _ => qualifierDescription ++ " can only qualify `qbit`, not " ++ describeToken token ++ "."
   where
-    written : String
-    written = "The `" ++ show qualifier ++ "` qualifier"
+    qualifierDescription : String
+    qualifierDescription = "The `" ++ show writtenQualifier ++ "` qualifier"
 
     qualifiedQbit : String
-    qualifiedQbit = show qualifier ++ " qbit"
+    qualifiedQbit = show writtenQualifier ++ " qbit"
 
 ||| Diagnostic for a quantum usage qualifier written directly after `&` or `&mut`.
 public export
 qualifierBehindReferenceMessage : QuantumUsageQualifier -> String
-qualifierBehindReferenceMessage qualifier =
-  "The `" ++ show qualifier ++ "` qualifier cannot be written behind a reference: " ++
+qualifierBehindReferenceMessage writtenQualifier =
+  "The `" ++ show writtenQualifier ++ "` qualifier cannot be written behind a reference: " ++
   "a reference borrows its referent without owning it, so remove the qualifier."

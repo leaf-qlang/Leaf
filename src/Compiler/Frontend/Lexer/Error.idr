@@ -47,14 +47,14 @@ Interpolation LexerError where
   interpolate LexUnexpectedEndOfInput =
     "Unexpected end of input"
 
-  interpolate (LexUnexpectedInput expected actual) =
-    case expected of
+  interpolate (LexUnexpectedInput expectedDescriptions actualText) =
+    case expectedDescriptions of
       [] =>
-        "Unexpected input " ++ actual
+        "Unexpected input " ++ actualText
 
       firstExpected :: remainingExpected =>
         "Expected " ++ show (firstExpected :: remainingExpected) ++
-        ", but got " ++ actual
+        ", but got " ++ actualText
 
   interpolate (LexUnclosed description) =
     "Unclosed " ++ description

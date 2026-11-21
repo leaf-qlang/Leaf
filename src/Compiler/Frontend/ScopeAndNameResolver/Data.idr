@@ -52,17 +52,17 @@ record ScopeTables where
                                                                    -- ex: let b = [0; { let k = 2; k }]; is allowed by this check because k is declared inside the expression
 public export
 (.nextSymbolId) : ScopeTables -> SymbolId
-(.nextSymbolId) tables =
-  case maxKey tables.symbols of
+(.nextSymbolId) scopeTables =
+  case maxKey scopeTables.symbols of
        Nothing => MkSymbolId 0
-       Just (MkSymbolId n) => MkSymbolId (S n)
+       Just (MkSymbolId largestSymbolNumber) => MkSymbolId (S largestSymbolNumber)
 
 public export
 (.nextScopeId) : ScopeTables-> ScopeId
-(.nextScopeId) tables =
-  case maxKey tables.scopes of
+(.nextScopeId) scopeTables =
+  case maxKey scopeTables.scopes of
        Nothing => MkScopeId 0
-       Just (MkScopeId n) => MkScopeId (S n)
+       Just (MkScopeId largestScopeNumber) => MkScopeId (S largestScopeNumber)
 
 public export
 record ResolvedModule where
@@ -101,18 +101,18 @@ data ResolutionError
 
 export
 showResolutionError : ResolutionError -> String
-showResolutionError (UnresolvedName name sourceSpan) =
-  "Could not find a matching declaration for this name: '\{name}' in '\{sourceSpan}'."
+showResolutionError (UnresolvedName unresolvedName sourceSpan) =
+  "Could not find a matching declaration for this name: '\{unresolvedName}' in '\{sourceSpan}'."
 showResolutionError (UnresolvedTypePath typePathText sourceSpan) =
   "Could not find a type declaration for the type or type path: '\{typePathText}' in '\{sourceSpan}'. Leaf does not support named types yet!."
-showResolutionError (DuplicateDeclaration name symbolIds sourceSpan previousSpan) =
-  "A duplicate declaration for name: '\{name}' declared in '\{sourceSpan}' was found; the previous declaration is in '\{previousSpan}'."
-showResolutionError (InaccessibleSymbol name _ sourceSpan) =
-  "At current location '\{sourceSpan}' the name: '\{name}' is not publicly accessible."
-showResolutionError (BindingShadowsConstant name _ sourceSpan constantSpan) =
-  "The mutable binding for name: '\{name}' in '\{sourceSpan}' cannot shadow the constant declared in '\{constantSpan}'."
-showResolutionError (LocalValueUsedAsConstant name _ sourceSpan localSpan) =
-  "The local: '\{name}' used in '\{sourceSpan}' is not a constant and cannot be used in an array length, in a repeat count from an array declaration or in the qubits register size argument for qalloc; it is declared in '\{localSpan}'."
+showResolutionError (DuplicateDeclaration declaredName _ sourceSpan previousDeclarationSpan) =
+  "A duplicate declaration for name: '\{declaredName}' declared in '\{sourceSpan}' was found; the previous declaration is in '\{previousDeclarationSpan}'."
+showResolutionError (InaccessibleSymbol inaccessibleName _ sourceSpan) =
+  "At current location '\{sourceSpan}' the name: '\{inaccessibleName}' is not publicly accessible."
+showResolutionError (BindingShadowsConstant bindingName _ sourceSpan constantDeclarationSpan) =
+  "The mutable binding for name: '\{bindingName}' in '\{sourceSpan}' cannot shadow the constant declared in '\{constantDeclarationSpan}'."
+showResolutionError (LocalValueUsedAsConstant localName _ sourceSpan localDeclarationSpan) =
+  "The local: '\{localName}' used in '\{sourceSpan}' is not a constant and cannot be used in an array length, in a repeat count from an array declaration or in the qubits register size argument for qalloc; it is declared in '\{localDeclarationSpan}'."
 
 export
 implementation Show ResolutionError where

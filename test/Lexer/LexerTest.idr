@@ -16,12 +16,12 @@ tokenValues (Right boundedTokens) =
   Right (map val boundedTokens)
 
 lexTokenValues : String -> Either LexerError (List Token)
-lexTokenValues input =
-  tokenValues (lexFile input)
+lexTokenValues sourceText =
+  tokenValues (lexFile sourceText)
 
 lexErrorHasBounds : String -> Maybe Bool
-lexErrorHasBounds input =
-  case lexFile input of
+lexErrorHasBounds sourceText =
+  case lexFile sourceText of
     Left boundedError =>
       case boundedError.bounds of
         NoBounds => Just False
@@ -31,14 +31,14 @@ lexErrorHasBounds input =
       Nothing
 
 lexErrorBounds : String -> Maybe Bounds
-lexErrorBounds input =
-  case lexFile input of
+lexErrorBounds sourceText =
+  case lexFile sourceText of
     Left boundedError => Just boundedError.bounds
     Right _ => Nothing
 
 finalEofHasZeroWidthBounds : String -> Maybe Bool
-finalEofHasZeroWidthBounds input =
-  case lexFile input of
+finalEofHasZeroWidthBounds sourceText =
+  case lexFile sourceText of
     Left _ =>
       Nothing
 
@@ -53,7 +53,7 @@ finalEofHasZeroWidthBounds input =
       case boundedToken.val of
         TokEOF =>
           case boundedToken.bounds of
-            BS start end => Just (start == end)
+            BS startPosition endPosition => Just (startPosition == endPosition)
             NoBounds => Just False
 
         _ =>
@@ -72,9 +72,9 @@ symbolTokens symbols =
 
 spaceSeparated : List String -> String
 spaceSeparated [] = ""
-spaceSeparated (name :: []) = name
-spaceSeparated (name :: remainingNames) =
-  name ++ " " ++ spaceSeparated remainingNames
+spaceSeparated (onlyName :: []) = onlyName
+spaceSeparated (firstName :: remainingNames) =
+  firstName ++ " " ++ spaceSeparated remainingNames
 
 export
 runLexerTests : IO Bool

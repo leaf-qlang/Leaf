@@ -37,13 +37,13 @@ desugarAndPrettyPrint inputProgram =
 export
 firstLetTypeQualifierSpans : String -> Maybe (List ((Nat, Nat), (Nat, Nat)))
 firstLetTypeQualifierSpans inputProgram = do
-  MkAstNode _ _ (MkSourceFileNode _ items) <- lexParseThenDesugar "test-fixture.rs" inputProgram
-  MkAstNode _ _ (ItemFunction declaration) :: _ <- Just items
+  MkAstNode _ _ (MkSourceFileNode _ sourceFileItems) <- lexParseThenDesugar "test-fixture.rs" inputProgram
+  MkAstNode _ _ (ItemFunction functionDeclaration) :: _ <- Just sourceFileItems
     | _ => Nothing
-  let MkAstNode _ _ (MkBlockNode _ statements _) = declaration.functionBody
-  MkAstNode _ _ (StatementLet (MkLetBindingNode _ _ (Just annotation) _)) :: _ <- Just statements
+  let MkAstNode _ _ (MkBlockNode _ bodyStatements _) = functionDeclaration.functionBody
+  MkAstNode _ _ (StatementLet (MkLetBindingNode _ _ (Just typeAnnotation) _)) :: _ <- Just bodyStatements
     | _ => Nothing
-  Just (map (bounds . (.astInfo.span)) (mapMaybe positionQualifier (ownedPositions annotation)))
+  Just (map (spanCoordinates . (.astInfo.span)) (mapMaybe positionQualifier (ownedPositions typeAnnotation)))
   where
-    bounds : SourceSpan -> ((Nat, Nat), (Nat, Nat))
-    bounds span = ((span.start.line, span.start.column), (span.end.line, span.end.column))
+    spanCoordinates : SourceSpan -> ((Nat, Nat), (Nat, Nat))
+    spanCoordinates qualifierSpan = ((qualifierSpan.start.line, qualifierSpan.start.column), (qualifierSpan.end.line, qualifierSpan.end.column))

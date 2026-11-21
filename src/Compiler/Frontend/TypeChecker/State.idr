@@ -68,14 +68,14 @@ data CheckFailure
 
 export
 typeError : TypeError -> StateT TypeCheckerState (Either CheckFailure) a
-typeError err = lift (Left (Failed err))
+typeError diagnostic = lift (Left (Failed diagnostic))
 
 export
 blocked : SymbolId -> StateT TypeCheckerState (Either CheckFailure) a
-blocked symbol = do
+blocked awaitedSymbol = do
   checkerState <- get
-  case lookup symbol checkerState.declarations of
-    Just _  => lift (Left (Blocked symbol))
+  case lookup awaitedSymbol checkerState.declarations of
+    Just _  => lift (Left (Blocked awaitedSymbol))
     Nothing => unreachable __FILE__ {function = "blocked"} {reason = "symbol cannot be found in checker state top level declarations"}
 
 --------------------------------------------------------------------------------
@@ -92,8 +92,8 @@ recordSymbolType symbolId leafType = do
   case lookup symbolId checkerState.tables.symbols of
     Nothing => unreachable __FILE__ {function = "recordSymbolType"} {reason = "symbol cannot be found in the symbol table"}
     Just symbolInfo => do
-      let typedSymbol = updatedTypedSymbolInfo symbolInfo (ResolvedType leafType)
-      modify $ \state => { tables.symbols := insert symbolId typedSymbol state.tables.symbols } state
+      let updatedSymbolInfo = updatedTypedSymbolInfo symbolInfo (ResolvedType leafType)
+      modify $ \currentState => { tables.symbols := insert symbolId updatedSymbolInfo currentState.tables.symbols } currentState
 
 typedLocalVarQualifiers : TypedLocalVarQualifiers -> LeafType -> TypedLocalVarQualifiers
 typedLocalVarQualifiers localVarQualifiers leafType =
@@ -107,11 +107,11 @@ recordParameterStorage symbolId leafType = do
   checkerState <- get
   case lookup symbolId checkerState.tables.localVarsMeta of
     Nothing => unreachable __FILE__ {function = "recordParameterStorage"} {reason = "symbol cannot be found in the local variable metadata"}
-    Just qualifiers => do
-      let typedQualifiers = typedLocalVarQualifiers qualifiers leafType
-      modify $ \state => { tables.localVarsMeta := insert symbolId typedQualifiers state.tables.localVarsMeta } state
+    Just localVariableQualifiers => do
+      let classifiedQualifiers = typedLocalVarQualifiers localVariableQualifiers leafType
+      modify $ \currentState => { tables.localVarsMeta := insert symbolId classifiedQualifiers currentState.tables.localVarsMeta } currentState
 
 export
 recordConstValue : SymbolId -> ConstValue -> StateT TypeCheckerState (Either CheckFailure) ()
 recordConstValue symbolId constValue =
-  modify $ \state => { tables.constValues := insert symbolId constValue state.tables.constValues } state
+  modify $ \currentState => { tables.constValues := insert symbolId constValue currentState.tables.constValues } currentState

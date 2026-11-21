@@ -85,7 +85,7 @@ PhaseDebug SurfaceAstPhase where
   nameSymbol _ = Nothing
   memberSymbol _ = Nothing
   selfSymbol _ = Nothing
-  pathParts (MkPathNode first rest) = (first :: rest, Nothing)
+  pathParts (MkPathNode firstSegment remainingSegments) = (firstSegment :: remainingSegments, Nothing)
 
 public export
 PhaseDebug CanonicalAstPhase where
@@ -94,25 +94,25 @@ PhaseDebug CanonicalAstPhase where
   nameSymbol _ = Nothing
   memberSymbol _ = Nothing
   selfSymbol _ = Nothing
-  pathParts (MkPathNode first rest) = (first :: rest, Nothing)
+  pathParts (MkPathNode firstSegment remainingSegments) = (firstSegment :: remainingSegments, Nothing)
 
 public export
 PhaseDebug ResolvedAstPhase where
   phaseLabel = "resolved"
   nodeProvenance metadata = Just metadata.provenance
-  nameSymbol name = Just name.nameNodeSymbolId
+  nameSymbol resolvedName = Just resolvedName.nameNodeSymbolId
   memberSymbol _ = Nothing
-  selfSymbol symbol = Just symbol
-  pathParts path = ([], Just path.referencedSymbolId)
+  selfSymbol selfSymbolId = Just selfSymbolId
+  pathParts resolvedPath = ([], Just resolvedPath.referencedSymbolId)
 
 public export
 PhaseDebug TypedAstPhase where
   phaseLabel = "typed"
   nodeProvenance metadata = Just metadata.provenance
-  nameSymbol name = Just name.nameNodeSymbolId
-  memberSymbol name = Just name.nameNodeSymbolId
-  selfSymbol symbol = Just symbol
-  pathParts path = ([], Just path.referencedSymbolId)
+  nameSymbol resolvedName = Just resolvedName.nameNodeSymbolId
+  memberSymbol resolvedName = Just resolvedName.nameNodeSymbolId
+  selfSymbol selfSymbolId = Just selfSymbolId
+  pathParts resolvedPath = ([], Just resolvedPath.referencedSymbolId)
 
 --------------------------------------------------------------------------------
 -- Line text
@@ -128,7 +128,7 @@ hexDigit : Int -> Char
 hexDigit digit = chr (if digit < 10 then ord '0' + digit else ord 'a' + digit - 10)
 
 hexText : Int -> List Char
-hexText code = (if code >= 16 then hexText (code `div` 16) else []) ++ [hexDigit (code `mod` 16)]
+hexText codePoint = (if codePoint >= 16 then hexText (codePoint `div` 16) else []) ++ [hexDigit (codePoint `mod` 16)]
 
 -- Use the lexer's Unicode category data for all format characters (Cf),
 -- including supplementary code points, plus line and paragraph separators.
@@ -140,9 +140,9 @@ invisibleFormatValidator = value Nothing
   ]
 
 isInvisibleFormat : Char -> Bool
-isInvisibleFormat c =
+isInvisibleFormat character =
   -- The first format character is U+00AD; ordinary ASCII needs no lookup.
-  ord c >= 0xAD && case runString invisibleFormatValidator (singleton c) of
+  ord character >= 0xAD && case runString invisibleFormatValidator (singleton character) of
     Right () => True
     Left _ => False
 
@@ -156,22 +156,22 @@ escapeSourceChar '`' = ['\\', '`']
 escapeSourceChar '\n' = ['\\', 'n']
 escapeSourceChar '\r' = ['\\', 'r']
 escapeSourceChar '\t' = ['\\', 't']
-escapeSourceChar c =
-  let code = ord c in
-  if code < 32 || (code >= 127 && code <= 159)
-    then ['\\', 'x', hexDigit (code `div` 16), hexDigit (code `mod` 16)]
-    else if isInvisibleFormat c then unpack "\\u{" ++ hexText code ++ ['}']
-    else [c]
+escapeSourceChar character =
+  let codePoint = ord character in
+  if codePoint < 32 || (codePoint >= 127 && codePoint <= 159)
+    then ['\\', 'x', hexDigit (codePoint `div` 16), hexDigit (codePoint `mod` 16)]
+    else if isInvisibleFormat character then unpack "\\u{" ++ hexText codePoint ++ ['}']
+    else [character]
 
 -- Payloads also escape `#`: a bare `#` always starts a node, so no payload can
 -- imitate the ` > #` that joins nodes sharing a line. Snippets, which follow
 -- the span inside backticks, keep `#` as written.
-escapeChar : Char -> List Char
-escapeChar '#' = ['\\', '#']
-escapeChar c   = escapeSourceChar c
+escapePayloadChar : Char -> List Char
+escapePayloadChar '#' = ['\\', '#']
+escapePayloadChar character   = escapeSourceChar character
 
-escape : String -> String
-escape = pack . concatMap escapeChar . unpack
+escapePayloadText : String -> String
+escapePayloadText = pack . concatMap escapePayloadChar . unpack
 
 nodeIdText : NodeId -> String
 nodeIdText (MkNodeId surfaceId Z)         = show surfaceId
@@ -182,14 +182,14 @@ positionText position = show position.line ++ ":" ++ show position.column
 
 -- `rootFile` is the file named on the first line of the dump.
 spanText : String -> SourceSpan -> String
-spanText rootFile span =
-  (if span.file == rootFile then "" else escape span.file ++ ":") ++
-  positionText span.start ++ "-" ++
-  (if span.end.line == span.start.line then show span.end.column else positionText span.end)
+spanText rootFile sourceSpan =
+  (if sourceSpan.file == rootFile then "" else escapePayloadText sourceSpan.file ++ ":") ++
+  positionText sourceSpan.start ++ "-" ++
+  (if sourceSpan.end.line == sourceSpan.start.line then show sourceSpan.end.column else positionText sourceSpan.end)
 
 provenanceText : Maybe NodeProvenance -> String
 provenanceText (Just WrittenCode) = ""
-provenanceText (Just origin)      = "[" ++ show origin ++ "]"
+provenanceText (Just desugaredProvenance)      = "[" ++ show desugaredProvenance ++ "]"
 provenanceText Nothing            = ""
 
 -- The stored preview is already escaped and bounded during tree construction.
@@ -197,11 +197,11 @@ snippetText : String -> String
 snippetText preview = " `" ++ preview ++ "`"
 
 symbolText : Maybe SymbolId -> String
-symbolText = maybe "" (\symbol => "sym=" ++ show symbol.id)
+symbolText = maybe "" (\symbolId => "sym=" ++ show symbolId.id)
 
 -- Present only when the flag holds: `args` and `guarded`.
 flagText : String -> Bool -> String
-flagText flag present = if present then flag else ""
+flagText flagName present = if present then flagName else ""
 
 --------------------------------------------------------------------------------
 -- Tree building
@@ -229,15 +229,15 @@ many : (a -> Forest) -> List a -> Forest
 many = concatMap
 
 optional : (a -> Forest) -> Maybe a -> Forest
-optional render = maybe [] render
+optional renderItem = maybe [] renderItem
 
 -- Empty payload entries are dropped.
 nodeWith : PhaseDebug phase => String -> List String -> Maybe String -> AstNode phase a -> List Forest -> Forest
-nodeWith label payload snippet (MkAstNode info metadata _) children =
-  [MkDebugTree heading (provenanceText (nodeProvenance {phase} metadata)) info.span snippet (group children)]
+nodeWith label payload snippet (MkAstNode astInfo metadata _) children =
+  [MkDebugTree heading (provenanceText (nodeProvenance {phase} metadata)) astInfo.span snippet (group children)]
   where
     heading : String
-    heading = "#" ++ nodeIdText info.nodeId ++ " " ++ unwords (label :: filter (/= "") payload)
+    heading = "#" ++ nodeIdText astInfo.nodeId ++ " " ++ unwords (label :: filter (/= "") payload)
 
 node : PhaseDebug phase => String -> List String -> AstNode phase a -> List Forest -> Forest
 node label payload = nodeWith label payload Nothing
@@ -249,125 +249,125 @@ sourceNode label payload document =
 
 -- A located token, shown by its Leaf spelling.
 leaf : (PhaseDebug phase, Show a) => String -> AstNode phase a -> Forest
-leaf label ast = node label [escape (show ast.nodeValue)] ast []
+leaf label astNode = node label [escapePayloadText (show astNode.nodeValue)] astNode []
 
 --------------------------------------------------------------------------------
 -- Layout
 --------------------------------------------------------------------------------
 
 sameSpan : SourceSpan -> SourceSpan -> Bool
-sameSpan a b =
-  a.file == b.file && a.start.line == b.start.line && a.start.column == b.start.column &&
-  a.end.line == b.end.line && a.end.column == b.end.column
+sameSpan firstSpan secondSpan =
+  firstSpan.file == secondSpan.file && firstSpan.start.line == secondSpan.start.line && firstSpan.start.column == secondSpan.start.column &&
+  firstSpan.end.line == secondSpan.end.line && firstSpan.end.column == secondSpan.end.column
 
 -- The nodes sharing a tree's line, as (heading, provenance), and the children
 -- printed below it: the line continues into an only child with the same span
 -- and no snippet.
 lineChain : DebugTree -> (List (String, String), List DebugTree)
-lineChain (MkDebugTree heading provenance span _ [child@(MkDebugTree _ _ childSpan Nothing _)]) =
-  if sameSpan span childSpan
-    then let (rest, below) = lineChain child in ((heading, provenance) :: rest, below)
+lineChain (MkDebugTree heading provenance treeSpan _ [child@(MkDebugTree _ _ childSpan Nothing _)]) =
+  if sameSpan treeSpan childSpan
+    then let (followingNodes, childrenBelow) = lineChain child in ((heading, provenance) :: followingNodes, childrenBelow)
     else ([(heading, provenance)], [child])
 lineChain (MkDebugTree heading provenance _ _ children) = ([(heading, provenance)], children)
 
 -- Headings joined by ` > `, each with its provenance or `[same]`.
 chainText : List (String, String) -> String
-chainText = joinBy " > " . go ""
+chainText = joinBy " > " . markRepeatedProvenance ""
   where
     withProvenance : String -> String -> String
     withProvenance heading ""         = heading
     withProvenance heading provenance = heading ++ " " ++ provenance
 
-    go : String -> List (String, String) -> List String
-    go _ [] = []
-    go previous ((heading, provenance) :: rest) =
-      withProvenance heading (if provenance /= "" && provenance == previous then "[same]" else provenance)
-        :: go provenance rest
+    markRepeatedProvenance : String -> List (String, String) -> List String
+    markRepeatedProvenance _ [] = []
+    markRepeatedProvenance previousProvenance ((heading, provenance) :: remainingNodes) =
+      withProvenance heading (if provenance /= "" && provenance == previousProvenance then "[same]" else provenance)
+        :: markRepeatedProvenance provenance remainingNodes
 
 -- Keep each completed line as a chunk. Joining child dumps into their parents
 -- would repeatedly copy the entire indented subtree on deeply nested ASTs.
 mutual
   layout : (rootFile : String) -> (depth : Nat) -> DebugTree -> SourceText
-  layout rootFile depth tree@(MkDebugTree _ _ span snippet _) =
-    let (chain, below) = lineChain tree
-        line = pack (replicate (2 * depth) ' ') ++ chainText chain ++ " @" ++ spanText rootFile span ++
+  layout rootFile depth tree@(MkDebugTree _ _ treeSpan snippet _) =
+    let (nodesOnLine, childrenBelow) = lineChain tree
+        lineText = pack (replicate (2 * depth) ' ') ++ chainText nodesOnLine ++ " @" ++ spanText rootFile treeSpan ++
                maybe "" snippetText snippet ++ "\n"
-    in Append (text line) (layoutForest rootFile (S depth) below)
+    in Append (text lineText) (layoutForest rootFile (S depth) childrenBelow)
 
   layoutForest : String -> Nat -> Forest -> SourceText
   layoutForest _ _ [] = ""
-  layoutForest rootFile depth (tree :: rest) =
-    Append (layout rootFile depth tree) (layoutForest rootFile depth rest)
+  layoutForest rootFile depth (tree :: remainingTrees) =
+    Append (layout rootFile depth tree) (layoutForest rootFile depth remainingTrees)
 
 --------------------------------------------------------------------------------
 -- Names, literals, docs, attributes, Pauli strings
 --------------------------------------------------------------------------------
 
 debugPlainName : PhaseDebug phase => AstNode phase NameNode -> Forest
-debugPlainName ast@(MkAstNode _ _ (MkNameNode text)) = node "MkNameNode" [escape text] ast []
+debugPlainName astNode@(MkAstNode _ _ (MkNameNode nameText)) = node "MkNameNode" [escapePayloadText nameText] astNode []
 
 debugName : PhaseDebug phase => Name phase -> Forest
-debugName ast@(MkAstNode _ _ name) =
-  node "Name" [escape (prettyName {phase} name), symbolText (nameSymbol {phase} name)] ast []
+debugName astNode@(MkAstNode _ _ namePayload) =
+  node "Name" [escapePayloadText (prettyName {phase} namePayload), symbolText (nameSymbol {phase} namePayload)] astNode []
 
 debugMember : PhaseDebug phase => MemberName phase -> Forest
-debugMember ast@(MkAstNode _ _ name) =
-  node "MemberName" [escape (prettyMemberName {phase} name), symbolText (memberSymbol {phase} name)] ast []
+debugMember astNode@(MkAstNode _ _ namePayload) =
+  node "MemberName" [escapePayloadText (prettyMemberName {phase} namePayload), symbolText (memberSymbol {phase} namePayload)] astNode []
 
 debugPathSegment : PhaseDebug phase => PathSegment phase -> Forest
-debugPathSegment ast@(MkAstNode _ _ (PathSegmentName text)) = node "PathSegmentName" [escape text] ast []
-debugPathSegment ast@(MkAstNode _ _ PathSegmentSelf)        = node "PathSegmentSelf" [] ast []
+debugPathSegment astNode@(MkAstNode _ _ (PathSegmentName segmentText)) = node "PathSegmentName" [escapePayloadText segmentText] astNode []
+debugPathSegment astNode@(MkAstNode _ _ PathSegmentSelf)        = node "PathSegmentSelf" [] astNode []
 
 -- The text is shown only when no segment nodes spell it out.
 debugPath : PhaseDebug phase => Path phase -> Forest
-debugPath ast@(MkAstNode _ _ path) =
-  let (segments, symbol) = pathParts {phase} path
-      text = if null segments then escape (prettyPath {phase} path) else ""
-  in node "Path" [text, symbolText symbol] ast [many debugPathSegment segments]
+debugPath astNode@(MkAstNode _ _ pathPayload) =
+  let (segments, targetSymbol) = pathParts {phase} pathPayload
+      pathText = if null segments then escapePayloadText (prettyPath {phase} pathPayload) else ""
+  in node "Path" [pathText, symbolText targetSymbol] astNode [many debugPathSegment segments]
 
 debugLiteral : PhaseDebug phase => Literal phase -> Forest
-debugLiteral ast@(MkAstNode _ _ literal) =
-  case literal of
-    LiteralIntegerRaw raw     => spelled "LiteralIntegerRaw" raw
-    LiteralFloatRaw raw       => spelled "LiteralFloatRaw" raw
-    LiteralStringRaw raw      => spelled "LiteralStringRaw" raw
-    LiteralByteRaw raw        => spelled "LiteralByteRaw" raw
-    LiteralByteStringRaw raw  => spelled "LiteralByteStringRaw" raw
-    LiteralBasisStringRaw raw => spelled "LiteralBasisStringRaw" raw
-    LiteralBoolean value      => spelled "LiteralBoolean" (if value then "true" else "false")
-    LiteralUnit               => spelled "LiteralUnit" "()"
-    LiteralQuantumState state => spelled "LiteralQuantumState" (show state)
+debugLiteral astNode@(MkAstNode _ _ literalNode) =
+  case literalNode of
+    LiteralIntegerRaw rawSpelling     => spelled "LiteralIntegerRaw" rawSpelling
+    LiteralFloatRaw rawSpelling       => spelled "LiteralFloatRaw" rawSpelling
+    LiteralStringRaw rawSpelling      => spelled "LiteralStringRaw" rawSpelling
+    LiteralByteRaw rawSpelling        => spelled "LiteralByteRaw" rawSpelling
+    LiteralByteStringRaw rawSpelling  => spelled "LiteralByteStringRaw" rawSpelling
+    LiteralBasisStringRaw rawSpelling => spelled "LiteralBasisStringRaw" rawSpelling
+    LiteralBoolean booleanValue       => spelled "LiteralBoolean" (if booleanValue then "true" else "false")
+    LiteralUnit                       => spelled "LiteralUnit" "()"
+    LiteralQuantumState basisState    => spelled "LiteralQuantumState" (show basisState)
   where
     spelled : String -> String -> Forest
-    spelled label spelling = node label [escape spelling] ast []
+    spelled label spelling = node label [escapePayloadText spelling] astNode []
 
 debugDoc : PhaseDebug phase => DocComment phase -> Forest
-debugDoc ast@(MkAstNode _ _ (MkDocCommentNode kind placement raw)) =
+debugDoc astNode@(MkAstNode _ _ (MkDocCommentNode commentKind commentPlacement rawText)) =
   node "MkDocCommentNode"
-    [ case kind of DocCommentLine => "line"; DocCommentBlock => "block"
-    , case placement of DocCommentOuter => "outer"; DocCommentInner => "inner"
-    , escape raw ] ast []
+    [ case commentKind of DocCommentLine => "line"; DocCommentBlock => "block"
+    , case commentPlacement of DocCommentOuter => "outer"; DocCommentInner => "inner"
+    , escapePayloadText rawText ] astNode []
 
 debugAttributeArgument : PhaseDebug phase => AttributeArgument phase -> Forest
-debugAttributeArgument ast@(MkAstNode _ _ (AttributeArgumentStringLit raw)) =
-  node "AttributeArgumentStringLit" [escape raw] ast []
+debugAttributeArgument astNode@(MkAstNode _ _ (AttributeArgumentStringLit rawSpelling)) =
+  node "AttributeArgumentStringLit" [escapePayloadText rawSpelling] astNode []
 
 -- `args` marks a written argument list, which distinguishes `#[a()]` from `#[a]`.
 debugAttribute : PhaseDebug phase => Attribute phase -> Forest
-debugAttribute ast@(MkAstNode _ _ (MkAttributeNode name arguments)) =
-  node "MkAttributeNode" [flagText "args" (isJust arguments)] ast
-    [debugPlainName name, many debugAttributeArgument (fromMaybe [] arguments)]
+debugAttribute astNode@(MkAstNode _ _ (MkAttributeNode attributeName attributeArguments)) =
+  node "MkAttributeNode" [flagText "args" (isJust attributeArguments)] astNode
+    [debugPlainName attributeName, many debugAttributeArgument (fromMaybe [] attributeArguments)]
 
 debugVisibility : PhaseDebug phase => Maybe (AstNode phase VisibilityQualifier) -> Forest
 debugVisibility = optional (leaf "VisibilityQualifier")
 
 debugPauli : PhaseDebug phase => PauliString phase -> Forest
-debugPauli ast@(MkAstNode _ _ (MkPauliStringNode operators)) =
-  node "MkPauliStringNode" [concatMap show (forget operators)] ast []
+debugPauli astNode@(MkAstNode _ _ (MkPauliStringNode pauliOperators)) =
+  node "MkPauliStringNode" [concatMap show (forget pauliOperators)] astNode []
 
 debugSignedPauli : PhaseDebug phase => SignedPauliTerm phase -> Forest
-debugSignedPauli ast@(MkAstNode _ _ (MkSignedPauliTermNode sign pauli)) =
-  node "MkSignedPauliTermNode" [case sign of StabilizerPlus => "+"; StabilizerMinus => "-"] ast [debugPauli pauli]
+debugSignedPauli astNode@(MkAstNode _ _ (MkSignedPauliTermNode sign pauliString)) =
+  node "MkSignedPauliTermNode" [case sign of StabilizerPlus => "+"; StabilizerMinus => "-"] astNode [debugPauli pauliString]
 
 --------------------------------------------------------------------------------
 -- Patterns
@@ -378,34 +378,34 @@ mutabilityText = maybe "" show
 
 mutual
   debugPattern : PhaseDebug phase => Pattern phase -> Forest
-  debugPattern ast@(MkAstNode _ _ pattern) =
-    case pattern of
-      PatternWildcard                => node "PatternWildcard" [] ast []
-      PatternName mutability name    => node "PatternName" [mutabilityText mutability] ast [debugName name]
-      PatternPath path               => node "PatternPath" [] ast [debugPath path]
-      PatternLiteral literal         => node "PatternLiteral" [] ast [debugLiteral literal]
-      PatternParenthesized inner     => node "PatternParenthesized" [] ast [debugPattern inner]
-      PatternTuple elements          => node "PatternTuple" [] ast [many debugPattern (forget elements)]
-      PatternArray elements          => node "PatternArray" [] ast [many debugPattern elements]
-      PatternStruct path fields      => node "PatternStruct" [] ast [debugPath path, many debugPatternField fields]
-      PatternEnumTuple path elements => node "PatternEnumTuple" [] ast [debugPath path, many debugPattern elements]
+  debugPattern astNode@(MkAstNode _ _ patternNode) =
+    case patternNode of
+      PatternWildcard                              => node "PatternWildcard" [] astNode []
+      PatternName mutability binderName            => node "PatternName" [mutabilityText mutability] astNode [debugName binderName]
+      PatternPath patternPath                      => node "PatternPath" [] astNode [debugPath patternPath]
+      PatternLiteral literalNode                   => node "PatternLiteral" [] astNode [debugLiteral literalNode]
+      PatternParenthesized innerPattern            => node "PatternParenthesized" [] astNode [debugPattern innerPattern]
+      PatternTuple elementPatterns                 => node "PatternTuple" [] astNode [many debugPattern (forget elementPatterns)]
+      PatternArray elementPatterns                 => node "PatternArray" [] astNode [many debugPattern elementPatterns]
+      PatternStruct patternPath fieldPatterns      => node "PatternStruct" [] astNode [debugPath patternPath, many debugPatternField fieldPatterns]
+      PatternEnumTuple patternPath elementPatterns => node "PatternEnumTuple" [] astNode [debugPath patternPath, many debugPattern elementPatterns]
 
   debugPatternField : PhaseDebug phase => StructPatternField phase -> Forest
-  debugPatternField ast@(MkAstNode _ _ field) =
-    case field of
-      StructPatternFieldShorthand mutability name =>
-        node "StructPatternFieldShorthand" [mutabilityText mutability] ast [debugName name]
-      StructPatternFieldExplicit name pattern =>
-        node "StructPatternFieldExplicit" [] ast [debugName name, debugPattern pattern]
+  debugPatternField astNode@(MkAstNode _ _ fieldNode) =
+    case fieldNode of
+      StructPatternFieldShorthand mutability fieldName =>
+        node "StructPatternFieldShorthand" [mutabilityText mutability] astNode [debugName fieldName]
+      StructPatternFieldExplicit fieldName nestedPattern =>
+        node "StructPatternFieldExplicit" [] astNode [debugName fieldName, debugPattern nestedPattern]
 
 debugQuantumPattern : PhaseDebug phase => QuantumMatchPattern phase -> Forest
-debugQuantumPattern ast@(MkAstNode _ _ pattern) =
-  case pattern of
-    QuantumPatternBasisStringRaw raw        => node "QuantumPatternBasisStringRaw" [escape raw] ast []
-    QuantumPatternIntegerRaw raw            => node "QuantumPatternIntegerRaw" [escape raw] ast []
-    QuantumPatternWildcard                  => node "QuantumPatternWildcard" [] ast []
-    QuantumPatternQenumVariant path binders =>
-      node "QuantumPatternQenumVariant" [] ast [debugPath path, many debugName binders]
+debugQuantumPattern astNode@(MkAstNode _ _ patternNode) =
+  case patternNode of
+    QuantumPatternBasisStringRaw rawSpelling           => node "QuantumPatternBasisStringRaw" [escapePayloadText rawSpelling] astNode []
+    QuantumPatternIntegerRaw rawSpelling               => node "QuantumPatternIntegerRaw" [escapePayloadText rawSpelling] astNode []
+    QuantumPatternWildcard                             => node "QuantumPatternWildcard" [] astNode []
+    QuantumPatternQenumVariant variantPath binderNames =>
+      node "QuantumPatternQenumVariant" [] astNode [debugPath variantPath, many debugName binderNames]
 
 --------------------------------------------------------------------------------
 -- The recursive core: expressions, types, blocks and statements
@@ -413,14 +413,14 @@ debugQuantumPattern ast@(MkAstNode _ _ pattern) =
 
 mutual
   debugExpr : PhaseDebug phase => Expr phase -> Forest
-  debugExpr ast@(MkAstNode _ _ e) =
-    let (label, payload, children) = exprParts e in node label payload ast children
+  debugExpr astNode@(MkAstNode _ _ expressionNode) =
+    let (label, payload, children) = exprParts expressionNode in node label payload astNode children
 
   -- A block's final expression stands in for a statement, so it gets a snippet.
   debugFinalExpr : PhaseDebug phase => Expr phase -> Forest
-  debugFinalExpr ast@(MkAstNode _ _ e) =
-    let (label, payload, children) = exprParts e
-    in sourceNode label payload (showStatementPositionExprDoc PrettyStrict ast) ast children
+  debugFinalExpr astNode@(MkAstNode _ _ expressionNode) =
+    let (label, payload, children) = exprParts expressionNode
+    in sourceNode label payload (showStatementPositionExprDoc PrettyStrict astNode) astNode children
 
   -- An expression's label, the data it holds directly rather than in child
   -- nodes, and its children in source order. The payload also names the form
@@ -428,179 +428,179 @@ mutual
   -- Every constructor is listed, so new syntax cannot compile without deciding
   -- how the dump shows it.
   exprParts : PhaseDebug phase => ExpressionNode phase -> (String, List String, List Forest)
-  exprParts e =
-    case e of
-      ExprLiteral literal => ("ExprLiteral", [], [debugLiteral literal])
-      ExprName name       => ("ExprName", [], [debugName name])
-      ExprPath path       => ("ExprPath", [], [debugPath path])
-      ExprBuiltin builtin => ("ExprBuiltin", [show builtin], [])
-      ExprSelf receiver   => ("ExprSelf", [symbolText (selfSymbol {phase} receiver)], [])
-      ExprParenthesized inner => ("ExprParenthesized", [], [debugExpr inner])
-      ExprTuple elements      => ("ExprTuple", [], [many debugExpr (forget elements)])
-      ExprArray elements      => ("ExprArray", [], [many debugExpr elements])
-      ExprRepeatedArray element count =>
-        ("ExprRepeatedArray", [], [debugExpr element, debugExpr count])
-      ExprStructLiteral path fields =>
-        ("ExprStructLiteral", [], [debugPath path, many debugFieldInitializer fields])
-      ExprCall callee args => ("ExprCall", [], [debugExpr callee, many debugExpr args])
-      ExprMethodCall receiver method args =>
-        ("ExprMethodCall", [], [debugExpr receiver, debugMember method, many debugExpr args])
-      ExprField object field       => ("ExprField", [], [debugExpr object, debugMember field])
-      ExprTupleIndex object index  => ("ExprTupleIndex", [escape index], [debugExpr object])
-      ExprIndex object index       => ("ExprIndex", [], [debugExpr object, debugExpr index])
-      ExprUnary op operand         => ("ExprUnary", [], [leaf "UnaryOperator" op, debugExpr operand])
-      ExprBinary op lhs rhs        => ("ExprBinary", [], [debugExpr lhs, leaf "BinaryOperator" op, debugExpr rhs])
-      ExprRange start op end =>
-        ("ExprRange", [], [optional debugExpr start, leaf "RangeOperator" op, optional debugExpr end])
-      ExprCast operand ty => ("ExprCast", [], [debugExpr operand, debugTy ty])
-      ExprBlock block     => ("ExprBlock", [], [debugBlock block])
-      ExprIf conditional  => ("ExprIf", [], [debugIf conditional])
-      ExprQIf (MkQuantumIfNode condition thenBranch elseBranch) =>
-        ("ExprQIf", [], [debugExpr condition, debugQuantumBranch thenBranch, optional debugQuantumBranch elseBranch])
-      ExprSIf (MkStateIfNode condition thenExpr elseExpr) =>
-        ("ExprSIf", [], [debugExpr condition, debugExpr thenExpr, debugExpr elseExpr])
-      ExprMatch (MkClassicalMatchNode scrutinee arms) =>
-        ("ExprMatch", [], [debugExpr scrutinee, many debugMatchArm arms])
-      ExprQMatch (MkQuantumMatchNode scrutinee arms) =>
-        ("ExprQMatch", [], [debugExpr scrutinee, many debugQuantumArm arms])
-      ExprSMatch (MkStateMatchNode scrutinee arms) =>
-        ("ExprSMatch", [], [debugExpr scrutinee, many debugQuantumArm arms])
-      ExprLoop body                 => ("ExprLoop", [], [debugBlock body])
-      ExprWhile condition body      => ("ExprWhile", [], [debugExpr condition, debugBlock body])
-      ExprFor pattern iterable body => ("ExprFor", [], [debugPattern pattern, debugExpr iterable, debugBlock body])
-      ExprBreak value               => ("ExprBreak", [], [optional debugExpr value])
-      ExprContinue                  => ("ExprContinue", [], [])
-      ExprReturn value              => ("ExprReturn", [], [optional debugExpr value])
-      ExprCtrl (ControlledCallable controls basis callable) =>
-        ("ExprCtrl", ["callable"], [many debugExpr (forget controls), optional debugBasis basis, debugExpr callable])
-      ExprCtrl (ControlledBlock controls basis body) =>
-        ("ExprCtrl", ["block"], [many debugExpr (forget controls), optional debugBasis basis, debugBlock body])
-      ExprAdjoint (AdjointOfCallable callable) => ("ExprAdjoint", ["callable"], [debugExpr callable])
-      ExprAdjoint (AdjointBlock body)          => ("ExprAdjoint", ["block"], [debugBlock body])
+  exprParts expressionNode =
+    case expressionNode of
+      ExprLiteral literalNode => ("ExprLiteral", [], [debugLiteral literalNode])
+      ExprName valueName      => ("ExprName", [], [debugName valueName])
+      ExprPath valuePath      => ("ExprPath", [], [debugPath valuePath])
+      ExprBuiltin builtin     => ("ExprBuiltin", [show builtin], [])
+      ExprSelf selfReceiver   => ("ExprSelf", [symbolText (selfSymbol {phase} selfReceiver)], [])
+      ExprParenthesized innerExpression => ("ExprParenthesized", [], [debugExpr innerExpression])
+      ExprTuple elementExpressions      => ("ExprTuple", [], [many debugExpr (forget elementExpressions)])
+      ExprArray elementExpressions      => ("ExprArray", [], [many debugExpr elementExpressions])
+      ExprRepeatedArray repeatedElement repeatCount =>
+        ("ExprRepeatedArray", [], [debugExpr repeatedElement, debugExpr repeatCount])
+      ExprStructLiteral valuePath fieldInitializers =>
+        ("ExprStructLiteral", [], [debugPath valuePath, many debugFieldInitializer fieldInitializers])
+      ExprCall callee arguments => ("ExprCall", [], [debugExpr callee, many debugExpr arguments])
+      ExprMethodCall receiver methodName arguments =>
+        ("ExprMethodCall", [], [debugExpr receiver, debugMember methodName, many debugExpr arguments])
+      ExprField accessedObject fieldName                 => ("ExprField", [], [debugExpr accessedObject, debugMember fieldName])
+      ExprTupleIndex accessedObject index                => ("ExprTupleIndex", [escapePayloadText index], [debugExpr accessedObject])
+      ExprIndex accessedObject index                     => ("ExprIndex", [], [debugExpr accessedObject, debugExpr index])
+      ExprUnary unaryOperator operand                    => ("ExprUnary", [], [leaf "UnaryOperator" unaryOperator, debugExpr operand])
+      ExprBinary binaryOperator leftOperand rightOperand => ("ExprBinary", [], [debugExpr leftOperand, leaf "BinaryOperator" binaryOperator, debugExpr rightOperand])
+      ExprRange rangeStart rangeOperator rangeEnd =>
+        ("ExprRange", [], [optional debugExpr rangeStart, leaf "RangeOperator" rangeOperator, optional debugExpr rangeEnd])
+      ExprCast operand castTargetType => ("ExprCast", [], [debugExpr operand, debugTy castTargetType])
+      ExprBlock block                 => ("ExprBlock", [], [debugBlock block])
+      ExprIf ifNode                   => ("ExprIf", [], [debugIf ifNode])
+      ExprQIf (MkQuantumIfNode qifCondition thenBranch elseBranch) =>
+        ("ExprQIf", [], [debugExpr qifCondition, debugQuantumBranch thenBranch, optional debugQuantumBranch elseBranch])
+      ExprSIf (MkStateIfNode sifCondition thenExpr elseExpr) =>
+        ("ExprSIf", [], [debugExpr sifCondition, debugExpr thenExpr, debugExpr elseExpr])
+      ExprMatch (MkClassicalMatchNode scrutinee matchArms) =>
+        ("ExprMatch", [], [debugExpr scrutinee, many debugMatchArm matchArms])
+      ExprQMatch (MkQuantumMatchNode scrutinee matchArms) =>
+        ("ExprQMatch", [], [debugExpr scrutinee, many debugQuantumArm matchArms])
+      ExprSMatch (MkStateMatchNode scrutinee matchArms) =>
+        ("ExprSMatch", [], [debugExpr scrutinee, many debugQuantumArm matchArms])
+      ExprLoop loopBody                       => ("ExprLoop", [], [debugBlock loopBody])
+      ExprWhile loopCondition loopBody        => ("ExprWhile", [], [debugExpr loopCondition, debugBlock loopBody])
+      ExprFor binderPattern iterable loopBody => ("ExprFor", [], [debugPattern binderPattern, debugExpr iterable, debugBlock loopBody])
+      ExprBreak breakValue                    => ("ExprBreak", [], [optional debugExpr breakValue])
+      ExprContinue                            => ("ExprContinue", [], [])
+      ExprReturn returnValue                  => ("ExprReturn", [], [optional debugExpr returnValue])
+      ExprCtrl (ControlledCallable controlQbits onBasis callable) =>
+        ("ExprCtrl", ["callable"], [many debugExpr (forget controlQbits), optional debugBasis onBasis, debugExpr callable])
+      ExprCtrl (ControlledBlock controlQbits onBasis controlledBlock) =>
+        ("ExprCtrl", ["block"], [many debugExpr (forget controlQbits), optional debugBasis onBasis, debugBlock controlledBlock])
+      ExprAdjoint (AdjointOfCallable callable)  => ("ExprAdjoint", ["callable"], [debugExpr callable])
+      ExprAdjoint (AdjointBlock adjointedBlock) => ("ExprAdjoint", ["block"], [debugBlock adjointedBlock])
 
   debugBasis : PhaseDebug phase => AstNode phase String -> Forest
-  debugBasis ast = node "ControlBasis" [escape ast.nodeValue] ast []
+  debugBasis astNode = node "ControlBasis" [escapePayloadText astNode.nodeValue] astNode []
 
   debugFieldInitializer : PhaseDebug phase => AstNode phase (FieldInitializerNode phase) -> Forest
-  debugFieldInitializer ast@(MkAstNode _ _ field) =
-    case field of
-      FieldInitShorthand name      => node "FieldInitShorthand" [] ast [debugName name]
-      FieldInitExplicit name value => node "FieldInitExplicit" [] ast [debugName name, debugExpr value]
+  debugFieldInitializer astNode@(MkAstNode _ _ fieldInitializer) =
+    case fieldInitializer of
+      FieldInitShorthand fieldName           => node "FieldInitShorthand" [] astNode [debugName fieldName]
+      FieldInitExplicit fieldName fieldValue => node "FieldInitExplicit" [] astNode [debugName fieldName, debugExpr fieldValue]
 
   -- Children only: the owning node already names the construct.
   debugIf : PhaseDebug phase => ClassicalIfNode phase -> Forest
-  debugIf (MkClassicalIfNode condition thenBlock elseBranch) =
-    group [debugExpr condition, debugBlock thenBlock, optional debugElse elseBranch]
+  debugIf (MkClassicalIfNode ifCondition thenBlock elseBranch) =
+    group [debugExpr ifCondition, debugBlock thenBlock, optional debugElse elseBranch]
 
   debugElse : PhaseDebug phase => ClassicalElseNode phase -> Forest
-  debugElse (ElseBlock block) = debugBlock block
-  debugElse (ElseChainedIf ast@(MkAstNode _ _ chained)) = node "MkClassicalIfNode" [] ast [debugIf chained]
+  debugElse (ElseBlock elseBlock) = debugBlock elseBlock
+  debugElse (ElseChainedIf astNode@(MkAstNode _ _ chainedIfNode)) = node "MkClassicalIfNode" [] astNode [debugIf chainedIfNode]
 
   debugQuantumBranch : PhaseDebug phase => QuantumBranchNode phase -> Forest
-  debugQuantumBranch (QuantumBranchBlock block)     = debugBlock block
-  debugQuantumBranch (QuantumBranchExpression expr) = debugExpr expr
+  debugQuantumBranch (QuantumBranchBlock branchBlock)     = debugBlock branchBlock
+  debugQuantumBranch (QuantumBranchExpression branchExpression) = debugExpr branchExpression
 
   debugMatchArm : PhaseDebug phase => ClassicalMatchArm phase -> Forest
-  debugMatchArm ast@(MkAstNode _ _ (MkClassicalMatchArmNode pattern guard body)) =
-    node "MkClassicalMatchArmNode" [flagText "guarded" (isJust guard)] ast
-      [debugPattern pattern, optional debugExpr guard, debugExpr body]
+  debugMatchArm astNode@(MkAstNode _ _ (MkClassicalMatchArmNode armPattern armGuard armBody)) =
+    node "MkClassicalMatchArmNode" [flagText "guarded" (isJust armGuard)] astNode
+      [debugPattern armPattern, optional debugExpr armGuard, debugExpr armBody]
 
   debugQuantumArm : PhaseDebug phase => QuantumMatchArm phase -> Forest
-  debugQuantumArm ast@(MkAstNode _ _ (MkQuantumMatchArmNode pattern body)) =
-    node "MkQuantumMatchArmNode" [] ast [debugQuantumPattern pattern, debugExpr body]
+  debugQuantumArm astNode@(MkAstNode _ _ (MkQuantumMatchArmNode armPattern armBody)) =
+    node "MkQuantumMatchArmNode" [] astNode [debugQuantumPattern armPattern, debugExpr armBody]
 
   debugTy : PhaseDebug phase => Ty phase (Expr phase) -> Forest
-  debugTy ast@(MkAstNode _ _ ty) =
-    case ty of
-      TyPrimitive primitive => node "TyPrimitive" [showTypPrimLeaf primitive] ast []
-      TyPath path           => node "TyPath" [] ast [debugPath path]
-      TyUnit                => node "TyUnit" [] ast []
-      TyParenthesized inner => node "TyParenthesized" [] ast [debugTy inner]
-      TyTuple elements      => node "TyTuple" [] ast [many debugTy (forget elements)]
-      TyArray element size  => node "TyArray" [] ast [debugTy element, debugExpr size]
-      TySlice element       => node "TySlice" [] ast [debugTy element]
-      TyReference borrow inner =>
-        node "TyReference" [] ast [leaf "BorrowKind" borrow, debugTy inner]
-      TyQualified qualifier inner =>
-        node "TyQualified" [] ast [leaf "QuantumUsageQualifier" qualifier, debugTy inner]
-      TyFunction effect params result =>
-        node "TyFunction" [] ast
-          [optional (leaf "FunctionEffect") effect, many debugTypeParameter params, optional debugTy result]
+  debugTy astNode@(MkAstNode _ _ typeNode) =
+    case typeNode of
+      TyPrimitive primitiveName       => node "TyPrimitive" [showTypPrimLeaf primitiveName] astNode []
+      TyPath typePath                 => node "TyPath" [] astNode [debugPath typePath]
+      TyUnit                          => node "TyUnit" [] astNode []
+      TyParenthesized nestedType      => node "TyParenthesized" [] astNode [debugTy nestedType]
+      TyTuple elementTypes            => node "TyTuple" [] astNode [many debugTy (forget elementTypes)]
+      TyArray elementType arrayLength => node "TyArray" [] astNode [debugTy elementType, debugExpr arrayLength]
+      TySlice elementType             => node "TySlice" [] astNode [debugTy elementType]
+      TyReference borrowKind nestedType =>
+        node "TyReference" [] astNode [leaf "BorrowKind" borrowKind, debugTy nestedType]
+      TyQualified quantumUsageQualifier nestedType =>
+        node "TyQualified" [] astNode [leaf "QuantumUsageQualifier" quantumUsageQualifier, debugTy nestedType]
+      TyFunction functionEffect functionParameters returnType =>
+        node "TyFunction" [] astNode
+          [optional (leaf "FunctionEffect") functionEffect, many debugTypeParameter functionParameters, optional debugTy returnType]
 
   debugTypeParameter : PhaseDebug phase => AstNode phase (FunctionTypeParameterNode phase (Expr phase)) -> Forest
-  debugTypeParameter ast@(MkAstNode _ _ (MkFunctionTypeParameterNode name ty)) =
-    node "MkFunctionTypeParameterNode" [] ast [debugPlainName name, debugTy ty]
+  debugTypeParameter astNode@(MkAstNode _ _ (MkFunctionTypeParameterNode parameterName parameterType)) =
+    node "MkFunctionTypeParameterNode" [] astNode [debugPlainName parameterName, debugTy parameterType]
 
   debugBlock : PhaseDebug phase => Block phase -> Forest
-  debugBlock ast@(MkAstNode _ _ (MkBlockNode docs statements final)) =
-    node "MkBlockNode" [] ast [many debugDoc docs, many debugStatement statements, optional debugFinalExpr final]
+  debugBlock astNode@(MkAstNode _ _ (MkBlockNode innerDocs blockStatements finalExpression)) =
+    node "MkBlockNode" [] astNode [many debugDoc innerDocs, many debugStatement blockStatements, optional debugFinalExpr finalExpression]
 
   debugStatement : PhaseDebug phase => Statement phase -> Forest
-  debugStatement ast@(MkAstNode _ _ statement) =
-    case statement of
-      StatementLet (MkLetBindingNode qualifiers pattern annotation initializer) =>
+  debugStatement astNode@(MkAstNode _ _ statementNode) =
+    case statementNode of
+      StatementLet (MkLetBindingNode letQualifiers letPattern typeAnnotation letInitializer) =>
         withSource "StatementLet"
-          [ many (leaf "QuantumStorageQualifier") qualifiers, debugPattern pattern
-          , optional debugTy annotation, optional debugInitializer initializer ]
-      StatementAssignment (MkAssignmentNode target operator value) =>
+          [ many (leaf "QuantumStorageQualifier") letQualifiers, debugPattern letPattern
+          , optional debugTy typeAnnotation, optional debugInitializer letInitializer ]
+      StatementAssignment (MkAssignmentNode assignmentTarget assignmentOperator assignedValue) =>
         withSource "StatementAssignment"
-          [debugAssignmentTarget target, leaf "AssignmentOperator" operator, debugExpr value]
-      StatementSemiExpression expr => withSource "StatementSemiExpression" [debugExpr expr]
-      StatementExpression expr     => withSource "StatementExpression" [debugExpr expr]
+          [debugAssignmentTarget assignmentTarget, leaf "AssignmentOperator" assignmentOperator, debugExpr assignedValue]
+      StatementSemiExpression statementExpression => withSource "StatementSemiExpression" [debugExpr statementExpression]
+      StatementExpression statementExpression     => withSource "StatementExpression" [debugExpr statementExpression]
     where
       withSource : String -> List Forest -> Forest
-      withSource label = sourceNode label [] (showStatementDoc PrettyStrict ast) ast
+      withSource label = sourceNode label [] (showStatementDoc PrettyStrict astNode) astNode
 
   -- Children only: the marker and value belong to the let statement.
   debugInitializer : PhaseDebug phase => LetInitializerNode phase -> Forest
-  debugInitializer (MkLetInitializerNode marker value) =
-    group [leaf "InitializerMarker" marker, debugExpr value]
+  debugInitializer (MkLetInitializerNode initializerMarker initializerValue) =
+    group [leaf "InitializerMarker" initializerMarker, debugExpr initializerValue]
 
   debugAssignmentTarget : PhaseDebug phase => AssignmentTarget phase -> Forest
-  debugAssignmentTarget ast@(MkAstNode _ _ target) =
-    case target of
-      AssignTargetName name          => node "AssignTargetName" [] ast [debugName name]
-      AssignTargetIndex object index => node "AssignTargetIndex" [] ast [debugExpr object, debugExpr index]
-      AssignTargetField object field => node "AssignTargetField" [] ast [debugExpr object, debugMember field]
-      AssignTargetTupleIndex object index =>
-        node "AssignTargetTupleIndex" [escape index] ast [debugExpr object]
+  debugAssignmentTarget astNode@(MkAstNode _ _ targetNode) =
+    case targetNode of
+      AssignTargetName targetName              => node "AssignTargetName" [] astNode [debugName targetName]
+      AssignTargetIndex targetObject index     => node "AssignTargetIndex" [] astNode [debugExpr targetObject, debugExpr index]
+      AssignTargetField targetObject fieldName => node "AssignTargetField" [] astNode [debugExpr targetObject, debugMember fieldName]
+      AssignTargetTupleIndex targetObject index =>
+        node "AssignTargetTupleIndex" [escapePayloadText index] astNode [debugExpr targetObject]
 
 --------------------------------------------------------------------------------
 -- Contracts and functions
 --------------------------------------------------------------------------------
 
 debugPredicate : PhaseDebug phase => ContractPredicate phase (Expr phase) -> Forest
-debugPredicate ast@(MkAstNode _ _ predicate) =
-  case predicate of
-    ContractClean e              => node "ContractClean" [] ast [debugExpr e]
-    ContractBasis e pauli        => node "ContractBasis" [] ast [debugExpr e, debugPauli pauli]
-    ContractSeparable e          => node "ContractSeparable" [] ast [debugExpr e]
-    ContractIsolated e           => node "ContractIsolated" [] ast [debugExpr e]
-    ContractProduct first others => node "ContractProduct" [] ast [many debugExpr (first :: forget others)]
-    ContractStabilized e terms   => node "ContractStabilized" [] ast [debugExpr e, many debugSignedPauli (forget terms)]
+debugPredicate astNode@(MkAstNode _ _ predicateNode) =
+  case predicateNode of
+    ContractClean qbitArgument                      => node "ContractClean" [] astNode [debugExpr qbitArgument]
+    ContractBasis qbitArgument pauliString          => node "ContractBasis" [] astNode [debugExpr qbitArgument, debugPauli pauliString]
+    ContractSeparable qbitArgument                  => node "ContractSeparable" [] astNode [debugExpr qbitArgument]
+    ContractIsolated qbitArgument                   => node "ContractIsolated" [] astNode [debugExpr qbitArgument]
+    ContractProduct firstQbitSet otherQbitSets      => node "ContractProduct" [] astNode [many debugExpr (firstQbitSet :: forget otherQbitSets)]
+    ContractStabilized qbitArgument stabilizerTerms => node "ContractStabilized" [] astNode [debugExpr qbitArgument, many debugSignedPauli (forget stabilizerTerms)]
 
 debugContract : PhaseDebug phase => ContractClause phase (Expr phase) -> Forest
-debugContract ast@(MkAstNode _ _ (RequiresClause predicate)) = node "RequiresClause" [] ast [debugPredicate predicate]
-debugContract ast@(MkAstNode _ _ (EnsuresClause predicate))  = node "EnsuresClause" [] ast [debugPredicate predicate]
+debugContract astNode@(MkAstNode _ _ (RequiresClause predicate)) = node "RequiresClause" [] astNode [debugPredicate predicate]
+debugContract astNode@(MkAstNode _ _ (EnsuresClause predicate))  = node "EnsuresClause" [] astNode [debugPredicate predicate]
 
 debugParameter : PhaseDebug phase => FunctionParameter phase -> Forest
-debugParameter ast@(MkAstNode _ _ parameter) =
-  case parameter of
-    NormalParameter docs mutability name ty =>
-      node "NormalParameter" [] ast
-        [many debugDoc docs, optional (leaf "Mutability") mutability, debugName name, debugTy ty]
-    ReceiverParameter docs borrow =>
-      node "ReceiverParameter" [] ast [many debugDoc docs, optional (leaf "BorrowKind") borrow]
+debugParameter astNode@(MkAstNode _ _ parameterNode) =
+  case parameterNode of
+    NormalParameter parameterDocs mutability parameterName parameterType =>
+      node "NormalParameter" [] astNode
+        [many debugDoc parameterDocs, optional (leaf "Mutability") mutability, debugName parameterName, debugTy parameterType]
+    ReceiverParameter parameterDocs receiverBorrow =>
+      node "ReceiverParameter" [] astNode [many debugDoc parameterDocs, optional (leaf "BorrowKind") receiverBorrow]
 
 -- Children only: the owning item or impl member names the declaration.
 debugFunction : PhaseDebug phase => FunctionDeclarationNode phase -> Forest
 debugFunction
-    (MkFunctionDeclarationNode docs attrs visibility constness effect name params result supports contracts body) =
+    (MkFunctionDeclarationNode functionDocs functionAttributes visibility constness functionEffect functionName functionParameters returnType supportKinds contractClauses functionBody) =
   group
-    [ many debugDoc docs, many debugAttribute attrs, debugVisibility visibility
-    , optional (leaf "FunctionConstness") constness, optional (leaf "FunctionEffect") effect
-    , debugName name, many debugParameter params, optional debugTy result
-    , many (leaf "SupportKind") supports, many debugContract contracts, debugBlock body ]
+    [ many debugDoc functionDocs, many debugAttribute functionAttributes, debugVisibility visibility
+    , optional (leaf "FunctionConstness") constness, optional (leaf "FunctionEffect") functionEffect
+    , debugName functionName, many debugParameter functionParameters, optional debugTy returnType
+    , many (leaf "SupportKind") supportKinds, many debugContract contractClauses, debugBlock functionBody ]
 
 -- Outer docs and attributes are listed as children, so snippets start at the
 -- declaration's head instead of repeating them.
@@ -608,10 +608,10 @@ functionWithoutPreamble : FunctionDeclarationNode phase -> FunctionDeclarationNo
 functionWithoutPreamble = { functionDocs := [], functionAttributes := [] }
 
 debugImplFunction : PhaseDebug phase => FunctionDeclaration phase -> Forest
-debugImplFunction ast@(MkAstNode info metadata function) =
+debugImplFunction astNode@(MkAstNode astInfo metadata functionDeclarationNode) =
   sourceNode "MkFunctionDeclarationNode" []
-    (showFunctionDeclarationDoc PrettyStrict (MkAstNode info metadata (functionWithoutPreamble function)))
-    ast [debugFunction function]
+    (showFunctionDeclarationDoc PrettyStrict (MkAstNode astInfo metadata (functionWithoutPreamble functionDeclarationNode)))
+    astNode [debugFunction functionDeclarationNode]
 
 --------------------------------------------------------------------------------
 -- Type declarations and items
@@ -622,65 +622,65 @@ declarationHead :
      PhaseDebug phase
   => List (DocComment phase) -> List (Attribute phase) -> Maybe (AstNode phase VisibilityQualifier)
   -> Name phase -> List Forest
-declarationHead docs attrs visibility name =
-  [many debugDoc docs, many debugAttribute attrs, debugVisibility visibility, debugName name]
+declarationHead declarationDocs declarationAttributes visibility declaredName =
+  [many debugDoc declarationDocs, many debugAttribute declarationAttributes, debugVisibility visibility, debugName declaredName]
 
 debugStructField : PhaseDebug phase => AstNode phase (StructFieldNode phase) -> Forest
-debugStructField ast@(MkAstNode _ _ (MkStructFieldNode docs name ty)) =
-  node "MkStructFieldNode" [] ast [many debugDoc docs, debugName name, debugTy ty]
+debugStructField astNode@(MkAstNode _ _ (MkStructFieldNode declarationDocs declaredName declaredType)) =
+  node "MkStructFieldNode" [] astNode [many debugDoc declarationDocs, debugName declaredName, debugTy declaredType]
 
 debugEnumVariant : PhaseDebug phase => AstNode phase (EnumVariantNode phase) -> Forest
-debugEnumVariant ast@(MkAstNode _ _ (MkEnumVariantNode docs name body)) =
-  case body of
-    VariantUnit          => variant "unit" []
-    VariantTuple types   => variant "tuple" [many debugTy (forget types)]
-    VariantStruct fields => variant "struct" [many debugStructField fields]
+debugEnumVariant astNode@(MkAstNode _ _ (MkEnumVariantNode declarationDocs declaredName variantBody)) =
+  case variantBody of
+    VariantUnit                 => variant "unit" []
+    VariantTuple payloadTypes   => variant "tuple" [many debugTy (forget payloadTypes)]
+    VariantStruct payloadFields => variant "struct" [many debugStructField payloadFields]
   where
     variant : String -> List Forest -> Forest
-    variant form payload = node "MkEnumVariantNode" [form] ast ([many debugDoc docs, debugName name] ++ payload)
+    variant variantForm payload = node "MkEnumVariantNode" [variantForm] astNode ([many debugDoc declarationDocs, debugName declaredName] ++ payload)
 
 debugQEnumVariant : PhaseDebug phase => AstNode phase (QEnumVariantNode phase) -> Forest
-debugQEnumVariant ast@(MkAstNode _ _ (MkQEnumVariantNode docs name types)) =
-  node "MkQEnumVariantNode" [] ast [many debugDoc docs, debugName name, many debugTy (forget types)]
+debugQEnumVariant astNode@(MkAstNode _ _ (MkQEnumVariantNode declarationDocs declaredName payloadTypes)) =
+  node "MkQEnumVariantNode" [] astNode [many debugDoc declarationDocs, debugName declaredName, many debugTy (forget payloadTypes)]
 
 itemWithoutPreamble : ItemNode phase -> ItemNode phase
-itemWithoutPreamble item =
-  case item of
-    ItemFunction function  => ItemFunction (functionWithoutPreamble function)
-    ItemModule declaration => ItemModule ({ moduleDocs := [] } declaration)
-    ItemUse declaration    => ItemUse ({ useDocs := [] } declaration)
-    ItemConst declaration  => ItemConst ({ constDocs := [] } declaration)
-    ItemStruct declaration => ItemStruct ({ structDocs := [], structAttributes := [] } declaration)
-    ItemEnum declaration   => ItemEnum ({ enumDocs := [], enumAttributes := [] } declaration)
-    ItemQEnum declaration  => ItemQEnum ({ qenumDocs := [], qenumAttributes := [] } declaration)
-    ItemImpl declaration   => ItemImpl ({ implDocs := [] } declaration)
+itemWithoutPreamble itemNode =
+  case itemNode of
+    ItemFunction functionDeclaration => ItemFunction (functionWithoutPreamble functionDeclaration)
+    ItemModule declarationNode       => ItemModule ({ moduleDocs := [] } declarationNode)
+    ItemUse declarationNode          => ItemUse ({ useDocs := [] } declarationNode)
+    ItemConst declarationNode        => ItemConst ({ constDocs := [] } declarationNode)
+    ItemStruct declarationNode       => ItemStruct ({ structDocs := [], structAttributes := [] } declarationNode)
+    ItemEnum declarationNode         => ItemEnum ({ enumDocs := [], enumAttributes := [] } declarationNode)
+    ItemQEnum declarationNode        => ItemQEnum ({ qenumDocs := [], qenumAttributes := [] } declarationNode)
+    ItemImpl declarationNode         => ItemImpl ({ implDocs := [] } declarationNode)
 
 debugItem : PhaseDebug phase => Item phase -> Forest
-debugItem ast@(MkAstNode info metadata item) =
-  case item of
-    ItemFunction function => withSource "ItemFunction" [] [debugFunction function]
-    ItemModule (MkModuleDeclarationNode docs visibility name ModuleExternal) =>
-      withSource "ItemModule" ["external"] (declarationHead docs [] visibility name)
-    ItemModule (MkModuleDeclarationNode docs visibility name (ModuleInline innerDocs items)) =>
+debugItem astNode@(MkAstNode astInfo metadata itemNode) =
+  case itemNode of
+    ItemFunction functionDeclaration => withSource "ItemFunction" [] [debugFunction functionDeclaration]
+    ItemModule (MkModuleDeclarationNode declarationDocs visibility declaredName ModuleExternal) =>
+      withSource "ItemModule" ["external"] (declarationHead declarationDocs [] visibility declaredName)
+    ItemModule (MkModuleDeclarationNode declarationDocs visibility declaredName (ModuleInline innerDocs moduleItems)) =>
       withSource "ItemModule" ["inline"]
-        (declarationHead docs [] visibility name ++ [many debugDoc innerDocs, many debugItem items])
-    ItemUse (MkUseDeclarationNode docs visibility path alias) =>
+        (declarationHead declarationDocs [] visibility declaredName ++ [many debugDoc innerDocs, many debugItem moduleItems])
+    ItemUse (MkUseDeclarationNode declarationDocs visibility importPath importAlias) =>
       withSource "ItemUse" []
-        [many debugDoc docs, debugVisibility visibility, debugPath path, optional debugPlainName alias]
-    ItemConst (MkConstDeclarationNode docs visibility name ty value) =>
-      withSource "ItemConst" [] (declarationHead docs [] visibility name ++ [debugTy ty, debugExpr value])
-    ItemStruct (MkStructDeclarationNode docs attrs visibility name fields) =>
-      withSource "ItemStruct" [] (declarationHead docs attrs visibility name ++ [many debugStructField fields])
-    ItemEnum (MkEnumDeclarationNode docs attrs visibility name variants) =>
-      withSource "ItemEnum" [] (declarationHead docs attrs visibility name ++ [many debugEnumVariant variants])
-    ItemQEnum (MkQEnumDeclarationNode docs attrs visibility name variants) =>
-      withSource "ItemQEnum" [] (declarationHead docs attrs visibility name ++ [many debugQEnumVariant variants])
-    ItemImpl (MkImplDeclarationNode docs target functions) =>
-      withSource "ItemImpl" [] [many debugDoc docs, debugPath target, many debugImplFunction functions]
+        [many debugDoc declarationDocs, debugVisibility visibility, debugPath importPath, optional debugPlainName importAlias]
+    ItemConst (MkConstDeclarationNode declarationDocs visibility declaredName declaredType constValue) =>
+      withSource "ItemConst" [] (declarationHead declarationDocs [] visibility declaredName ++ [debugTy declaredType, debugExpr constValue])
+    ItemStruct (MkStructDeclarationNode declarationDocs declarationAttributes visibility declaredName structFields) =>
+      withSource "ItemStruct" [] (declarationHead declarationDocs declarationAttributes visibility declaredName ++ [many debugStructField structFields])
+    ItemEnum (MkEnumDeclarationNode declarationDocs declarationAttributes visibility declaredName variants) =>
+      withSource "ItemEnum" [] (declarationHead declarationDocs declarationAttributes visibility declaredName ++ [many debugEnumVariant variants])
+    ItemQEnum (MkQEnumDeclarationNode declarationDocs declarationAttributes visibility declaredName variants) =>
+      withSource "ItemQEnum" [] (declarationHead declarationDocs declarationAttributes visibility declaredName ++ [many debugQEnumVariant variants])
+    ItemImpl (MkImplDeclarationNode declarationDocs implTarget implFunctions) =>
+      withSource "ItemImpl" [] [many debugDoc declarationDocs, debugPath implTarget, many debugImplFunction implFunctions]
   where
     withSource : String -> List String -> List Forest -> Forest
     withSource label payload =
-      sourceNode label payload (showItemDoc PrettyStrict (MkAstNode info metadata (itemWithoutPreamble item))) ast
+      sourceNode label payload (showItemDoc PrettyStrict (MkAstNode astInfo metadata (itemWithoutPreamble itemNode))) astNode
 
 --------------------------------------------------------------------------------
 -- Entry point
@@ -692,7 +692,7 @@ debugItem ast@(MkAstNode info metadata item) =
 ||| checker's tables, not in this AST.
 public export
 showAstDebug : PhaseDebug phase => SourceFile phase -> String
-showAstDebug ast@(MkAstNode info _ (MkSourceFileNode docs items)) =
-  "phase=" ++ phaseLabel {phase} ++ " file=" ++ escape info.span.file ++ "\n" ++
-  renderSource (layoutForest info.span.file 0
-    (node "MkSourceFileNode" [] ast [many debugDoc docs, many debugItem items]))
+showAstDebug astNode@(MkAstNode astInfo _ (MkSourceFileNode fileDocs sourceFileItems)) =
+  "phase=" ++ phaseLabel {phase} ++ " file=" ++ escapePayloadText astInfo.span.file ++ "\n" ++
+  renderSource (layoutForest astInfo.span.file 0
+    (node "MkSourceFileNode" [] astNode [many debugDoc fileDocs, many debugItem sourceFileItems]))

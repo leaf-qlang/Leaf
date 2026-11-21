@@ -18,12 +18,12 @@ unsupportedItems =
   ]
 
 unsupportedItemTests : List TestResult
-unsupportedItemTests = concatMap rejected unsupportedItems
+unsupportedItemTests = concatMap rejectionTest unsupportedItems
   where
-    rejected : (String, String, String) -> List TestResult
-    rejected (keyword, rest, message) =
-      test "\{keyword}\{rest} is rejected: \{message}" $
-        parseErrorDetails "\{keyword}\{rest}" `shouldBe` parseErrorAt (1, 1) (1, 1 + length keyword) message
+    rejectionTest : (String, String, String) -> List TestResult
+    rejectionTest (keyword, followingText, message) =
+      test "\{keyword}\{followingText} is rejected: \{message}" $
+        parseErrorDetails "\{keyword}\{followingText}" `shouldBe` parseErrorAt (1, 1) (1, 1 + length keyword) message
 
 ||| Declaration prefixes after which an unsupported item keeps its own message,
 ||| with the column at which the item's keyword starts.
@@ -33,8 +33,8 @@ itemPrefixes = [("pub ", 5), ("general ", 9), ("const general ", 15)]
 unsupportedAfterPrefixTests : List TestResult
 unsupportedAfterPrefixTests = testEach "an unsupported item after a prefix keeps its message" parseErrorDetails $ do
   (itemPrefix, column) <- itemPrefixes
-  (keyword, rest, message) <- unsupportedItems
-  pure (itemPrefix ++ keyword ++ rest, parseErrorAt (1, column) (1, column + length keyword) message)
+  (keyword, followingText, message) <- unsupportedItems
+  pure (itemPrefix ++ keyword ++ followingText, parseErrorAt (1, column) (1, column + length keyword) message)
 
 export
 runTopModuleParseTests : IO Bool

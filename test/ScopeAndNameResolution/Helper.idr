@@ -40,53 +40,53 @@ Show FixtureError where
 
 export
 canonicalSource : String -> Either FixtureError (SourceFile CanonicalAstPhase)
-canonicalSource source = do
-  tokens <- case lexFile source of
-    Left err => Left (LexingFailure (renderLexerError err))
+canonicalSource sourceText = do
+  tokens <- case lexFile sourceText of
+    Left lexerError => Left (LexingFailure (renderLexerError lexerError))
     Right tokens => Right tokens
-  surface <- case parseFile "resolution-test.lf" tokens of
-    Left err => Left (ParsingFailure (showParseError err))
-    Right surface => Right surface
-  case validateSourceFile surface of
+  surfaceSourceFile <- case parseFile "resolution-test.lf" tokens of
+    Left parseError => Left (ParsingFailure (showParseError parseError))
+    Right surfaceSourceFile => Right surfaceSourceFile
+  case validateSourceFile surfaceSourceFile of
     [] => Right ()
-    errors => Left (ValidationFailure (map interpolate errors))
-  Right (desugarSurfaceSyntax surface)
+    validationErrors => Left (ValidationFailure (map interpolate validationErrors))
+  Right (desugarSurfaceSyntax surfaceSourceFile)
 
 -- Every successful fixture, including manually adjusted canonical ASTs, must
 -- pass table validation. Failures retain the phase and original diagnostic.
 export
 resolveCanonicalSource : SourceFile CanonicalAstPhase -> Either FixtureError ResolvedModule
-resolveCanonicalSource canonical = do
-  resolved <- case resolveCanonicalSyntax canonical of
-    Left err => Left (ResolutionFailure err)
-    Right resolved => Right resolved
-  case validateResolvedModule resolved of
-    [] => Right resolved
-    errors => Left (InvariantFailure (map show errors))
+resolveCanonicalSource canonicalSourceFile = do
+  resolvedModule <- case resolveCanonicalSyntax canonicalSourceFile of
+    Left resolutionError => Left (ResolutionFailure resolutionError)
+    Right resolvedModule => Right resolvedModule
+  case validateResolvedModule resolvedModule of
+    [] => Right resolvedModule
+    invariantErrors => Left (InvariantFailure (map show invariantErrors))
 
 export
 resolveSource : String -> Either FixtureError ResolvedModule
-resolveSource source = canonicalSource source >>= resolveCanonicalSource
+resolveSource sourceText = canonicalSource sourceText >>= resolveCanonicalSource
 
 export
 resolvedSource : String -> Maybe ResolvedModule
-resolvedSource source = case resolveSource source of
+resolvedSource sourceText = case resolveSource sourceText of
   Left _ => Nothing
-  Right resolved => Just resolved
+  Right resolvedModule => Just resolvedModule
 
 export
 checkSource : String -> (ResolvedModule -> Maybe a) -> Either String a
-checkSource source inspect = case resolveSource source of
-  Left err => Left (show err)
-  Right resolved => case inspect resolved of
-    Nothing => Left ("Unexpected resolved AST or missing table entry for: " ++ source)
-    Just result => Right result
+checkSource sourceText inspect = case resolveSource sourceText of
+  Left fixtureError => Left (show fixtureError)
+  Right resolvedModule => case inspect resolvedModule of
+    Nothing => Left ("Unexpected resolved AST or missing table entry for: " ++ sourceText)
+    Just inspectedValue => Right inspectedValue
 
 export
 expectUnresolvedName : String -> Either String String
-expectUnresolvedName source = case resolveSource source of
-  Left (ResolutionFailure (UnresolvedName name _)) => Right name
-  Left other => Left (show other)
+expectUnresolvedName sourceText = case resolveSource sourceText of
+  Left (ResolutionFailure (UnresolvedName unresolvedName _)) => Right unresolvedName
+  Left otherFailure => Left (show otherFailure)
   Right _ => Left "Expected UnresolvedName, but resolution succeeded"
 
 export
@@ -99,17 +99,17 @@ kindText _ = "other"
 
 export
 spanKey : SourceSpan -> (String, Nat, Nat, Nat, Nat)
-spanKey span = (span.file, span.start.line, span.start.column, span.end.line, span.end.column)
+spanKey sourceSpan = (sourceSpan.file, sourceSpan.start.line, sourceSpan.start.column, sourceSpan.end.line, sourceSpan.end.column)
 
 export
 allReferences : ResolvedModule -> List SymbolReference
-allReferences resolved =
-  sortBy (\a, b => compare (spanKey a.occurrence.span) (spanKey b.occurrence.span)) $
-    concatMap (\(_, refs) => refs <>> []) (SortedMap.toList resolved.tables.references)
+allReferences resolvedModule =
+  sortBy (\firstReference, secondReference => compare (spanKey firstReference.occurrence.span) (spanKey secondReference.occurrence.span)) $
+    concatMap (\(_, bucketReferences) => bucketReferences <>> []) (SortedMap.toList resolvedModule.tables.references)
 
 export
 valueReferences : ResolvedModule -> List SymbolReference
-valueReferences resolved = filter isValue (allReferences resolved)
+valueReferences resolvedModule = filter isValue (allReferences resolvedModule)
   where
     isValue : SymbolReference -> Bool
     isValue reference = case reference.role of

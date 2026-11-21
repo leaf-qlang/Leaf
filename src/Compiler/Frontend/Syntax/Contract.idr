@@ -63,8 +63,8 @@ data PauliOperator
 
 public export
 showPauliOperatorLeaf : PauliOperator -> String
-showPauliOperatorLeaf p =
-  case p of
+showPauliOperatorLeaf pauliOperator =
+  case pauliOperator of
     PauliI => "I"
     PauliX => "X"
     PauliY => "Y"
@@ -78,8 +78,8 @@ implementation Show PauliOperator where
 -- production that decodes an identifier token into a Pauli string.
 public export
 pauliOperatorFromChar : Char -> Maybe PauliOperator
-pauliOperatorFromChar c =
-  case c of
+pauliOperatorFromChar pauliCharacter =
+  case pauliCharacter of
     'I' => Just PauliI
     'X' => Just PauliX
     'Y' => Just PauliY
@@ -134,45 +134,45 @@ SurfaceSignedPauliTerm = SignedPauliTerm SurfaceAstPhase
 -- Contract predicates
 --------------------------------------------------------------------------------
 -- The six predicate forms, each with its own correctly-shaped argument list.
--- `expr` is the (located) expression type, supplied by Decl.idr; `phase`
+-- `argumentExprType` is the (located) expression type, supplied by AST.idr; `phase`
 -- indexes the located children defined in THIS module (Pauli strings,
 -- stabilizer terms).
 --------------------------------------------------------------------------------
 
 public export
-data ContractPredicateNode : (phase : AstPhase) -> (expr : Type) -> Type where
+data ContractPredicateNode : (phase : AstPhase) -> (argumentExprType : Type) -> Type where
 
   -- clean(q) / clean([q1, q2]) -- qbits in |0>, separated from the rest.
   ContractClean :
-       (qbitArgument : expr)
-    -> ContractPredicateNode phase expr
+       (qbitArgument : argumentExprType)
+    -> ContractPredicateNode phase argumentExprType
 
   -- basis(q1, X) / basis([q1, q2], XX) -- separable eigenstate of the
   -- given Pauli string, separated from the rest.
   ContractBasis :
-       (qbitArgument : expr)
+       (qbitArgument : argumentExprType)
     -> (pauliString   : PauliString phase)
-    -> ContractPredicateNode phase expr
+    -> ContractPredicateNode phase argumentExprType
 
   -- separable(qs) -- not entangled among themselves, separated from rest.
   ContractSeparable :
-       (qbitArgument : expr)
-    -> ContractPredicateNode phase expr
+       (qbitArgument : argumentExprType)
+    -> ContractPredicateNode phase argumentExprType
 
   -- isolated(qs) -- not entangled with the REST of the program, though
   -- possibly entangled among themselves.
   ContractIsolated :
-       (qbitArgument : expr)
-    -> ContractPredicateNode phase expr
+       (qbitArgument : argumentExprType)
+    -> ContractPredicateNode phase argumentExprType
 
   -- product(q1, q2, qs) / product([q1, q2], [q3, q4], qs) -- the given
   -- qbit sets are mutually unentangled. Product is a relation between AT
   -- LEAST TWO sets, and the first + List1 shape encodes exactly that:
   -- a one-argument product(x) is unrepresentable.
   ContractProduct :
-       (firstQbitSet  : expr)
-    -> (otherQbitSets : List1 expr)
-    -> ContractPredicateNode phase expr
+       (firstQbitSet  : argumentExprType)
+    -> (otherQbitSets : List1 argumentExprType)
+    -> ContractPredicateNode phase argumentExprType
 
   -- stabilized(qs, [ +ZI, -ZZ ]) -- exact stabilizer state. At least one
   -- stabilizer term (an empty bracket list would assert nothing). Note the
@@ -180,16 +180,16 @@ data ContractPredicateNode : (phase : AstPhase) -> (expr : Type) -> Type where
   -- production, NOT an ordinary array-literal expression: +ZI is not an
   -- expression.
   ContractStabilized :
-       (qbitArgument   : expr)
+       (qbitArgument   : argumentExprType)
     -> (stabilizerTerms : List1 (SignedPauliTerm phase))
-    -> ContractPredicateNode phase expr
+    -> ContractPredicateNode phase argumentExprType
 
 -- The regular AST-wrapped predicate. In addition to the predicate payload,
 -- this carries its node ID, source span, and phase metadata.
 public export
-ContractPredicate : (phase : AstPhase) -> (expr : Type) -> Type
-ContractPredicate phase expr =
-  AstNode phase (ContractPredicateNode phase expr)
+ContractPredicate : (phase : AstPhase) -> (argumentExprType : Type) -> Type
+ContractPredicate phase argumentExprType =
+  AstNode phase (ContractPredicateNode phase argumentExprType)
 
 --------------------------------------------------------------------------------
 -- Contract clauses
@@ -202,18 +202,18 @@ ContractPredicate phase expr =
 --------------------------------------------------------------------------------
 
 public export
-data ContractClauseNode : (phase : AstPhase) -> (expr : Type) -> Type where
+data ContractClauseNode : (phase : AstPhase) -> (argumentExprType : Type) -> Type where
 
   RequiresClause :
-       (predicate : ContractPredicate phase expr)
-    -> ContractClauseNode phase expr
+       (predicate : ContractPredicate phase argumentExprType)
+    -> ContractClauseNode phase argumentExprType
 
   EnsuresClause :
-       (predicate : ContractPredicate phase expr)
-    -> ContractClauseNode phase expr
+       (predicate : ContractPredicate phase argumentExprType)
+    -> ContractClauseNode phase argumentExprType
 
 -- The regular AST-wrapped clause. In addition to the clause payload, this
 -- carries its node ID, source span, and phase metadata.
 public export
-ContractClause : (phase : AstPhase) -> (expr : Type) -> Type
-ContractClause phase expr = AstNode phase (ContractClauseNode phase expr)
+ContractClause : (phase : AstPhase) -> (argumentExprType : Type) -> Type
+ContractClause phase argumentExprType = AstNode phase (ContractClauseNode phase argumentExprType)

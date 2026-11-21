@@ -41,32 +41,32 @@ data LeafType
 
 export
 showLeafType : LeafType -> String
-showLeafType ty =
-  case ty of
-    LeafPrimitiveType primitive => show primitive
-    LeafNamedType (MkSymbolId symbolId) => "type#" ++ show symbolId
+showLeafType leafType =
+  case leafType of
+    LeafPrimitiveType primitiveName => show primitiveName
+    LeafNamedType (MkSymbolId symbolNumber) => "type#" ++ show symbolNumber
     LeafUnitType => "()"
-    LeafTupleType (element ::: []) => "(" ++ recur element ++ ",)"
-    LeafTupleType elements => "(" ++ joinBy ", " (map recur (forget elements)) ++ ")"
-    LeafArrayType element count => "[" ++ recur element ++ "; " ++ show count ++ "]"
-    LeafSliceType element => "[" ++ recur element ++ "]"
-    LeafRangeType shape element => "Range<" ++ showRangeShape shape ++ ", " ++ recur element ++ ">"
-    LeafReferenceType SharedBorrow referent =>
-      (case referent of
+    LeafTupleType (onlyElementType ::: []) => "(" ++ recur onlyElementType ++ ",)"
+    LeafTupleType elementTypes => "(" ++ joinBy ", " (map recur (forget elementTypes)) ++ ")"
+    LeafArrayType elementType arrayLength => "[" ++ recur elementType ++ "; " ++ show arrayLength ++ "]"
+    LeafSliceType elementType => "[" ++ recur elementType ++ "]"
+    LeafRangeType rangeShape elementType => "Range<" ++ showRangeShape rangeShape ++ ", " ++ recur elementType ++ ">"
+    LeafReferenceType SharedBorrow referencedType =>
+      (case referencedType of
          LeafReferenceType _ _ => "& "
-         _ => "&") ++ recur referent
-    LeafReferenceType MutableBorrow referent => "&mut " ++ recur referent
-    LeafFunctionType effect supportKinds parameterTypes result =>
-      show effect ++ " fn(" ++ joinBy ", " (map recur parameterTypes) ++ ") -> " ++ recur result ++
+         _ => "&") ++ recur referencedType
+    LeafReferenceType MutableBorrow referencedType => "&mut " ++ recur referencedType
+    LeafFunctionType functionEffect supportKinds parameterTypes resultType =>
+      show functionEffect ++ " fn(" ++ joinBy ", " (map recur parameterTypes) ++ ") -> " ++ recur resultType ++
         (case supportKinds of
            [] => ""
-           kinds => " supports " ++ joinBy ", " (map show kinds))
-    LeafQuantumQualifiedType qualifier qualifiedType => show qualifier ++ " " ++ recur qualifiedType
+           declaredSupportKinds => " supports " ++ joinBy ", " (map show declaredSupportKinds))
+    LeafQuantumQualifiedType quantumUsageQualifier qualifiedType => show quantumUsageQualifier ++ " " ++ recur qualifiedType
     LeafStringLiteralType => "string literal"
     LeafNeverType => "!"
   where
     recur : LeafType -> String
-    recur nestedType = showLeafType (assert_smaller ty nestedType)
+    recur nestedType = showLeafType (assert_smaller leafType nestedType)
 
 public export
 implementation Show LeafType where
@@ -98,7 +98,7 @@ removeQuantumUsage leafType =
 
 export
 quantumUsageFreeReference : BorrowKind -> LeafType -> LeafType
-quantumUsageFreeReference borrowKind referent = LeafReferenceType borrowKind (removeQuantumUsage referent)
+quantumUsageFreeReference borrowKind referencedType = LeafReferenceType borrowKind (removeQuantumUsage referencedType)
 
 export
 hasOwnedQbit : LeafType -> Bool

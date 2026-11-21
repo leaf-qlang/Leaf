@@ -18,16 +18,16 @@ import Compiler.Frontend.Token
 -- The semantic type of a program's first parameter, once desugared.
 firstParameterType : String -> Maybe InferredType
 firstParameterType inputProgram = do
-  MkAstNode _ _ (MkSourceFileNode _ items) <- lexParseThenDesugar "test-fixture.rs" inputProgram
-  MkAstNode _ _ (ItemFunction declaration) :: _ <- Just items
+  MkAstNode _ _ (MkSourceFileNode _ sourceFileItems) <- lexParseThenDesugar "test-fixture.rs" inputProgram
+  MkAstNode _ _ (ItemFunction functionDeclaration) :: _ <- Just sourceFileItems
     | _ => Nothing
-  MkAstNode _ _ (NormalParameter _ _ _ parameterType) :: _ <- Just declaration.functionParameters
+  MkAstNode _ _ (NormalParameter _ _ _ parameterType) :: _ <- Just functionDeclaration.functionParameters
     | _ => Nothing
   Just (toInferredType parameterType)
 
 firstParameterLeafType : String -> Maybe LeafType
-firstParameterLeafType source =
-  case firstParameterType source of
+firstParameterLeafType inputProgram =
+  case firstParameterType inputProgram of
     Just (ResolvedType leafType) => Just leafType
     _ => Nothing
 

@@ -26,7 +26,7 @@ data VisibilityQualifier = VisibilityPublic
 
 public export
 showVisibilityQualifierLeaf : VisibilityQualifier -> String
-showVisibilityQualifierLeaf v = "pub"
+showVisibilityQualifierLeaf VisibilityPublic = "pub"
 
 public export
 implementation Show VisibilityQualifier where
@@ -99,8 +99,8 @@ data FunctionEffect
 
 public export
 showFunctionEffectLeaf : FunctionEffect -> String
-showFunctionEffectLeaf e =
-  case e of
+showFunctionEffectLeaf functionEffect =
+  case functionEffect of
     EffectClassical  => "classical"
     EffectUncompsafe => "uncompsafe"
     EffectUnitary    => "unitary"
@@ -133,8 +133,8 @@ data SupportKind
 
 public export
 showSupportKindLeaf : SupportKind -> String
-showSupportKindLeaf s =
-  case s of
+showSupportKindLeaf supportKind =
+  case supportKind of
     SupportAdjoint => "adjoint"
     SupportCtrl    => "ctrl"
 
@@ -168,8 +168,8 @@ data QuantumStorageQualifier
 
 public export
 showQuantumStorageQualifierLeaf : QuantumStorageQualifier -> String
-showQuantumStorageQualifierLeaf q =
-  case q of
+showQuantumStorageQualifierLeaf storageQualifier =
+  case storageQualifier of
     QualifierLinear  => "linear"
     QualifierAffine  => "affine"
     QualifierScratch => "scratch"
@@ -201,8 +201,8 @@ data QuantumUsageQualifier
 
 public export
 showQuantumUsageQualifierLeaf : QuantumUsageQualifier -> String
-showQuantumUsageQualifierLeaf q =
-  case q of
+showQuantumUsageQualifierLeaf usageQualifier =
+  case usageQualifier of
     QuantumUsageLinear => "linear"
     QuantumUsageAffine => "affine"
 
@@ -243,8 +243,8 @@ data InitializerMarker
 
 public export
 showInitializerMarkerLeaf : InitializerMarker -> String
-showInitializerMarkerLeaf m =
-  case m of
+showInitializerMarkerLeaf initializerMarker =
+  case initializerMarker of
     InitializerEquals        => "="
     InitializerAutoUncompute => ":="
 

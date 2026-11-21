@@ -25,7 +25,7 @@ import Language.Reflection
 -- and the build fails immediately -- there is no second list to forget.
 ----------------------------------------------------------------------
 findByShow : Finite a => (a -> String) -> String -> Maybe a
-findByShow showLeaf s = find (\x => showLeaf x == s) values
+findByShow showLeaf spelling = find (\candidate => showLeaf candidate == spelling) values
 
 ------------------------------------------------------
 -- Primitive built-in types
@@ -57,8 +57,8 @@ data TypPrimName
 
 public export
 showTypPrimLeaf : TypPrimName -> String
-showTypPrimLeaf ty =
-  case ty of
+showTypPrimLeaf primitiveName =
+  case primitiveName of
     TypPrimAngle32  => "angle32"
     TypPrimAngle64  => "angle64"
     TypPrimBit      => "bit"
@@ -105,8 +105,8 @@ data BasisStateName
 
 public export
 showStateBasisLeaf : BasisStateName -> String
-showStateBasisLeaf sb =
-  case sb of
+showStateBasisLeaf basisStateName =
+  case basisStateName of
     StateZero   => "zero"
     StateOne    => "one"
     StatePlus   => "plus"
@@ -175,8 +175,8 @@ data Keyword
 
 public export
 showKeywordLeaf : Keyword -> String
-showKeywordLeaf kw =
-  case kw of
+showKeywordLeaf keyword =
+  case keyword of
     KwAdjoint  => "adjoint"
     KwAffine    => "affine"
     KwAs        => "as"
@@ -259,8 +259,8 @@ data Builtin
 
 public export
 showBuiltinLeaf : Builtin -> String
-showBuiltinLeaf b =
-  case b of
+showBuiltinLeaf builtin =
+  case builtin of
     BuiltinBarrier   => "barrier"
     BuiltinCtrl      => "ctrl"
     BuiltinOn        => "on"
@@ -321,8 +321,8 @@ data Symbol
 
 public export
 showSymbolLeaf : Symbol -> String
-showSymbolLeaf sym =
-  case sym of
+showSymbolLeaf symbol =
+  case symbol of
     SymHash        => "#"
     SymAmp         => "&"
     SymLParen      => "("
@@ -382,7 +382,7 @@ implementation Show Symbol where
 ----------------------------------------------------------------------------------------------------------
 public export
 symbolTable : List (String, Symbol)
-symbolTable = map (\sym => (showSymbolLeaf sym, sym)) values
+symbolTable = map (\symbol => (showSymbolLeaf symbol, symbol)) values
 
 ----------------------------------------------------------------------
 -- Token:
@@ -441,9 +441,9 @@ Interpolation Token where
       TokInnerDoc rawText          => rawText
       TokBoolLit True              => "true"
       TokBoolLit False             => "false"
-      TokStateLit state            => showStateBasisLeaf state
+      TokStateLit basisState       => showStateBasisLeaf basisState
       TokKw keyword                => showKeywordLeaf keyword
-      TokTypPrim typ               => showTypPrimLeaf typ
+      TokTypPrim primitiveName     => showTypPrimLeaf primitiveName
       TokSym symbol                => showSymbolLeaf symbol
       TokBuiltin builtin           => showBuiltinLeaf builtin
       TokUnderscore                => "_"
@@ -451,24 +451,24 @@ Interpolation Token where
 
 public export
 describeToken : Token -> String
-describeToken (TokIdent name)             = "identifier " ++ show name
-describeToken (TokIntLitRaw text)         = "raw integer literal `" ++ text ++ "`"
-describeToken (TokFloatLitRaw text)       = "raw float literal `" ++ text ++ "`"
-describeToken (TokByteLitRaw text)        = "raw byte literal `" ++ text ++ "`"
-describeToken (TokByteStringLitRaw text)  = "raw byte string literal `" ++ text ++ "`"
-describeToken (TokBasisStringLitRaw text) = "raw basis string literal `" ++ text ++ "`"
-describeToken (TokStringLitRaw text)      = "raw string literal `" ++ text ++ "`"
-describeToken (TokOuterDoc text)          = "outer doc comment " ++ show text
-describeToken (TokInnerDoc text)          = "inner doc comment " ++ show text
-describeToken (TokBoolLit True)           = "boolean literal true"
-describeToken (TokBoolLit False)          = "boolean literal false"
-describeToken (TokStateLit state)         = "state literal " ++ show state
-describeToken (TokKw keyword)             = "keyword " ++ show keyword
-describeToken (TokTypPrim typ)            = "primitive type " ++ show typ
-describeToken (TokSym symbol)             = "symbol " ++ show symbol
-describeToken (TokBuiltin builtin)        = "builtin " ++ show builtin
-describeToken TokUnderscore               = "underscore"
-describeToken TokEOF                      = "end of input"
+describeToken (TokIdent identifierText)      = "identifier " ++ show identifierText
+describeToken (TokIntLitRaw rawText)         = "raw integer literal `" ++ rawText ++ "`"
+describeToken (TokFloatLitRaw rawText)       = "raw float literal `" ++ rawText ++ "`"
+describeToken (TokByteLitRaw rawText)        = "raw byte literal `" ++ rawText ++ "`"
+describeToken (TokByteStringLitRaw rawText)  = "raw byte string literal `" ++ rawText ++ "`"
+describeToken (TokBasisStringLitRaw rawText) = "raw basis string literal `" ++ rawText ++ "`"
+describeToken (TokStringLitRaw rawText)      = "raw string literal `" ++ rawText ++ "`"
+describeToken (TokOuterDoc rawText)          = "outer doc comment " ++ show rawText
+describeToken (TokInnerDoc rawText)          = "inner doc comment " ++ show rawText
+describeToken (TokBoolLit True)              = "boolean literal true"
+describeToken (TokBoolLit False)             = "boolean literal false"
+describeToken (TokStateLit basisState)       = "state literal " ++ show basisState
+describeToken (TokKw keyword)                = "keyword " ++ show keyword
+describeToken (TokTypPrim primitiveName)     = "primitive type " ++ show primitiveName
+describeToken (TokSym symbol)                = "symbol " ++ show symbol
+describeToken (TokBuiltin builtin)           = "builtin " ++ show builtin
+describeToken TokUnderscore                  = "underscore"
+describeToken TokEOF                         = "end of input"
 
 ----------------------------------------------------------------------
 -- Boolean literals. Only two spellings, spelled out directly rather than
@@ -478,8 +478,8 @@ describeToken TokEOF                      = "end of input"
 ----------------------------------------------------------------------
 public export
 boolFromString : String -> Maybe Bool
-boolFromString s =
-  case s of
+boolFromString spelling =
+  case spelling of
     "true"  => Just True
     "false" => Just False
     _       => Nothing
@@ -490,22 +490,22 @@ boolFromString s =
 ---------------------------------------------------------------------
 public export
 tokenFromIdentLike : String -> Token
-tokenFromIdentLike s =
-  case s of
+tokenFromIdentLike identifierText =
+  case identifierText of
     "_" => TokUnderscore
     _ =>
-      case boolFromString s of
-        Just b => TokBoolLit b
+      case boolFromString identifierText of
+        Just boolValue => TokBoolLit boolValue
         Nothing =>
-          case keywordFromString s of
-            Just kw => TokKw kw
+          case keywordFromString identifierText of
+            Just keyword => TokKw keyword
             Nothing =>
-              case typeFromString s of
-                Just ty => TokTypPrim ty
+              case typeFromString identifierText of
+                Just primitiveName => TokTypPrim primitiveName
                 Nothing =>
-                  case stateBasisFromString s of
-                    Just st => TokStateLit st
+                  case stateBasisFromString identifierText of
+                    Just basisState => TokStateLit basisState
                     Nothing =>
-                      case builtinFromString s of
-                        Just bi => TokBuiltin bi
-                        Nothing => TokIdent s
+                      case builtinFromString identifierText of
+                        Just builtin => TokBuiltin builtin
+                        Nothing => TokIdent identifierText

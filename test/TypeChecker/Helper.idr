@@ -29,16 +29,16 @@ import Compiler.Frontend.Utils.ASTPrettyPrinter
 checkResolvedFixture : (ResolvedModule -> Either TypeError result) -> String -> String -> Either TypeError result
 checkResolvedFixture checkResolvedModule fileName inputProgram =
   case lexFile inputProgram of
-    Left err => invalidFixture (renderLexerError err)
+    Left lexerError => invalidFixture (renderLexerError lexerError)
     Right tokens => case parseFile fileName tokens of
-      Left err => invalidFixture (showParseError err)
+      Left parseError => invalidFixture (showParseError parseError)
       Right surfaceSourceFile => case validateSourceFile surfaceSourceFile of
         errors@(_ :: _) =>
           invalidFixture ("Validation errors:\n" ++ joinBy "\n" (map interpolate errors))
         [] =>
           let canonicalSourceFile = desugarSurfaceSyntax surfaceSourceFile
           in case resolveCanonicalSyntax canonicalSourceFile of
-            Left err => invalidFixture (show err)
+            Left resolutionError => invalidFixture (show resolutionError)
             Right resolvedModule => case validateResolvedModule resolvedModule of
               errors@(_ :: _) =>
                 invalidFixture ("Resolution invariant errors:\n" ++ joinBy "\n" (map show errors))
@@ -69,7 +69,7 @@ typeCheckAndPrettyPrint inputProgram =
 -- Expected outcomes
 --------------------------------------------------------------------------------
 -- A test compares `typeCheckOutcome program` with `accepted` or with
--- `rejectedWith err`. Errors are compared through `show`, which renders a
+-- `rejectedWith expectedError`. Errors are compared through `show`, which renders a
 -- span by its start only, so `spanAt line column` is all an expected error
 -- needs to say where it is. Where the plan rejects a form without naming its
 -- diagnostic, `rejected (typeCheckOutcome program)` is compared with `True`.
@@ -91,7 +91,7 @@ accepted = Right ()
 
 export
 rejectedWith : TypeError -> Either String ()
-rejectedWith err = Left (show err)
+rejectedWith expectedError = Left (show expectedError)
 
 ||| `True` when the program is rejected with any error. A fixture that fails
 ||| the frontend still crashes the helper rather than counting as rejected.
@@ -207,7 +207,7 @@ refMut = LeafReferenceType MutableBorrow
 export
 tuple : List LeafType -> LeafType
 tuple [] = LeafUnitType
-tuple (first :: rest) = LeafTupleType (first ::: rest)
+tuple (firstType :: remainingTypes) = LeafTupleType (firstType ::: remainingTypes)
 
 ||| A function type without declared capabilities, as every written function type is.
 export

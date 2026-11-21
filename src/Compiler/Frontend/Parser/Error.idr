@@ -19,12 +19,12 @@ public export
 ParseError = InnerError CustomParseError
 
 quoted : String -> String
-quoted item = "'" ++ item ++ "'"
+quoted expectedText = "'" ++ expectedText ++ "'"
 
 renderExpected : String -> List String -> String
-renderExpected only [] = quoted only
-renderExpected first [second] = quoted first ++ " or " ++ quoted second
-renderExpected first (second :: rest) = quoted first ++ ", " ++ renderExpected second rest
+renderExpected onlyExpected [] = quoted onlyExpected
+renderExpected firstExpected [secondExpected] = quoted firstExpected ++ " or " ++ quoted secondExpected
+renderExpected firstExpected (secondExpected :: remainingExpected) = quoted firstExpected ++ ", " ++ renderExpected secondExpected remainingExpected
 
 ||| The inner clause of a parse error: what went wrong
 public export
@@ -33,17 +33,17 @@ renderParseError (Custom (UnsupportedFeature message)) = message
 renderParseError (Custom (UnexpectedToken message)) = message
 renderParseError (Custom (ParseErrorWithMessage message)) = message
 renderParseError EOI = "unexpected end of input"
-renderParseError (Expected [] actual) = "unexpected " ++ actual
-renderParseError (Expected (first :: rest) actual) =
-  "expected " ++ renderExpected first rest ++ ", but got " ++ actual
+renderParseError (Expected [] actualToken) = "unexpected " ++ actualToken
+renderParseError (Expected (firstExpected :: remainingExpected) actualToken) =
+  "expected " ++ renderExpected firstExpected remainingExpected ++ ", but got " ++ actualToken
 renderParseError (ExpectedChar charClass) = "expected " ++ interpolate charClass
 renderParseError ExpectedEOI = "expected end of input"
-renderParseError (InvalidControl char) = "invalid control character: " ++ show char
+renderParseError (InvalidControl controlCharacter) = "invalid control character: " ++ show controlCharacter
 renderParseError InvalidEscape = "invalid escape sequence"
-renderParseError (OutOfBounds value) = "value out of bounds: " ++ value
-renderParseError (Unclosed value) = "unclosed " ++ value
-renderParseError (Unknown value) = "unknown or invalid token: " ++ value
-renderParseError (InvalidByte value) = "unexpected or invalid byte: " ++ show value
+renderParseError (OutOfBounds valueText) = "value out of bounds: " ++ valueText
+renderParseError (Unclosed unclosedText) = "unclosed " ++ unclosedText
+renderParseError (Unknown tokenText) = "unknown or invalid token: " ++ tokenText
+renderParseError (InvalidByte invalidByte) = "unexpected or invalid byte: " ++ show invalidByte
 
 public export
 implementation Show ParseError where
@@ -51,6 +51,6 @@ implementation Show ParseError where
 
 public export
 showParseError : Located ParseError -> String
--- `show err.value`, not `\{err.value}`: ilex-core's Text.ParseError ships 
+-- `show locatedError.value`, not `\{locatedError.value}`: ilex-core's Text.ParseError ships
 -- interpolation with its own wording, which would silently replace ours
-showParseError err = "Parse error at: \{err.span}, with message: \{show err.value}"
+showParseError locatedError = "Parse error at: \{locatedError.span}, with message: \{show locatedError.value}"

@@ -49,16 +49,16 @@ suites =
 ||| Runs every suite, even after one fails, and then compiles the examples.
 main : IO ()
 main = do
-  results <- for suites $ \(name, run) => do
-    putStrLn "== \{name} =="
-    passed <- run
-    pure (name, passed)
+  suiteResults <- for suites $ \(suiteName, runSuite) => do
+    putStrLn "== \{suiteName} =="
+    suitePassed <- runSuite
+    pure (suiteName, suitePassed)
   Right () <- discoverAndCompileExamples
-    | Left err => do
-        putStrLn err
+    | Left errorMessage => do
+        putStrLn errorMessage
         exitFailure
-  case map fst (filter (not . snd) results) of
+  case map fst (filter (not . snd) suiteResults) of
     [] => putStrLn (coloredText {colorCode = "94"} {text = "All tests completed."})  -- light blue
-    failed => do
-      putStrLn (coloredText {colorCode = "38;5;169"} {text = "Failing suites: \{joinBy ", " failed}"})  -- pink
+    failedSuiteNames => do
+      putStrLn (coloredText {colorCode = "38;5;169"} {text = "Failing suites: \{joinBy ", " failedSuiteNames}"})  -- pink
       exitFailure

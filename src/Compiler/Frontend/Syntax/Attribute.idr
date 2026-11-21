@@ -30,8 +30,8 @@ data KnownAttributeKind
 
 public export
 showKnownAttributeLeaf : KnownAttributeKind -> String
-showKnownAttributeLeaf kind =
-  case kind of
+showKnownAttributeLeaf attributeKind =
+  case attributeKind of
     KnownQasmGate => "qasm_gate"
     KnownQasmDef  => "qasm_def"
 
@@ -41,8 +41,8 @@ implementation Show KnownAttributeKind where
 
 public export
 recognizeKnownAttribute : String -> Maybe KnownAttributeKind
-recognizeKnownAttribute s =
-  case s of
+recognizeKnownAttribute attributeName =
+  case attributeName of
     "qasm_gate" => Just KnownQasmGate
     "qasm_def"  => Just KnownQasmDef
     _           => Nothing

@@ -12,8 +12,8 @@ import Compiler.Frontend.Syntax.AST
 
 public export
 isBlockLikeExpression : ExpressionNode phase -> Bool
-isBlockLikeExpression expression =
-  case expression of
+isBlockLikeExpression expressionNode =
+  case expressionNode of
     ExprBlock _                      => True
     ExprIf _                         => True
     ExprQIf _                        => True
@@ -34,9 +34,9 @@ isBlockLikeExpression expression =
 ||| allow struct literals: in `if FLAG { }` the block follows the name `FLAG`.
 public export
 readsAsStructLiteralName : String -> Bool
-readsAsStructLiteralName text =
-  case unpack text of
-    c :: _ => c >= 'A' && c <= 'Z'
+readsAsStructLiteralName identifierText =
+  case unpack identifierText of
+    firstCharacter :: _ => firstCharacter >= 'A' && firstCharacter <= 'Z'
     []     => False
 
 ||| Tokens before which `..` ends a range with no upper bound, as in `a..`.

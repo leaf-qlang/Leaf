@@ -119,8 +119,8 @@ record LeafStack where
 0 LeafLexerStack : Type -> Type
 LeafLexerStack = State LexerError LeafStack LeafSz
 
-initLeafStack : LeafStack
-initLeafStack = MkLeafStack [<] Z NormalBlockComment
+initialLeafStack : LeafStack
+initialLeafStack = MkLeafStack [<] Z NormalBlockComment
 
 --------------------------------------------------------------------------------
 -- Local rule alias.
@@ -144,7 +144,7 @@ oldestOpenPosition (olderPositions :< openPosition) =
       oldestOpenPosition olderPositions
 
 unterminatedCommentBounds :
-     (sk : LeafLexerStack q)
+     (lexerStack : LeafLexerStack q)
   => BytePos
   -> F1 q ByteBounds
 unterminatedCommentBounds openPosition = T1.do
@@ -159,9 +159,9 @@ unterminatedCommentBounds openPosition = T1.do
 stripReversedSuffix : List Char -> List Char -> Maybe (List Char)
 stripReversedSuffix [] remainingReversedChars =
   Just (reverse remainingReversedChars)
-stripReversedSuffix (suffixChar :: suffixRest) (valueChar :: valueRest) =
+stripReversedSuffix (suffixChar :: remainingSuffixChars) (valueChar :: remainingValueChars) =
   case suffixChar == valueChar of
-    True  => stripReversedSuffix suffixRest valueRest
+    True  => stripReversedSuffix remainingSuffixChars remainingValueChars
     False => Nothing
 stripReversedSuffix _ [] = Nothing
 
@@ -185,14 +185,14 @@ stripSuffixChars suffixChars valueChars =
 -- independently-maintained copy of the same grammar.
 --------------------------------------------------------------------------------
 runValueMatch : Parser1 (BBErr Void) a -> String -> Maybe a
-runValueMatch parser text =
-  case runString parser text of
-    Right result => Just result
+runValueMatch literalParser rawText =
+  case runString literalParser rawText of
+    Right matchedValue => Just matchedValue
     Left _        => Nothing
 
 matchesLiteral : Parser1 (BBErr Void) () -> String -> Bool
-matchesLiteral parser text =
-  case runValueMatch parser text of
+matchesLiteral literalParser rawText =
+  case runValueMatch literalParser rawText of
     Just () => True
     Nothing => False
 
@@ -244,30 +244,30 @@ validByteStringLiteral = matchesLiteral byteStringValidator
 -- returning the leading digits together with the matched `Symbol`.
 --------------------------------------------------------------------------------
 classifyDotOperatorSuffix : List Char -> (List Char, Symbol)
-classifyDotOperatorSuffix chars =
-  case stripSuffixChars (unpack "..=") chars of
+classifyDotOperatorSuffix matchedChars =
+  case stripSuffixChars (unpack "..=") matchedChars of
     Just digitChars => (digitChars, SymDotDotEq)
     Nothing =>
-      case stripSuffixChars (unpack "..") chars of
+      case stripSuffixChars (unpack "..") matchedChars of
         Just digitChars => (digitChars, SymDotDot)
         Nothing =>
-          case stripSuffixChars (unpack ".") chars of
+          case stripSuffixChars (unpack ".") matchedChars of
             Just digitChars => (digitChars, SymDot)
-            Nothing => (chars, SymDot)
+            Nothing => (matchedChars, SymDot)
 
 --------------------------------------------------------------------------------
 -- Token and error actions.
 --------------------------------------------------------------------------------
 emitBoundedToken :
-     (sk : LeafLexerStack q)
+     (lexerStack : LeafLexerStack q)
   => ByteBounded Token
   -> F1 q LeafState
 emitBoundedToken boundedToken = T1.do
-  st <- getStack
-  putStackAs ({ outputTokens $= (:< boundedToken) } st) Initial
+  leafStack <- getStack
+  putStackAs ({ outputTokens $= (:< boundedToken) } leafStack) Initial
 
 emitToken :
-     (sk : LeafLexerStack q)
+     (lexerStack : LeafLexerStack q)
   => Token
   -> F1 q LeafState
 emitToken token = T1.do
@@ -278,7 +278,7 @@ emitToken token = T1.do
 ||| first error and ignores later ones (ilex commit ee97414 onward), so this
 ||| is just the domain-named entry point Rules.idr's call sites use.
 rememberFatalError :
-     (sk : LeafLexerStack q)
+     (lexerStack : LeafLexerStack q)
   => LexerError
   -> F1 q LeafState
 rememberFatalError lexerError =
@@ -287,7 +287,7 @@ rememberFatalError lexerError =
 ||| As `rememberFatalError`, but at an explicit span rather than the current
 ||| position.
 rememberFatalErrorAt :
-     (sk : LeafLexerStack q)
+     (lexerStack : LeafLexerStack q)
   => ByteBounds
   -> LexerError
   -> F1 q LeafState
@@ -295,19 +295,19 @@ rememberFatalErrorAt errorBounds lexerError =
   failWith (B (Custom lexerError) errorBounds) Initial
 
 emitValidatedLiteral :
-     (sk : LeafLexerStack q)
+     (lexerStack : LeafLexerStack q)
   => (String -> Bool)
   -> (String -> LexerError)
   -> (String -> Token)
   -> String
   -> F1 q LeafState
-emitValidatedLiteral validator errorBuilder tokenBuilder rawText =
-  case validator rawText of
-    True => emitToken (tokenBuilder rawText)
-    False => rememberFatalError (errorBuilder rawText)
+emitValidatedLiteral isValidLiteral invalidLiteralError literalToken rawText =
+  case isValidLiteral rawText of
+    True => emitToken (literalToken rawText)
+    False => rememberFatalError (invalidLiteralError rawText)
 
 emitNormalStringLiteral :
-     (sk : LeafLexerStack q)
+     (lexerStack : LeafLexerStack q)
   => String
   -> F1 q LeafState
 emitNormalStringLiteral =
@@ -317,7 +317,7 @@ emitNormalStringLiteral =
     TokStringLitRaw
 
 emitBasisStringLiteral :
-     (sk : LeafLexerStack q)
+     (lexerStack : LeafLexerStack q)
   => String
   -> F1 q LeafState
 emitBasisStringLiteral =
@@ -327,7 +327,7 @@ emitBasisStringLiteral =
     TokBasisStringLitRaw
 
 emitByteLiteral :
-     (sk : LeafLexerStack q)
+     (lexerStack : LeafLexerStack q)
   => String
   -> F1 q LeafState
 emitByteLiteral =
@@ -337,7 +337,7 @@ emitByteLiteral =
     TokByteLitRaw
 
 emitByteStringLiteral :
-     (sk : LeafLexerStack q)
+     (lexerStack : LeafLexerStack q)
   => String
   -> F1 q LeafState
 emitByteStringLiteral =
@@ -347,7 +347,7 @@ emitByteStringLiteral =
     TokByteStringLitRaw
 
 emitNumberLiteral :
-     (sk : LeafLexerStack q)
+     (lexerStack : LeafLexerStack q)
   => String
   -> F1 q LeafState
 emitNumberLiteral rawText =
@@ -362,7 +362,7 @@ emitNumberLiteral rawText =
       rememberFatalError (LexInvalidNumberLiteral rawText)
 
 emitDigitsThenDotOperator :
-     (sk : LeafLexerStack q)
+     (lexerStack : LeafLexerStack q)
   => String
   -> F1 q LeafState
 emitDigitsThenDotOperator rawText = T1.do
@@ -393,7 +393,7 @@ emitDigitsThenDotOperator rawText = T1.do
 -- (`pushStr'`/`getStr`).
 --------------------------------------------------------------------------------
 appendTextIfDoc :
-     (sk : LeafLexerStack q)
+     (lexerStack : LeafLexerStack q)
   => CommentMode
   -> String
   -> F1' q
@@ -402,69 +402,69 @@ appendTextIfDoc OuterBlockDocComment rawText = pushStr' rawText
 appendTextIfDoc InnerBlockDocComment rawText = pushStr' rawText
 
 beginBlockComment :
-     (sk : LeafLexerStack q)
+     (lexerStack : LeafLexerStack q)
   => CommentMode
   -> String
   -> F1 q LeafState
-beginBlockComment mode rawText = T1.do
+beginBlockComment openingCommentMode rawText = T1.do
   pushPosition
-  st <- getStack
-  putStack ({ commentDepth := Z, commentMode := mode } st)
-  appendTextIfDoc mode rawText
+  leafStack <- getStack
+  putStack ({ commentDepth := Z, commentMode := openingCommentMode } leafStack)
+  appendTextIfDoc openingCommentMode rawText
   pure InBlockComment
 
 beginNestedBlockComment :
-     (sk : LeafLexerStack q)
+     (lexerStack : LeafLexerStack q)
   => String
   -> F1 q LeafState
 beginNestedBlockComment rawText = T1.do
   pushPosition
-  st <- getStack
-  putStack ({ commentDepth $= S } st)
-  appendTextIfDoc st.commentMode rawText
+  leafStack <- getStack
+  putStack ({ commentDepth $= S } leafStack)
+  appendTextIfDoc leafStack.commentMode rawText
   pure InBlockComment
 
 finishOutermostBlockComment :
-     (sk : LeafLexerStack q)
+     (lexerStack : LeafLexerStack q)
   => CommentMode
   -> ByteBounds
   -> F1 q LeafState
-finishOutermostBlockComment mode fullCommentBounds = T1.do
+finishOutermostBlockComment outermostCommentMode fullCommentBounds = T1.do
   rawCommentText <- getStr
-  case commentModeToToken mode rawCommentText of
+  case commentModeToToken outermostCommentMode rawCommentText of
     Nothing => pure Initial
     Just docToken =>
       emitBoundedToken (B docToken fullCommentBounds)
 
 closeBlockComment :
-     (sk : LeafLexerStack q)
+     (lexerStack : LeafLexerStack q)
   => ByteBounds
   -> F1 q LeafState
 closeBlockComment fullCommentBounds = T1.do
-  st <- getStack
-  appendTextIfDoc st.commentMode "*/"
-  case st.commentDepth of
+  leafStack <- getStack
+  appendTextIfDoc leafStack.commentMode "*/"
+  case leafStack.commentDepth of
     Z =>
-      finishOutermostBlockComment st.commentMode fullCommentBounds
+      finishOutermostBlockComment leafStack.commentMode fullCommentBounds
 
     S remainingDepth => T1.do
-      putStack ({ commentDepth := remainingDepth } st)
+      putStack ({ commentDepth := remainingDepth } leafStack)
       pure InBlockComment
 
 consumeBlockCommentText :
-     (sk : LeafLexerStack q)
+     (lexerStack : LeafLexerStack q)
   => String
   -> F1 q LeafState
 consumeBlockCommentText rawText = T1.do
-  st <- getStack
-  appendTextIfDoc st.commentMode rawText
+  leafStack <- getStack
+  appendTextIfDoc leafStack.commentMode rawText
   pure InBlockComment
 
 symbolRules : List (LeafRule q)
 symbolRules =
   vals
     showSymbolLeaf
-    (\symbol, stackValue => emitToken {sk = stackValue} (TokSym symbol))
+    (\symbol, lexerStack => emitToken {lexerStack = lexerStack} (TokSym symbol))
     values
 
 --------------------------------------------------------------------------------
@@ -552,12 +552,12 @@ leafLexerSteps =
     , E InBlockComment (dfa blockCommentRules)
     ]
 
-leafLexerEOI :
+finishLexingAtEndOfInput :
      LeafState
   -> LeafLexerStack q
   -> F1 q (Either (BBErr LexerError) (List (ByteBounded Token)))
-leafLexerEOI lexerState stackValue = T1.do
-  storedError <- read1 (error stackValue)
+finishLexingAtEndOfInput lexerState lexerStack = T1.do
+  storedError <- read1 (error lexerStack)
   case storedError of
     Just existingError =>
       pure (Left existingError)
@@ -565,12 +565,12 @@ leafLexerEOI lexerState stackValue = T1.do
     Nothing =>
       case lexerState == Initial of
         True => T1.do
-          st <- read1 (stack stackValue)
+          leafStack <- read1 (stack lexerStack)
           eofPosition <- endPos
-          pure (Right (st.outputTokens <>> [B TokEOF (BB eofPosition eofPosition)]))
+          pure (Right (leafStack.outputTokens <>> [B TokEOF (BB eofPosition eofPosition)]))
 
         False => T1.do
-          openPositions <- read1 (positions stackValue)
+          openPositions <- read1 (positions lexerStack)
           case oldestOpenPosition openPositions of
             Just openPosition => T1.do
               unclosedBounds <- unterminatedCommentBounds openPosition
@@ -589,11 +589,11 @@ leafLexerEOI lexerState stackValue = T1.do
 leafLexer : Lexer LexerError Token
 leafLexer =
   P Initial
-    (init initLeafStack)
+    (init initialLeafStack)
     leafLexerSteps
     noChunk
     (errs [])
-    leafLexerEOI
+    finishLexingAtEndOfInput
 
 export
 runLeafLexer : String -> Either (BBErr LexerError) (List (ByteBounded Token))

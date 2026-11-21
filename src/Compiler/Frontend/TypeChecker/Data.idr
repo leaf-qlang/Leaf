@@ -238,104 +238,104 @@ export
 showTypeError : TypeError -> String
 showTypeError typeError =
   case typeError of
-    TypeMismatch expected actual sourceSpan =>
-      at sourceSpan $ "Expected type '" ++ show expected ++ "', but found '" ++ show actual ++ "'."
+    TypeMismatch expectedType actualType sourceSpan =>
+      at sourceSpan $ "Expected type '" ++ show expectedType ++ "', but found '" ++ show actualType ++ "'."
     CannotInferType sourceSpan =>
       at sourceSpan "Cannot infer the type; add a type annotation."
-    NotCallable actual sourceSpan =>
-      at sourceSpan $ "Cannot call a value of type '" ++ show actual ++ "'."
-    WrongArgumentCount expected actual sourceSpan =>
-      at sourceSpan $ "Expected " ++ show expected ++ " argument(s), but received " ++ show actual ++ "."
-    InvalidUnaryOperand operator operandType sourceSpan =>
-      at sourceSpan $ "Operator '" ++ operator ++ "' cannot be applied to type '" ++ show operandType ++ "'."
-    InvalidBinaryOperands operator leftType rightType sourceSpan =>
-      at sourceSpan $ "Operator '" ++ operator ++ "' cannot be applied to types '" ++ show leftType ++ "' and '" ++ show rightType ++ "'."
-    NotIndexable actual sourceSpan =>
-      at sourceSpan $ "Cannot index a value of type '" ++ show actual ++ "'."
-    IntegerLiteralOutOfRange value targetType sourceSpan =>
-      at sourceSpan $ "Integer literal " ++ show value ++ " is out of range for type '" ++ show targetType ++ "'."
+    NotCallable calleeType sourceSpan =>
+      at sourceSpan $ "Cannot call a value of type '" ++ show calleeType ++ "'."
+    WrongArgumentCount expectedCount actualCount sourceSpan =>
+      at sourceSpan $ "Expected " ++ show expectedCount ++ " argument(s), but received " ++ show actualCount ++ "."
+    InvalidUnaryOperand operatorName operandType sourceSpan =>
+      at sourceSpan $ "Operator '" ++ operatorName ++ "' cannot be applied to type '" ++ show operandType ++ "'."
+    InvalidBinaryOperands operatorName leftType rightType sourceSpan =>
+      at sourceSpan $ "Operator '" ++ operatorName ++ "' cannot be applied to types '" ++ show leftType ++ "' and '" ++ show rightType ++ "'."
+    NotIndexable indexedType sourceSpan =>
+      at sourceSpan $ "Cannot index a value of type '" ++ show indexedType ++ "'."
+    IntegerLiteralOutOfRange literalValue targetType sourceSpan =>
+      at sourceSpan $ "Integer literal " ++ show literalValue ++ " is out of range for type '" ++ show targetType ++ "'."
     InvalidCast sourceType targetType sourceSpan =>
       at sourceSpan $ "Cannot cast type '" ++ show sourceType ++ "' to '" ++ show targetType ++ "'."
-    InvalidQuantumQualifier qualifier actual sourceSpan =>
-      at sourceSpan $ "Quantum qualifier '" ++ qualifier ++ "' is not valid for type '" ++ show actual ++ "'."
+    InvalidQuantumQualifier qualifierName annotatedType sourceSpan =>
+      at sourceSpan $ "Quantum qualifier '" ++ qualifierName ++ "' is not valid for type '" ++ show annotatedType ++ "'."
     InvalidQbitReference sourceSpan =>
       at sourceSpan "Qbit references are mutable by default; omit 'mut' from the reference."
-    InvalidConditionType construct actual sourceSpan =>
-      at sourceSpan $ "Type '" ++ show actual ++ "' is not a valid condition type for '" ++ construct ++ "'."
-    QuantumWidthMismatch context expected actual sourceSpan =>
-      at sourceSpan $ "Quantum width mismatch in " ++ context ++ ": expected " ++ show expected ++ ", but found " ++ show actual ++ "."
+    InvalidConditionType constructName conditionType sourceSpan =>
+      at sourceSpan $ "Type '" ++ show conditionType ++ "' is not a valid condition type for '" ++ constructName ++ "'."
+    QuantumWidthMismatch widthContext expectedWidth actualWidth sourceSpan =>
+      at sourceSpan $ "Quantum width mismatch in " ++ widthContext ++ ": expected " ++ show expectedWidth ++ ", but found " ++ show actualWidth ++ "."
     EffectViolation enclosingEffect operationEffect sourceSpan =>
       at sourceSpan $ "An operation with effect '" ++ show operationEffect ++ "' is not permitted in a function with effect '" ++ show enclosingEffect ++ "'."
-    MissingCapability capability sourceSpan =>
-      at sourceSpan $ "The callable does not have established support for '" ++ capability ++ "'."
+    MissingCapability capabilityName sourceSpan =>
+      at sourceSpan $ "The callable does not have established support for '" ++ capabilityName ++ "'."
     InvalidQuantumPattern explanation sourceSpan =>
       at sourceSpan $ "Invalid quantum pattern: " ++ explanation
-    CyclicDeclaration symbols sourceSpan =>
-      at sourceSpan $ "Cyclic declaration dependency involving symbols " ++ (joinBy ", " $ map (\s => "'" ++ s ++ "'") symbols) ++ "."
+    CyclicDeclaration cycleSymbolNames sourceSpan =>
+      at sourceSpan $ "Cyclic declaration dependency involving symbols " ++ (joinBy ", " $ map (\symbolName => "'" ++ symbolName ++ "'") cycleSymbolNames) ++ "."
     NotAConstantExpression sourceSpan =>
       at sourceSpan "This expression cannot be evaluated at compile time."
-    IncorrectArrayLengthType actual sourceSpan =>
-      at sourceSpan $ "An array length, repeat count or qubit count must have type 'usize', but has type '" ++ show actual ++ "'."
-    ArrayLengthTooLarge value sourceSpan =>
-      at sourceSpan $ "The length " ++ show value ++ " does not fit in 'usize'."
+    IncorrectArrayLengthType lengthType sourceSpan =>
+      at sourceSpan $ "An array length, repeat count or qubit count must have type 'usize', but has type '" ++ show lengthType ++ "'."
+    ArrayLengthTooLarge lengthValue sourceSpan =>
+      at sourceSpan $ "The length " ++ show lengthValue ++ " does not fit in 'usize'."
     ArithmeticOverflow operationType sourceSpan =>
       at sourceSpan $ "Arithmetic overflow in a constant of type '" ++ show operationType ++ "'."
     DivisionByZeroInConstant sourceSpan =>
       at sourceSpan "Division by zero in a constant expression."
     ConstEvaluationLimitExceeded sourceSpan =>
       at sourceSpan "Constant evaluation exceeded its step limit."
-    InvalidConstantControlFlow jump sourceSpan =>
-      at sourceSpan $ "'" ++ jump ++ "' cannot leave a constant expression."
-    UnknownMember member sourceSpan =>
-      at sourceSpan $ "No member '" ++ member ++ "' exists on this value."
-    InvalidBuiltinContext builtin sourceSpan =>
-      at sourceSpan $ "The builtin '" ++ builtin ++ "' cannot be used here."
-    UnsupportedFeature feature sourceSpan =>
-      at sourceSpan $ "'" ++ feature ++ "' is not supported."
-    IndexOutOfBounds index size sourceSpan =>
-      at sourceSpan $ "Index " ++ show index ++ " is out of bounds for length " ++ show size ++ "."
-    UnsizedValue actual sourceSpan =>
-      at sourceSpan $ "A value of unsized type '" ++ show actual ++ "' must be used through a reference."
-    MissingRangeEndpoint construct sourceSpan =>
-      at sourceSpan $ "The range is missing an endpoint that '" ++ construct ++ "' needs."
-    ReversedRange start end sourceSpan =>
-      at sourceSpan $ "The range " ++ show start ++ ".." ++ show end ++ " runs backwards."
-    WrongPatternArity expected actual sourceSpan =>
-      at sourceSpan $ "The value has " ++ show expected ++ " element(s), but the pattern has " ++ show actual ++ "."
+    InvalidConstantControlFlow jumpKeyword sourceSpan =>
+      at sourceSpan $ "'" ++ jumpKeyword ++ "' cannot leave a constant expression."
+    UnknownMember memberName sourceSpan =>
+      at sourceSpan $ "No member '" ++ memberName ++ "' exists on this value."
+    InvalidBuiltinContext builtinName sourceSpan =>
+      at sourceSpan $ "The builtin '" ++ builtinName ++ "' cannot be used here."
+    UnsupportedFeature featureName sourceSpan =>
+      at sourceSpan $ "'" ++ featureName ++ "' is not supported."
+    IndexOutOfBounds index valueLength sourceSpan =>
+      at sourceSpan $ "Index " ++ show index ++ " is out of bounds for length " ++ show valueLength ++ "."
+    UnsizedValue unsizedType sourceSpan =>
+      at sourceSpan $ "A value of unsized type '" ++ show unsizedType ++ "' must be used through a reference."
+    MissingRangeEndpoint constructName sourceSpan =>
+      at sourceSpan $ "The range is missing an endpoint that '" ++ constructName ++ "' needs."
+    ReversedRange rangeStart rangeEnd sourceSpan =>
+      at sourceSpan $ "The range " ++ show rangeStart ++ ".." ++ show rangeEnd ++ " runs backwards."
+    WrongPatternArity valueElementCount patternElementCount sourceSpan =>
+      at sourceSpan $ "The value has " ++ show valueElementCount ++ " element(s), but the pattern has " ++ show patternElementCount ++ "."
     RefutableBindingPattern sourceSpan =>
       at sourceSpan "This pattern does not match every value; a binding needs an irrefutable pattern."
-    QuantumUsageMismatch required actual sourceSpan =>
-      at sourceSpan $ "Expected a '" ++ show required ++ "' qbit, but found a '" ++ show actual ++ "' qbit; use weaken to make a linear qbit affine."
+    QuantumUsageMismatch requiredUsage actualUsage sourceSpan =>
+      at sourceSpan $ "Expected a '" ++ show requiredUsage ++ "' qbit, but found a '" ++ show actualUsage ++ "' qbit; use weaken to make a linear qbit affine."
     BreakValueInUnitLoop sourceSpan =>
       at sourceSpan "A 'while' or 'for' loop cannot break with a value."
     AssignmentThroughSharedReference sourceSpan =>
       at sourceSpan "Cannot assign through a shared reference."
-    InvalidAttributeEffect attribute effect sourceSpan =>
-      at sourceSpan $ "The attribute '" ++ attribute ++ "' is not allowed on a function with effect '" ++ show effect ++ "'."
-    JumpOutOfQuantumBlock jump sourceSpan =>
-      at sourceSpan $ "'" ++ jump ++ "' cannot leave a ctrl or adjoint block."
+    InvalidAttributeEffect attributeName functionEffect sourceSpan =>
+      at sourceSpan $ "The attribute '" ++ attributeName ++ "' is not allowed on a function with effect '" ++ show functionEffect ++ "'."
+    JumpOutOfQuantumBlock jumpKeyword sourceSpan =>
+      at sourceSpan $ "'" ++ jumpKeyword ++ "' cannot leave a ctrl or adjoint block."
     LinearQbitNotConsumed sourceSpan =>
       at sourceSpan "A linear qbit is never consumed; measure, discard or return it."
-    UseAfterMove name sourceSpan =>
-      at sourceSpan $ "Use of '" ++ name ++ "' after it was moved."
+    UseAfterMove localName sourceSpan =>
+      at sourceSpan $ "Use of '" ++ localName ++ "' after it was moved."
     UntrackedElementMove sourceSpan =>
       at sourceSpan "Cannot move an array element out through a dynamic index."
     MoveOutOfBorrow sourceSpan =>
       at sourceSpan "Cannot move a qbit out through a reference."
     OverlappingBorrow sourceSpan =>
       at sourceSpan "This access conflicts with a live exclusive borrow."
-    MutableBorrowOfImmutable name sourceSpan =>
-      at sourceSpan $ "Cannot borrow '" ++ name ++ "' mutably; declare it with 'mut'."
-    ImmutableAssignment name sourceSpan =>
-      at sourceSpan $ "Cannot assign twice to immutable '" ++ name ++ "'; declare it with 'mut'."
-    UninitializedPlace name sourceSpan =>
-      at sourceSpan $ "'" ++ name ++ "' is used before it is initialized."
+    MutableBorrowOfImmutable localName sourceSpan =>
+      at sourceSpan $ "Cannot borrow '" ++ localName ++ "' mutably; declare it with 'mut'."
+    ImmutableAssignment localName sourceSpan =>
+      at sourceSpan $ "Cannot assign twice to immutable '" ++ localName ++ "'; declare it with 'mut'."
+    UninitializedPlace localName sourceSpan =>
+      at sourceSpan $ "'" ++ localName ++ "' is used before it is initialized."
     EscapingReference sourceSpan =>
       at sourceSpan "This reference outlives the value it refers to."
     UnprovableCleanup sourceSpan =>
       at sourceSpan "Cannot prove that these qubits can be uncomputed and released."
-    UnprovableTransformation transformation sourceSpan =>
-      at sourceSpan $ "Cannot construct the '" ++ transformation ++ "' transformation of this code."
+    UnprovableTransformation transformationName sourceSpan =>
+      at sourceSpan $ "Cannot construct the '" ++ transformationName ++ "' transformation of this code."
   where
     at : SourceSpan -> String -> String
     at sourceSpan message = "Type error at \{sourceSpan}: \{message}"

@@ -7,25 +7,25 @@ import Data.List
 
 public export
 maxKey : Ord k => SortedMap k v -> Maybe k
-maxKey m = map fst (rightMost m)   -- SortedMap keeps keys ordered, so the rightmost key is the largest
+maxKey sortedMap = map fst (rightMost sortedMap)   -- SortedMap keeps keys ordered, so the rightmost key is the largest
 
 public export
 maxValue : Ord v => SortedMap k v -> Maybe v
-maxValue m =
-  case values m of
+maxValue sortedMap =
+  case values sortedMap of
     [] => Nothing
-    v :: vs => Just (foldl max v vs)
+    firstValue :: remainingValues => Just (foldl max firstValue remainingValues)
 
 public export
 keyWithMaxValue : Ord v => SortedMap k v -> Maybe k
-keyWithMaxValue m =
-  case Data.SortedMap.toList m of
+keyWithMaxValue sortedMap =
+  case Data.SortedMap.toList sortedMap of
     [] => Nothing
-    entry :: rest => Just (fst (foldl choose entry rest))
+    firstEntry :: remainingEntries => Just (fst (foldl keepEntryWithLargerValue firstEntry remainingEntries))
   where
-    choose : (k, v) -> (k, v) -> (k, v)
-    choose best candidate =
-      if snd candidate > snd best
-         then candidate
-         else best
+    keepEntryWithLargerValue : (k, v) -> (k, v) -> (k, v)
+    keepEntryWithLargerValue bestEntry candidateEntry =
+      if snd candidateEntry > snd bestEntry
+         then candidateEntry
+         else bestEntry
 

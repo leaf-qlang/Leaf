@@ -62,8 +62,8 @@ import Compiler.Frontend.Syntax.Type
 --
 -- TOTALITY DISCIPLINE:
 -- Idris 2's size-change checker credits CONSTRUCTOR PATTERNS ONLY. A record
--- dot-projection feeding a recursive argument (`validateBlock ctx
--- fd.functionBody`) is size-unknown, and one unknown edge poisons the whole
+-- dot-projection feeding a recursive argument (`validateBlock context
+-- functionDeclaration.functionBody`) is size-unknown, and one unknown edge poisons the whole
 -- SCC -- and this walk is ONE SCC, because expressions and types are mutual
 -- (casts contain types; array sizes contain expressions). So: destructure
 -- every record in the pattern head or in a constructor pattern; never
@@ -158,34 +158,34 @@ data ValidationError : Type where
 -- The span a renderer should point at.
 public export
 validationErrorSpan : ValidationError -> SourceSpan
-validationErrorSpan err =
-  case err of
-    UnknownAttribute s _        => s
-    DuplicateAttribute s _      => s
-    ConflictingAttributes s _   => s
-    MutableBorrowOfQbit s      => s
-    BreakOutsideLoop s          => s
-    ContinueOutsideLoop s       => s
-    ReturnOutsideFunction s     => s
-    ControlBasisLengthMismatch s _ _ => s
-    QuantumUsageQualifierInLetAndType s _ _ => s
-    QuantumUsageQualifierBehindReference s _ => s
-    NonUsizeArrayLength s _ => s
-    ArrayLengthOutOfRange s _ _ _ => s
+validationErrorSpan validationError =
+  case validationError of
+    UnknownAttribute errorSpan _                    => errorSpan
+    DuplicateAttribute errorSpan _                  => errorSpan
+    ConflictingAttributes errorSpan _               => errorSpan
+    MutableBorrowOfQbit errorSpan                   => errorSpan
+    BreakOutsideLoop errorSpan                      => errorSpan
+    ContinueOutsideLoop errorSpan                   => errorSpan
+    ReturnOutsideFunction errorSpan                 => errorSpan
+    ControlBasisLengthMismatch errorSpan _ _        => errorSpan
+    QuantumUsageQualifierInLetAndType errorSpan _ _ => errorSpan
+    QuantumUsageQualifierBehindReference errorSpan _ => errorSpan
+    NonUsizeArrayLength errorSpan _                 => errorSpan
+    ArrayLengthOutOfRange errorSpan _ _ _           => errorSpan
 
 public export
 Interpolation ValidationError where
-  interpolate err =
-    "\{validationErrorSpan err}: " ++
-      case err of
-        UnknownAttribute _ nm =>
-          "unknown attribute `" ++ nm ++
+  interpolate validationError =
+    "\{validationErrorSpan validationError}: " ++
+      case validationError of
+        UnknownAttribute _ attributeNameText =>
+          "unknown attribute `" ++ attributeNameText ++
           "` (supported: qasm_gate, qasm_def)"
-        DuplicateAttribute _ nm =>
-          "attribute `" ++ nm ++
+        DuplicateAttribute _ attributeNameText =>
+          "attribute `" ++ attributeNameText ++
           "` is already applied to this item"
-        ConflictingAttributes _ nm =>
-          "attribute `" ++ nm ++
+        ConflictingAttributes _ attributeNameText =>
+          "attribute `" ++ attributeNameText ++
           "` conflicts with another attribute already applied to this item " ++
           "(qasm_gate and qasm_def are mutually exclusive)"
         MutableBorrowOfQbit _ =>
@@ -259,47 +259,47 @@ knownAttributeKindsConflict _             _             = True
 -- already seen on THIS item, so a name repeated verbatim is
 -- DuplicateAttribute and two distinct known kinds together (currently just
 -- qasm_gate + qasm_def) is ConflictingAttributes.
-validateAttributeListFrom :
-     List (String, Maybe KnownAttributeKind)
+validateAttributesAfterEarlierOnes :
+     (earlierAttributes : List (String, Maybe KnownAttributeKind))
   -> List SurfaceAttribute
   -> List ValidationError
-validateAttributeListFrom _ [] = []
-validateAttributeListFrom seen (MkAstNode attrInfo _ (MkAttributeNode nameNode _) :: rest) =
-  let MkAstNode _ _ (MkNameNode nameText) = nameNode
-      thisKind = recognizeKnownAttribute nameText
+validateAttributesAfterEarlierOnes _ [] = []
+validateAttributesAfterEarlierOnes earlierAttributes (MkAstNode attributeInfo _ (MkAttributeNode attributeNameNode _) :: remainingAttributes) =
+  let MkAstNode _ _ (MkNameNode attributeNameText) = attributeNameNode
+      attributeKind = recognizeKnownAttribute attributeNameText
       unknownError =
-        case thisKind of
-          Nothing => [UnknownAttribute attrInfo.span nameText]
+        case attributeKind of
+          Nothing => [UnknownAttribute attributeInfo.span attributeNameText]
           Just _  => []
       duplicateError =
-        if any (\s => fst s == nameText) seen
-          then [DuplicateAttribute attrInfo.span nameText]
+        if any (\earlierAttribute => fst earlierAttribute == attributeNameText) earlierAttributes
+          then [DuplicateAttribute attributeInfo.span attributeNameText]
           else []
       conflictError =
-        case thisKind of
+        case attributeKind of
           Nothing => []
-          Just k  =>
-            if any (\s => maybe False (knownAttributeKindsConflict k) (snd s)) seen
-              then [ConflictingAttributes attrInfo.span nameText]
+          Just knownKind =>
+            if any (\earlierAttribute => maybe False (knownAttributeKindsConflict knownKind) (snd earlierAttribute)) earlierAttributes
+              then [ConflictingAttributes attributeInfo.span attributeNameText]
               else []
   in unknownError ++ duplicateError ++ conflictError
-       ++ validateAttributeListFrom ((nameText, thisKind) :: seen) rest
+       ++ validateAttributesAfterEarlierOnes ((attributeNameText, attributeKind) :: earlierAttributes) remainingAttributes
 
 validateAttributeList : List SurfaceAttribute -> List ValidationError
-validateAttributeList = validateAttributeListFrom []
+validateAttributeList = validateAttributesAfterEarlierOnes []
 
 -- Is this type SYNTACTICALLY a qbit-carrying type? Only the cases visible
 -- without resolution: qbit itself, arrays/slices of it, through parens and
 -- qualifiers. Path types that CONTAIN qbits are typing's problem.
-isSyntacticallyQbitTy : TyNode SurfaceAstPhase SurfaceExpr -> Bool
-isSyntacticallyQbitTy ty =
-  case ty of
-    TyPrimitive TypPrimQbit                   => True
-    TyParenthesized (MkAstNode _ _ inner)      => isSyntacticallyQbitTy inner
-    TyQualified _ (MkAstNode _ _ inner)        => isSyntacticallyQbitTy inner
-    TySlice (MkAstNode _ _ element)            => isSyntacticallyQbitTy element
-    TyArray (MkAstNode _ _ element) _          => isSyntacticallyQbitTy element
-    _                                          => False
+isSyntacticallyQbitType : TyNode SurfaceAstPhase SurfaceExpr -> Bool
+isSyntacticallyQbitType typeNode =
+  case typeNode of
+    TyPrimitive TypPrimQbit                     => True
+    TyParenthesized (MkAstNode _ _ innerType)   => isSyntacticallyQbitType innerType
+    TyQualified _ (MkAstNode _ _ qualifiedType) => isSyntacticallyQbitType qualifiedType
+    TySlice (MkAstNode _ _ elementType)         => isSyntacticallyQbitType elementType
+    TyArray (MkAstNode _ _ elementType) _       => isSyntacticallyQbitType elementType
+    _                                           => False
 
 -- Quantum usage qualifiers written at the owned positions of a type.
 ownedPositionQualifiers : SurfaceTy -> List (SurfaceAstNode QuantumUsageQualifier)
@@ -312,22 +312,22 @@ letQuantumUsageConflicts :
   -> Maybe SurfaceTy
   -> List ValidationError
 letQuantumUsageConflicts _ Nothing = []
-letQuantumUsageConflicts letQualifiers (Just annotation) =
+letQuantumUsageConflicts letQualifiers (Just typeAnnotation) =
   case mapMaybe (storageQuantumUsage . (.nodeValue)) letQualifiers of
     [] => []
     letQualifier :: _ =>
       map (\(MkAstNode qualifierInfo _ typeQualifier) =>
              QuantumUsageQualifierInLetAndType qualifierInfo.span letQualifier typeQualifier)
-          (ownedPositionQualifiers annotation)
+          (ownedPositionQualifiers typeAnnotation)
 
 -- A reference's referent holds no quantum usage qualifier at an owned position.
 -- Qualifiers behind a nested reference are reported when the walk reaches
 -- that reference, since owned positions do not enter references.
 qualifiersBehindReference : SurfaceTy -> List ValidationError
-qualifiersBehindReference referent =
+qualifiersBehindReference referencedType =
   map (\(MkAstNode qualifierInfo _ qualifier) =>
          QuantumUsageQualifierBehindReference qualifierInfo.span qualifier)
-      (ownedPositionQualifiers referent)
+      (ownedPositionQualifiers referencedType)
 
 -- An array length literal may carry only a usize suffix, and its value
 -- must fit that type. Parentheses are looked
@@ -337,12 +337,12 @@ arrayLengthErrors : SurfaceExpr -> List ValidationError
 arrayLengthErrors (MkAstNode _ _ (ExprParenthesized innerLength)) =
   arrayLengthErrors innerLength
 arrayLengthErrors
-    (MkAstNode lengthInfo _ (ExprLiteral (MkAstNode _ _ (LiteralIntegerRaw raw)))) =
-  case arrayLengthProblem raw of
+    (MkAstNode lengthInfo _ (ExprLiteral (MkAstNode _ _ (LiteralIntegerRaw rawLiteralText)))) =
+  case arrayLengthProblem rawLiteralText of
     Just (NonUsizeLengthSuffix suffixType) =>
       [NonUsizeArrayLength lengthInfo.span suffixType]
     Just (LengthExceedsSuffixType suffixType suffixMaximum) =>
-      [ArrayLengthOutOfRange lengthInfo.span raw suffixType suffixMaximum]
+      [ArrayLengthOutOfRange lengthInfo.span rawLiteralText suffixType suffixMaximum]
     Nothing => []
 arrayLengthErrors _ = []
 
@@ -359,8 +359,8 @@ mutual
   -- Entry point: validate one parsed source file.
   public export
   validateSourceFile : SurfaceSourceFile -> List ValidationError
-  validateSourceFile (MkAstNode _ _ (MkSourceFileNode _ items)) =
-    validateItemList items
+  validateSourceFile (MkAstNode _ _ (MkSourceFileNode _ sourceFileItems)) =
+    validateItemList sourceFileItems
 
   ------------------------------------------------------------------
   -- Items and declarations
@@ -368,247 +368,250 @@ mutual
 
   validateItemList : List SurfaceItem -> List ValidationError
   validateItemList [] = []
-  validateItemList (i :: rest) = validateItem i ++ validateItemList rest
+  validateItemList (item :: remainingItems) = validateItem item ++ validateItemList remainingItems
 
   validateItem : SurfaceItem -> List ValidationError
-  validateItem (MkAstNode _ _ item) =
-    case item of
-      ItemFunction fd => validateFunctionDecl fd
-      ItemStruct sd   => validateStructDecl sd
-      ItemEnum ed     => validateEnumDecl ed
-      ItemQEnum qd    => validateQEnumDecl qd
-      ItemImpl impl   => validateImplDecl impl
-      ItemConst cd    => validateConstDecl cd
+  validateItem (MkAstNode _ _ itemNode) =
+    case itemNode of
+      ItemFunction functionDeclaration => validateFunctionDeclaration functionDeclaration
+      ItemStruct structDeclaration     => validateStructDeclaration structDeclaration
+      ItemEnum enumDeclaration         => validateEnumDeclaration enumDeclaration
+      ItemQEnum qenumDeclaration       => validateQEnumDeclaration qenumDeclaration
+      ItemImpl implDeclaration         => validateImplDeclaration implDeclaration
+      ItemConst constDeclaration       => validateConstDeclaration constDeclaration
       -- `use` has no attributes, types, or expressions to walk.
-      ItemUse _       => []
-      ItemModule md   => validateModuleDecl md
+      ItemUse _                        => []
+      ItemModule moduleDeclaration     => validateModuleDeclaration moduleDeclaration
 
   -- Fields (in declaration order): docs, attributes, visibility, constness,
   -- effect, name, parameters, returnType, supports, contracts, body.
   -- `supports` and `contracts` are not walked here: the parser rejects
   -- `supports` and `requires`/`ensures` outright, so those fields are
   -- always empty by construction.
-  validateFunctionDecl : FunctionDeclarationNode SurfaceAstPhase -> List ValidationError
-  validateFunctionDecl
-    (MkFunctionDeclarationNode _ attrs _ _ _ _ params retTy _ _ body) =
-       validateAttributeList attrs
-    ++ validateParameterList params
-    ++ validateMaybeTy topLevelContext retTy
-    ++ validateBlock functionBodyContext body
+  validateFunctionDeclaration : FunctionDeclarationNode SurfaceAstPhase -> List ValidationError
+  validateFunctionDeclaration
+    (MkFunctionDeclarationNode _ functionAttributes _ _ _ _ functionParameters returnType _ _ functionBody) =
+       validateAttributeList functionAttributes
+    ++ validateParameterList functionParameters
+    ++ validateOptionalType topLevelContext returnType
+    ++ validateBlock functionBodyContext functionBody
 
   -- Parameter names require resolution, but every type still needs the
   -- syntactic and contextual checks performed by this pass.
   validateParameterList : List SurfaceFunctionParameter -> List ValidationError
   validateParameterList [] = []
-  validateParameterList (MkAstNode _ _ p :: rest) =
-    case p of
-      NormalParameter _ _ _ ty =>
-        validateTy topLevelContext ty ++ validateParameterList rest
+  validateParameterList (MkAstNode _ _ parameterNode :: remainingParameters) =
+    case parameterNode of
+      NormalParameter _ _ _ parameterType =>
+        validateType topLevelContext parameterType ++ validateParameterList remainingParameters
       ReceiverParameter _ _ =>
-        validateParameterList rest
+        validateParameterList remainingParameters
 
-  validateStructDecl : StructDeclarationNode SurfaceAstPhase -> List ValidationError
-  validateStructDecl (MkStructDeclarationNode _ attrs _ _ fields) =
-       validateAttributeList attrs
-    ++ validateStructFieldList fields
+  validateStructDeclaration : StructDeclarationNode SurfaceAstPhase -> List ValidationError
+  validateStructDeclaration (MkStructDeclarationNode _ structAttributes _ _ structFields) =
+       validateAttributeList structAttributes
+    ++ validateStructFieldList structFields
 
   validateStructFieldList :
        List (AstNode SurfaceAstPhase (StructFieldNode SurfaceAstPhase))
     -> List ValidationError
   validateStructFieldList [] = []
   validateStructFieldList
-    (MkAstNode _ _ (MkStructFieldNode _ _ fieldTy) :: rest) =
-    validateTy topLevelContext fieldTy ++ validateStructFieldList rest
+    (MkAstNode _ _ (MkStructFieldNode _ _ fieldType) :: remainingFields) =
+    validateType topLevelContext fieldType ++ validateStructFieldList remainingFields
 
-  validateEnumDecl : EnumDeclarationNode SurfaceAstPhase -> List ValidationError
-  validateEnumDecl (MkEnumDeclarationNode _ attrs _ _ variants) =
-       validateAttributeList attrs
-    ++ validateEnumVariantList variants
+  validateEnumDeclaration : EnumDeclarationNode SurfaceAstPhase -> List ValidationError
+  validateEnumDeclaration (MkEnumDeclarationNode _ enumAttributes _ _ enumVariants) =
+       validateAttributeList enumAttributes
+    ++ validateEnumVariantList enumVariants
 
   validateEnumVariantList :
        List (AstNode SurfaceAstPhase (EnumVariantNode SurfaceAstPhase))
     -> List ValidationError
   validateEnumVariantList [] = []
   validateEnumVariantList
-    (MkAstNode _ _ (MkEnumVariantNode _ _ body) :: rest) =
-    (case body of
-       VariantUnit            => []
-       VariantTuple tys       => validateTyList1 topLevelContext tys
-       VariantStruct fields   => validateStructFieldList fields)
-      ++ validateEnumVariantList rest
+    (MkAstNode _ _ (MkEnumVariantNode _ _ variantBody) :: remainingVariants) =
+    (case variantBody of
+       VariantUnit                => []
+       VariantTuple payloadTypes  => validateTypeList1 topLevelContext payloadTypes
+       VariantStruct payloadFields => validateStructFieldList payloadFields)
+      ++ validateEnumVariantList remainingVariants
 
-  validateQEnumDecl : QEnumDeclarationNode SurfaceAstPhase -> List ValidationError
-  validateQEnumDecl (MkQEnumDeclarationNode _ attrs _ _ variants) =
-       validateAttributeList attrs
-    ++ validateQEnumVariantList variants
+  validateQEnumDeclaration : QEnumDeclarationNode SurfaceAstPhase -> List ValidationError
+  validateQEnumDeclaration (MkQEnumDeclarationNode _ qenumAttributes _ _ qenumVariants) =
+       validateAttributeList qenumAttributes
+    ++ validateQEnumVariantList qenumVariants
 
   validateQEnumVariantList :
        List (AstNode SurfaceAstPhase (QEnumVariantNode SurfaceAstPhase))
     -> List ValidationError
   validateQEnumVariantList [] = []
   validateQEnumVariantList
-    (MkAstNode _ _ (MkQEnumVariantNode _ _ payloadTys) :: rest) =
-    validateTyList1 topLevelContext payloadTys
-      ++ validateQEnumVariantList rest
+    (MkAstNode _ _ (MkQEnumVariantNode _ _ payloadTypes) :: remainingVariants) =
+    validateTypeList1 topLevelContext payloadTypes
+      ++ validateQEnumVariantList remainingVariants
 
-  validateImplDecl : ImplDeclarationNode SurfaceAstPhase -> List ValidationError
-  validateImplDecl (MkImplDeclarationNode _ _ fns) =
-    validateImplFunctionList fns
+  validateImplDeclaration : ImplDeclarationNode SurfaceAstPhase -> List ValidationError
+  validateImplDeclaration (MkImplDeclarationNode _ _ implFunctions) =
+    validateImplFunctionList implFunctions
 
   validateImplFunctionList :
        List SurfaceFunctionDeclaration
     -> List ValidationError
   validateImplFunctionList [] = []
-  validateImplFunctionList (MkAstNode _ _ fd :: rest) =
-    validateFunctionDecl fd ++ validateImplFunctionList rest
+  validateImplFunctionList (MkAstNode _ _ functionDeclaration :: remainingFunctions) =
+    validateFunctionDeclaration functionDeclaration ++ validateImplFunctionList remainingFunctions
 
   -- Const initializers are NOT function bodies: `return` inside one is an
   -- error, which topLevelContext encodes.
-  validateConstDecl : ConstDeclarationNode SurfaceAstPhase -> List ValidationError
-  validateConstDecl (MkConstDeclarationNode _ _ _ constTy constVal) =
-       validateTy topLevelContext constTy
-    ++ validateExpr topLevelContext constVal
+  validateConstDeclaration : ConstDeclarationNode SurfaceAstPhase -> List ValidationError
+  validateConstDeclaration (MkConstDeclarationNode _ _ _ constType constValue) =
+       validateType topLevelContext constType
+    ++ validateExpression topLevelContext constValue
 
-  validateModuleDecl : ModuleDeclarationNode SurfaceAstPhase -> List ValidationError
-  validateModuleDecl (MkModuleDeclarationNode _ _ _ body) =
-    case body of
-      ModuleInline _ items => validateItemList items
-      ModuleExternal       => []
+  validateModuleDeclaration : ModuleDeclarationNode SurfaceAstPhase -> List ValidationError
+  validateModuleDeclaration (MkModuleDeclarationNode _ _ _ moduleBody) =
+    case moduleBody of
+      ModuleInline _ moduleItems => validateItemList moduleItems
+      ModuleExternal             => []
 
   ------------------------------------------------------------------
   -- Blocks and statements
   ------------------------------------------------------------------
 
   validateBlock : ValidationContext -> SurfaceBlock -> List ValidationError
-  validateBlock ctx (MkAstNode _ _ (MkBlockNode _ stmts finalE)) =
-       validateStatementList ctx stmts
-    ++ validateMaybeExpr ctx finalE
+  validateBlock context (MkAstNode _ _ (MkBlockNode _ blockStatements finalExpression)) =
+       validateStatementList context blockStatements
+    ++ validateOptionalExpression context finalExpression
 
   validateStatementList : ValidationContext -> List SurfaceStatement -> List ValidationError
-  validateStatementList ctx [] = []
-  validateStatementList ctx (s :: rest) =
-    validateStatement ctx s ++ validateStatementList ctx rest
+  validateStatementList context [] = []
+  validateStatementList context (statement :: remainingStatements) =
+    validateStatement context statement ++ validateStatementList context remainingStatements
 
   validateStatement : ValidationContext -> SurfaceStatement -> List ValidationError
-  validateStatement ctx (MkAstNode _ _ stmt) =
-    case stmt of
-      StatementLet (MkLetBindingNode letQualifiers _ tyAnn maybeInit) =>
-           letQuantumUsageConflicts letQualifiers tyAnn
-        ++ validateMaybeTy ctx tyAnn
-        ++ (case maybeInit of
+  validateStatement context (MkAstNode _ _ statementNode) =
+    case statementNode of
+      StatementLet (MkLetBindingNode letQualifiers _ typeAnnotation letInitializer) =>
+           letQuantumUsageConflicts letQualifiers typeAnnotation
+        ++ validateOptionalType context typeAnnotation
+        ++ (case letInitializer of
               Nothing => []
-              Just (MkLetInitializerNode _ initValue) =>
-                validateExpr ctx initValue)
-      StatementAssignment (MkAssignmentNode target _ assignValue) =>
-           validateAssignmentTarget ctx target
-        ++ validateExpr ctx assignValue
-      StatementSemiExpression e => validateExpr ctx e
-      StatementExpression e     => validateExpr ctx e
+              Just (MkLetInitializerNode _ initializerValue) =>
+                validateExpression context initializerValue)
+      StatementAssignment (MkAssignmentNode assignmentTarget _ assignmentValue) =>
+           validateAssignmentTarget context assignmentTarget
+        ++ validateExpression context assignmentValue
+      StatementSemiExpression statementExpression => validateExpression context statementExpression
+      StatementExpression statementExpression     => validateExpression context statementExpression
 
   validateAssignmentTarget : ValidationContext -> SurfaceAssignmentTarget -> List ValidationError
-  validateAssignmentTarget ctx (MkAstNode _ _ target) =
-    case target of
-      AssignTargetName _             => []
-      AssignTargetIndex obj idx      =>
-        validateExpr ctx obj ++ validateExpr ctx idx
-      AssignTargetField obj _        => validateExpr ctx obj
-      AssignTargetTupleIndex obj _   => validateExpr ctx obj
+  validateAssignmentTarget context (MkAstNode _ _ targetNode) =
+    case targetNode of
+      AssignTargetName _                          => []
+      AssignTargetIndex targetObject index        =>
+        validateExpression context targetObject ++ validateExpression context index
+      AssignTargetField targetObject _            => validateExpression context targetObject
+      AssignTargetTupleIndex targetObject _       => validateExpression context targetObject
 
   ------------------------------------------------------------------
   -- Expressions
   ------------------------------------------------------------------
 
-  validateExprList :
+  validateExpressionList :
        ValidationContext -> List SurfaceExpr -> List ValidationError
-  validateExprList ctx [] = []
-  validateExprList ctx (e :: rest) =
-    validateExpr ctx e ++ validateExprList ctx rest
+  validateExpressionList context [] = []
+  validateExpressionList context (expression :: remainingExpressions) =
+    validateExpression context expression ++ validateExpressionList context remainingExpressions
 
-  validateExprList1 :
+  validateExpressionList1 :
        ValidationContext -> List1 SurfaceExpr -> List ValidationError
-  validateExprList1 ctx (e ::: rest) =
-    validateExpr ctx e ++ validateExprList ctx rest
+  validateExpressionList1 context (firstExpression ::: remainingExpressions) =
+    validateExpression context firstExpression ++ validateExpressionList context remainingExpressions
 
-  validateMaybeExpr :
+  validateOptionalExpression :
        ValidationContext -> Maybe SurfaceExpr -> List ValidationError
-  validateMaybeExpr ctx Nothing  = []
-  validateMaybeExpr ctx (Just e) = validateExpr ctx e
+  validateOptionalExpression context Nothing           = []
+  validateOptionalExpression context (Just expression) = validateExpression context expression
 
-  validateExpr : ValidationContext -> SurfaceExpr -> List ValidationError
-  validateExpr ctx (MkAstNode info _ expr) =
-    case expr of
+  validateExpression : ValidationContext -> SurfaceExpr -> List ValidationError
+  validateExpression context (MkAstNode expressionInfo _ expressionNode) =
+    case expressionNode of
       ExprLiteral _  => []
       ExprName _     => []
       ExprBuiltin _  => []
 
-      ExprParenthesized e   => validateExpr ctx e
-      ExprTuple es          => validateExprList1 ctx es
-      ExprArray es          => validateExprList ctx es
-      ExprRepeatedArray e c =>
-        validateExpr ctx e ++ arrayLengthErrors c ++ validateExpr ctx c
+      ExprParenthesized innerExpression => validateExpression context innerExpression
+      ExprTuple elementExpressions      => validateExpressionList1 context elementExpressions
+      ExprArray elementExpressions      => validateExpressionList context elementExpressions
+      ExprRepeatedArray repeatedElement repeatCount =>
+        validateExpression context repeatedElement ++ arrayLengthErrors repeatCount ++ validateExpression context repeatCount
 
-      ExprCall callee args =>
-        validateExpr ctx callee ++ validateExprList ctx args
-      ExprMethodCall recv _ args =>
-        validateExpr ctx recv ++ validateExprList ctx args
-      ExprField obj _        => validateExpr ctx obj
-      ExprTupleIndex obj _   => validateExpr ctx obj
-      ExprIndex obj idx      => validateExpr ctx obj ++ validateExpr ctx idx
+      ExprCall callee arguments =>
+        validateExpression context callee ++ validateExpressionList context arguments
+      ExprMethodCall receiver _ arguments =>
+        validateExpression context receiver ++ validateExpressionList context arguments
+      ExprField accessedObject _          => validateExpression context accessedObject
+      ExprTupleIndex indexedTuple _       => validateExpression context indexedTuple
+      ExprIndex indexedObject index       => validateExpression context indexedObject ++ validateExpression context index
 
-      ExprUnary _ operand    => validateExpr ctx operand
-      ExprBinary _ lhs rhs   => validateExpr ctx lhs ++ validateExpr ctx rhs
-      ExprRange s _ e        => validateMaybeExpr ctx s ++ validateMaybeExpr ctx e
-      ExprCast e ty          => validateExpr ctx e ++ validateTy ctx ty
+      ExprUnary _ operand                 => validateExpression context operand
+      ExprBinary _ leftOperand rightOperand =>
+        validateExpression context leftOperand ++ validateExpression context rightOperand
+      ExprRange rangeStart _ rangeEnd     =>
+        validateOptionalExpression context rangeStart ++ validateOptionalExpression context rangeEnd
+      ExprCast castOperand castTargetType =>
+        validateExpression context castOperand ++ validateType context castTargetType
 
-      ExprBlock b            => validateBlock ctx b
+      ExprBlock block                     => validateBlock context block
 
-      ExprIf ifNode          => validateClassicalIf ctx ifNode
+      ExprIf ifNode                       => validateClassicalIf context ifNode
 
       -- Loop bodies set insideLoop; while conditions and for iterator
       -- expressions do NOT count as inside the loop they head.
-      ExprLoop body =>
-        validateBlock (MkValidationContext True ctx.insideFunctionBody) body
-      ExprWhile cond body =>
-           validateExpr (MkValidationContext False ctx.insideFunctionBody) cond
-        ++ validateBlock (MkValidationContext True ctx.insideFunctionBody) body
-      ExprFor _ iterExpr body =>
-           validateExpr (MkValidationContext False ctx.insideFunctionBody) iterExpr
-        ++ validateBlock (MkValidationContext True ctx.insideFunctionBody) body
+      ExprLoop loopBody =>
+        validateBlock (MkValidationContext True context.insideFunctionBody) loopBody
+      ExprWhile loopCondition loopBody =>
+           validateExpression (MkValidationContext False context.insideFunctionBody) loopCondition
+        ++ validateBlock (MkValidationContext True context.insideFunctionBody) loopBody
+      ExprFor _ iterable loopBody =>
+           validateExpression (MkValidationContext False context.insideFunctionBody) iterable
+        ++ validateBlock (MkValidationContext True context.insideFunctionBody) loopBody
 
       ExprBreak breakValue =>
-        (if ctx.insideLoop then [] else [BreakOutsideLoop info.span])
-          ++ validateMaybeExpr ctx breakValue
+        (if context.insideLoop then [] else [BreakOutsideLoop expressionInfo.span])
+          ++ validateOptionalExpression context breakValue
       ExprContinue =>
-        if ctx.insideLoop then [] else [ContinueOutsideLoop info.span]
+        if context.insideLoop then [] else [ContinueOutsideLoop expressionInfo.span]
       ExprReturn returnValue =>
-        (if ctx.insideFunctionBody then [] else [ReturnOutsideFunction info.span])
-          ++ validateMaybeExpr ctx returnValue
+        (if context.insideFunctionBody then [] else [ReturnOutsideFunction expressionInfo.span])
+          ++ validateOptionalExpression context returnValue
 
-      ExprCtrl c    => validateControlExpr ctx c
-      ExprAdjoint a => validateAdjointExpr ctx a
+      ExprCtrl controlExpression     => validateControlExpression context controlExpression
+      ExprAdjoint adjointExpression  => validateAdjointExpression context adjointExpression
 
-      ExprStructLiteral _ fields => validateFieldInitList ctx fields
+      ExprStructLiteral _ fieldInitializers => validateFieldInitializerList context fieldInitializers
 
-      ExprQIf (MkQuantumIfNode qifCond thenBranch elseBranch) =>
-           validateExpr ctx qifCond
-        ++ validateQuantumBranch ctx thenBranch
+      ExprQIf (MkQuantumIfNode qifCondition thenBranch elseBranch) =>
+           validateExpression context qifCondition
+        ++ validateQuantumBranch context thenBranch
         ++ (case elseBranch of
               Nothing => []
-              Just b  => validateQuantumBranch ctx b)
-      ExprSIf (MkStateIfNode sifCond thenE elseE) =>
-           validateExpr ctx sifCond
-        ++ validateExpr ctx thenE
-        ++ validateExpr ctx elseE
+              Just quantumElseBranch => validateQuantumBranch context quantumElseBranch)
+      ExprSIf (MkStateIfNode sifCondition thenExpression elseExpression) =>
+           validateExpression context sifCondition
+        ++ validateExpression context thenExpression
+        ++ validateExpression context elseExpression
 
-      ExprMatch (MkClassicalMatchNode scrut arms) =>
-           validateExpr ctx scrut
-        ++ validateClassicalArmList ctx arms
-      ExprQMatch (MkQuantumMatchNode scrut arms) =>
-           validateExpr ctx scrut
-        ++ validateQuantumArmBodies ctx arms
-      ExprSMatch (MkStateMatchNode scrut arms) =>
-           validateExpr ctx scrut
-        ++ validateQuantumArmBodies ctx arms
+      ExprMatch (MkClassicalMatchNode scrutinee matchArms) =>
+           validateExpression context scrutinee
+        ++ validateClassicalArmList context matchArms
+      ExprQMatch (MkQuantumMatchNode scrutinee matchArms) =>
+           validateExpression context scrutinee
+        ++ validateQuantumArmBodies context matchArms
+      ExprSMatch (MkStateMatchNode scrutinee matchArms) =>
+           validateExpression context scrutinee
+        ++ validateQuantumArmBodies context matchArms
 
       -- ExprPath/ExprSelf carry no sub-expressions to walk. All eight forms
       -- above are also rejected as unsupported by the current parser, so a
@@ -620,86 +623,88 @@ mutual
       ExprPath _ => []
       ExprSelf _ => []
 
-  validateFieldInitList :
+  validateFieldInitializerList :
        ValidationContext
     -> List (AstNode SurfaceAstPhase (FieldInitializerNode SurfaceAstPhase))
     -> List ValidationError
-  validateFieldInitList ctx [] = []
-  validateFieldInitList ctx (MkAstNode _ _ f :: rest) =
-    (case f of
-       FieldInitShorthand _   => []
-       FieldInitExplicit _ e  => validateExpr ctx e)
-      ++ validateFieldInitList ctx rest
+  validateFieldInitializerList context [] = []
+  validateFieldInitializerList context (MkAstNode _ _ fieldInitializer :: remainingInitializers) =
+    (case fieldInitializer of
+       FieldInitShorthand _            => []
+       FieldInitExplicit _ fieldValue  => validateExpression context fieldValue)
+      ++ validateFieldInitializerList context remainingInitializers
 
   validateClassicalIf :
        ValidationContext -> ClassicalIfNode SurfaceAstPhase -> List ValidationError
-  validateClassicalIf ctx (MkClassicalIfNode ifCond thenBlock elseBranch) =
-       validateExpr ctx ifCond
-    ++ validateBlock ctx thenBlock
+  validateClassicalIf context (MkClassicalIfNode ifCondition thenBlock elseBranch) =
+       validateExpression context ifCondition
+    ++ validateBlock context thenBlock
     ++ (case elseBranch of
-          Nothing                => []
-          Just (ElseBlock b)     => validateBlock ctx b
-          Just (ElseChainedIf (MkAstNode _ _ chained)) =>
-            validateClassicalIf ctx chained)
+          Nothing                     => []
+          Just (ElseBlock elseBlock)  => validateBlock context elseBlock
+          Just (ElseChainedIf (MkAstNode _ _ chainedIfNode)) =>
+            validateClassicalIf context chainedIfNode)
 
   validateQuantumBranch :
        ValidationContext -> QuantumBranchNode SurfaceAstPhase -> List ValidationError
-  validateQuantumBranch ctx branch =
-    case branch of
-      QuantumBranchBlock b      => validateBlock ctx b
-      QuantumBranchExpression e => validateExpr ctx e
+  validateQuantumBranch context quantumBranch =
+    case quantumBranch of
+      QuantumBranchBlock branchBlock           => validateBlock context branchBlock
+      QuantumBranchExpression branchExpression => validateExpression context branchExpression
 
   validateClassicalArmList :
        ValidationContext
     -> List SurfaceClassicalMatchArm
     -> List ValidationError
-  validateClassicalArmList ctx [] = []
-  validateClassicalArmList ctx
-    (MkAstNode _ _ (MkClassicalMatchArmNode _ guard armBody) :: rest) =
-       validateMaybeExpr ctx guard
-    ++ validateExpr ctx armBody
-    ++ validateClassicalArmList ctx rest
+  validateClassicalArmList context [] = []
+  validateClassicalArmList context
+    (MkAstNode _ _ (MkClassicalMatchArmNode _ armGuard armBody) :: remainingArms) =
+       validateOptionalExpression context armGuard
+    ++ validateExpression context armBody
+    ++ validateClassicalArmList context remainingArms
 
   validateQuantumArmBodies :
        ValidationContext
     -> List SurfaceQuantumMatchArm
     -> List ValidationError
-  validateQuantumArmBodies ctx [] = []
-  validateQuantumArmBodies ctx
-    (MkAstNode _ _ (MkQuantumMatchArmNode _ armBody) :: rest) =
-    validateExpr ctx armBody ++ validateQuantumArmBodies ctx rest
+  validateQuantumArmBodies context [] = []
+  validateQuantumArmBodies context
+    (MkAstNode _ _ (MkQuantumMatchArmNode _ armBody) :: remainingArms) =
+    validateExpression context armBody ++ validateQuantumArmBodies context remainingArms
 
+  -- `rawBasis` is the selector as written, `bs"…"`: four characters are the
+  -- `bs` prefix and the quotes, the rest are one state per control.
   validateControlBasis :
       List1 SurfaceExpr -> Maybe (SurfaceAstNode String) -> List ValidationError
   validateControlBasis _ Nothing = []
-  validateControlBasis controls
+  validateControlBasis controlQbits
       (Just (MkAstNode basisInfo _ rawBasis)) =
-    let controlCount = length controls
+    let controlCount = length controlQbits
         basisLength = length (unpack rawBasis) `minus` 4
     in if controlCount == basisLength
         then []
         else [ControlBasisLengthMismatch basisInfo.span controlCount basisLength]
 
-  validateControlExpr :
+  validateControlExpression :
        ValidationContext -> ControlExpressionNode SurfaceAstPhase -> List ValidationError
-  validateControlExpr ctx c =
-    case c of
-      ControlledCallable controls onBasis callable =>
-          validateControlBasis controls onBasis
-        ++ validateExprList1 ctx controls
-        ++ validateExpr ctx callable
+  validateControlExpression context controlExpression =
+    case controlExpression of
+      ControlledCallable controlQbits onBasisRaw controlledCallable =>
+          validateControlBasis controlQbits onBasisRaw
+        ++ validateExpressionList1 context controlQbits
+        ++ validateExpression context controlledCallable
 
-      ControlledBlock controls onBasis body =>
-          validateControlBasis controls onBasis
-        ++ validateExprList1 ctx controls
-        ++ validateBlock ctx body
+      ControlledBlock controlQbits onBasisRaw controlledBlock =>
+          validateControlBasis controlQbits onBasisRaw
+        ++ validateExpressionList1 context controlQbits
+        ++ validateBlock context controlledBlock
 
-  validateAdjointExpr :
+  validateAdjointExpression :
        ValidationContext -> AdjointExpressionNode SurfaceAstPhase -> List ValidationError
-  validateAdjointExpr ctx a =
-    case a of
-      AdjointOfCallable callable => validateExpr ctx callable
-      AdjointBlock body          => validateBlock ctx body
+  validateAdjointExpression context adjointExpression =
+    case adjointExpression of
+      AdjointOfCallable adjointedCallable => validateExpression context adjointedCallable
+      AdjointBlock adjointedBlock         => validateBlock context adjointedBlock
 
   ------------------------------------------------------------------
   -- Types: the &mut-qbit check, the qualifier-behind-reference check, the
@@ -707,53 +712,53 @@ mutual
   -- (which are full surface expressions).
   ------------------------------------------------------------------
 
-  validateTyList :
+  validateTypeList :
        ValidationContext -> List SurfaceTy -> List ValidationError
-  validateTyList ctx [] = []
-  validateTyList ctx (t :: rest) =
-    validateTy ctx t ++ validateTyList ctx rest
+  validateTypeList context [] = []
+  validateTypeList context (writtenType :: remainingTypes) =
+    validateType context writtenType ++ validateTypeList context remainingTypes
 
-  validateTyList1 :
+  validateTypeList1 :
        ValidationContext -> List1 SurfaceTy -> List ValidationError
-  validateTyList1 ctx (t ::: rest) =
-    validateTy ctx t ++ validateTyList ctx rest
+  validateTypeList1 context (firstType ::: remainingTypes) =
+    validateType context firstType ++ validateTypeList context remainingTypes
 
-  validateMaybeTy :
+  validateOptionalType :
        ValidationContext -> Maybe SurfaceTy -> List ValidationError
-  validateMaybeTy ctx Nothing  = []
-  validateMaybeTy ctx (Just t) = validateTy ctx t
+  validateOptionalType context Nothing            = []
+  validateOptionalType context (Just writtenType) = validateType context writtenType
 
-  validateTy : ValidationContext -> SurfaceTy -> List ValidationError
-  validateTy ctx (MkAstNode _ _ ty) =
-    case ty of
-      TyPrimitive _        => []
-      TyPath _             => []
-      TyUnit               => []
-      TyParenthesized t    => validateTy ctx t
-      TyTuple ts           => validateTyList1 ctx ts
-      TyArray element size =>
-        validateTy ctx element ++ arrayLengthErrors size ++ validateExpr ctx size
-      TySlice element      => validateTy ctx element
-      TyReference (MkAstNode borrowInfo _ borrow)
-                  innerNode@(MkAstNode _ _ innerTy) =>
-        (case borrow of
+  validateType : ValidationContext -> SurfaceTy -> List ValidationError
+  validateType context (MkAstNode _ _ typeNode) =
+    case typeNode of
+      TyPrimitive _                    => []
+      TyPath _                         => []
+      TyUnit                           => []
+      TyParenthesized innerType        => validateType context innerType
+      TyTuple elementTypes             => validateTypeList1 context elementTypes
+      TyArray elementType sizeExpression =>
+        validateType context elementType ++ arrayLengthErrors sizeExpression ++ validateExpression context sizeExpression
+      TySlice elementType              => validateType context elementType
+      TyReference (MkAstNode borrowInfo _ borrowKind)
+                  referencedType@(MkAstNode _ _ referencedTypeNode) =>
+        (case borrowKind of
            MutableBorrow =>
-             if isSyntacticallyQbitTy innerTy
+             if isSyntacticallyQbitType referencedTypeNode
                then [MutableBorrowOfQbit borrowInfo.span]
                else []
            SharedBorrow  => [])
-          ++ qualifiersBehindReference innerNode
-          ++ validateTy ctx innerNode
-      TyQualified _ inner => validateTy ctx inner
-      TyFunction _ params returnTy =>
-        validateFunctionTypeParams ctx params
-          ++ validateMaybeTy ctx returnTy
+          ++ qualifiersBehindReference referencedType
+          ++ validateType context referencedType
+      TyQualified _ qualifiedType => validateType context qualifiedType
+      TyFunction _ functionParameters returnType =>
+        validateFunctionTypeParameterList context functionParameters
+          ++ validateOptionalType context returnType
 
-  validateFunctionTypeParams :
+  validateFunctionTypeParameterList :
        ValidationContext
     -> List (AstNode SurfaceAstPhase (FunctionTypeParameterNode SurfaceAstPhase SurfaceExpr))
     -> List ValidationError
-  validateFunctionTypeParams ctx [] = []
-  validateFunctionTypeParams ctx
-    (MkAstNode _ _ (MkFunctionTypeParameterNode _ paramTy) :: rest) =
-    validateTy ctx paramTy ++ validateFunctionTypeParams ctx rest
+  validateFunctionTypeParameterList context [] = []
+  validateFunctionTypeParameterList context
+    (MkAstNode _ _ (MkFunctionTypeParameterNode _ parameterType) :: remainingParameters) =
+    validateType context parameterType ++ validateFunctionTypeParameterList context remainingParameters

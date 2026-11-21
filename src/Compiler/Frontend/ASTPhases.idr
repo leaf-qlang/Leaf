@@ -61,23 +61,23 @@ TypedAstNode = AstNode TypedAstPhase
 
 public export
 surfaceAstNode : AstInfo -> a -> SurfaceAstNode a
-surfaceAstNode astInfo value =
-  MkAstNode astInfo () value
+surfaceAstNode astInfo nodeValue =
+  MkAstNode astInfo () nodeValue
 
 public export
 canonicalAstNode : AstInfo -> NodeProvenance -> a -> CanonicalAstNode a
-canonicalAstNode astInfo origin value =
-  MkAstNode astInfo (MkProvenanceMetadata origin) value
+canonicalAstNode astInfo provenance nodeValue =
+  MkAstNode astInfo (MkProvenanceMetadata provenance) nodeValue
 
 public export
 resolvedAstNode : AstInfo -> NodeProvenance -> a -> ResolvedAstNode a
-resolvedAstNode astInfo origin value =
-  MkAstNode astInfo (MkProvenanceMetadata origin) value
+resolvedAstNode astInfo provenance nodeValue =
+  MkAstNode astInfo (MkProvenanceMetadata provenance) nodeValue
 
 public export
 typedAstNode : AstInfo -> NodeProvenance -> a -> TypedAstNode a
-typedAstNode astInfo origin value =
-  MkAstNode astInfo (MkProvenanceMetadata origin) value
+typedAstNode astInfo provenance nodeValue =
+  MkAstNode astInfo (MkProvenanceMetadata provenance) nodeValue
 
 --------------------------------------------------------------------------------
 -- Show instance: print the payload only, skip the bookkeeping
@@ -85,4 +85,4 @@ typedAstNode astInfo origin value =
 
 public export
 Show a => Show (AstNode phase a) where
-  show (MkAstNode _ _ value) = show value
+  show (MkAstNode _ _ nodeValue) = show nodeValue

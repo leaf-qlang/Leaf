@@ -14,5 +14,5 @@ fixtureFile = "test-fixture.lf"
 ||| Every directly constructed node spans 2:3-9 of the fixture file.
 export
 fixtureInfo : Nat -> AstInfo
-fixtureInfo number = MkAstInfo (MkNodeId number 0)
+fixtureInfo surfaceId = MkAstInfo (MkNodeId surfaceId 0)
   (MkSourceSpan fixtureFile (MkSourcePos 2 3) (MkSourcePos 2 9))

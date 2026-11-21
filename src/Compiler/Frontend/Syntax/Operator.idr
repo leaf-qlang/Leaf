@@ -38,8 +38,8 @@ data BorrowKind
 
 public export
 showBorrowKindLeaf : BorrowKind -> String
-showBorrowKindLeaf b =
-  case b of
+showBorrowKindLeaf borrowKind =
+  case borrowKind of
     SharedBorrow  => "&"
     MutableBorrow => "&mut"
 
@@ -61,11 +61,11 @@ data UnaryOperator
 
 public export
 showUnaryOperatorLeaf : UnaryOperator -> String
-showUnaryOperatorLeaf op =
-  case op of
+showUnaryOperatorLeaf unaryOperator =
+  case unaryOperator of
     UnaryNegate     => "-"
     UnaryLogicalNot => "!"
-    UnaryBorrow b   => showBorrowKindLeaf b
+    UnaryBorrow borrowKind => showBorrowKindLeaf borrowKind
 
 public export
 implementation Show UnaryOperator where
@@ -112,8 +112,8 @@ data BinaryOperator
 
 public export
 showBinaryOperatorLeaf : BinaryOperator -> String
-showBinaryOperatorLeaf op =
-  case op of
+showBinaryOperatorLeaf binaryOperator =
+  case binaryOperator of
     BinaryAdd          => "+"
     BinarySubtract     => "-"
     BinaryMultiply     => "*"
@@ -166,8 +166,8 @@ data AssignmentOperator
 
 public export
 showAssignmentOperatorLeaf : AssignmentOperator -> String
-showAssignmentOperatorLeaf op =
-  case op of
+showAssignmentOperatorLeaf assignmentOperator =
+  case assignmentOperator of
     AssignValue      => "="
     AssignAdd        => "+="
     AssignSubtract   => "-="
@@ -210,8 +210,8 @@ data LetBindingOperator
 
 public export
 showLetBindingOperatorLeaf : LetBindingOperator -> String
-showLetBindingOperatorLeaf op =
-  case op of
+showLetBindingOperatorLeaf letBindingOperator =
+  case letBindingOperator of
     LetBindEquals        => "="
     LetBindAutoUncompute => ":="
 
@@ -240,8 +240,8 @@ data RangeOperator
 
 public export
 showRangeOperatorLeaf : RangeOperator -> String
-showRangeOperatorLeaf op =
-  case op of
+showRangeOperatorLeaf rangeOperator =
+  case rangeOperator of
     RangeExclusive => ".."
     RangeInclusive => "..="
 
@@ -259,11 +259,11 @@ data RangeShape = BoundedRange RangeOperator   -- a..b, a..=b
 
 public export
 showRangeShape : RangeShape -> String
-showRangeShape shape =
-  case shape of
-    BoundedRange op => "a" ++ showRangeOperatorLeaf op ++ "b"
+showRangeShape rangeShape =
+  case rangeShape of
+    BoundedRange rangeOperator => "a" ++ showRangeOperatorLeaf rangeOperator ++ "b"
     FromRange => "a.."
-    ToRange op => showRangeOperatorLeaf op ++ "b"
+    ToRange rangeOperator => showRangeOperatorLeaf rangeOperator ++ "b"
     FullRange => ".."
 
 public export

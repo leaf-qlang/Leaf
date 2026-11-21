@@ -34,34 +34,34 @@ import Parser.Helper
 
 ||| The fragments that occur on no node heading, e.g. `"BinaryOperator +"`.
 missingLines : List String -> String -> List String
-missingLines fragments output = filter (\fragment => not (any (isInfixOf fragment) (debugNodeHeaders output))) fragments
+missingLines fragments debugDump = filter (\fragment => not (any (isInfixOf fragment) (debugNodeHeaders debugDump))) fragments
 
 ||| The fragments missing from the dump of a parsed source.
 missingFromParsed : List String -> String -> Either String (List String)
-missingFromParsed fragments source = map (missingLines fragments) (debugAstOf source)
+missingFromParsed fragments sourceText = map (missingLines fragments) (debugAstOf sourceText)
 
 ||| Lines of a parsed dump containing a fragment.
 parsedLinesWith : String -> String -> Either String (List String)
-parsedLinesWith fragment source = map (filter (isInfixOf fragment) . debugNodeLines) (debugAstOf source)
+parsedLinesWith fragment sourceText = map (filter (isInfixOf fragment) . debugNodeLines) (debugAstOf sourceText)
 
 ||| Lines of a parsed dump containing a fragment, without node IDs, for tests
 ||| that are about the rest of the line.
 parsedLinesWithoutIds : String -> String -> Either String (List String)
-parsedLinesWithoutIds fragment source = map (map withoutNodeIds) (parsedLinesWith fragment source)
+parsedLinesWithoutIds fragment sourceText = map (map withoutNodeIds) (parsedLinesWith fragment sourceText)
 
 ||| The expected (ID, label) pairs with no node heading. Direct fixtures
 ||| exercise AST families intentionally rejected by today's parser. IDs
 ||| identify the actual descendants, not text in snippets.
 missingNodes : List (Nat, String) -> String -> List (Nat, String)
-missingNodes expected output = filter (not . present) expected
+missingNodes expectedNodes debugDump = filter (not . present) expectedNodes
   where
     present : (Nat, String) -> Bool
-    present (number, label) =
-      any (\header => take 2 (words header) == ["#" ++ show number, label]) (debugNodeHeaders output)
+    present (surfaceId, label) =
+      any (\header => take 2 (words header) == ["#" ++ show surfaceId, label]) (debugNodeHeaders debugDump)
 
 ||| The leading `phase=... file=...` line.
 phaseLine : String -> String
-phaseLine output = fromMaybe "" (head' (lines output))
+phaseLine debugDump = fromMaybe "" (head' (lines debugDump))
 
 ||| A heading's snippet, with its backticks.
 snippetOf : String -> String
@@ -69,7 +69,7 @@ snippetOf header = pack (dropWhile (/= '`') (unpack header))
 
 ||| The last `count` characters of a text.
 ending : Nat -> String -> String
-ending count text = substr (minus (length text) count) count text
+ending characterCount fullText = substr (minus (length fullText) characterCount) characterCount fullText
 
 ||| Whether a snippet, with its two backticks, fits the preview limit.
 snippetWithinLimit : String -> Bool
@@ -83,7 +83,7 @@ function : SurfaceBlock -> FunctionDeclarationNode SurfaceAstPhase
 function body = MkFunctionDeclarationNode [] [] Nothing Nothing Nothing (nameAt 2 "f") [] Nothing [] [] body
 
 sourceWith : List SurfaceItem -> SurfaceSourceFile
-sourceWith items = surfaceAt 0 (MkSourceFileNode [] items)
+sourceWith sourceFileItems = surfaceAt 0 (MkSourceFileNode [] sourceFileItems)
 
 expressionDump : ExpressionNode SurfaceAstPhase -> String
 expressionDump expression = showAstDebug $ sourceWith
@@ -96,15 +96,15 @@ nestedBlocks (S depth) = surfaceAt (11 + depth * 2)
 
 ||| The dump of a file holding only an inner block doc with this text.
 docDump : String -> String
-docDump raw = showAstDebug (surfaceAt 0 (MkSourceFileNode [innerDocAt 1 DocCommentBlock raw] []))
+docDump rawDocText = showAstDebug (surfaceAt 0 (MkSourceFileNode [innerDocAt 1 DocCommentBlock rawDocText] []))
 
 ||| The doc comment's heading in `docDump`.
 docHeading : String -> String
-docHeading raw = fromMaybe "" (find (isInfixOf "MkDocCommentNode") (debugNodeHeaders (docDump raw)))
+docHeading rawDocText = fromMaybe "" (find (isInfixOf "MkDocCommentNode") (debugNodeHeaders (docDump rawDocText)))
 
 ||| The characters of a dump that are among the given code points.
 rawCharsIn : List Int -> String -> List Char
-rawCharsIn codes output = filter (\c => elem (ord c) codes) (unpack output)
+rawCharsIn codePoints debugDump = filter (\character => elem (ord character) codePoints) (unpack debugDump)
 
 ||| Code points the dump must not show raw, with the escape it shows instead:
 ||| terminal controls, line separators, and invisible format characters across
@@ -127,9 +127,9 @@ escapedCharacters =
 ||| it, in both its payload and its snippet, only as the given escape.
 escapedEverywhere : (Int, String) -> Bool
 escapedEverywhere (code, escaped) =
-  let output = expressionDump (ExprLiteral (surfaceAt 11 (LiteralStringRaw ("\"" ++ singleton (chr code) ++ "\""))))
-  in null (rawCharsIn [code] output) &&
-     null (missingLines ["LiteralStringRaw \"" ++ escaped ++ "\"", "`\"" ++ escaped ++ "\"`"] output)
+  let debugDump = expressionDump (ExprLiteral (surfaceAt 11 (LiteralStringRaw ("\"" ++ singleton (chr code) ++ "\""))))
+  in null (rawCharsIn [code] debugDump) &&
+     null (missingLines ["LiteralStringRaw \"" ++ escaped ++ "\"", "`\"" ++ escaped ++ "\"`"] debugDump)
 
 resolvedAt : Nat -> a -> ResolvedAstNode a
 resolvedAt number = resolvedAstNode (fixtureInfo number) WrittenCode
@@ -138,7 +138,7 @@ typedAt : Nat -> a -> TypedAstNode a
 typedAt number = typedAstNode (fixtureInfo number) WrittenCode
 
 resolvedName : Nat -> String -> Nat -> ResolvedName
-resolvedName number text symbol = resolvedAt number (MkResolvedNameNode text (MkSymbolId symbol))
+resolvedName surfaceId nameText symbolNumber = resolvedAt surfaceId (MkResolvedNameNode nameText (MkSymbolId symbolNumber))
 
 resolvedDump : String
 resolvedDump =
@@ -157,9 +157,9 @@ typedDump : String
 typedDump =
   let receiver : TypedExpr = typedAt 4 (ExprSelf (MkSymbolId 30))
       member : MemberName TypedAstPhase = typedAt 5 (MkResolvedNameNode "field" (MkSymbolId 31))
-      value : TypedExpr = typedAt 6 (ExprField receiver member)
+      fieldExpression : TypedExpr = typedAt 6 (ExprField receiver member)
       declaration : ConstDeclarationNode TypedAstPhase = MkConstDeclarationNode [] Nothing
-        (typedAt 2 (MkResolvedNameNode "N" (MkSymbolId 32))) (typedAt 3 TyUnit) value
+        (typedAt 2 (MkResolvedNameNode "N" (MkSymbolId 32))) (typedAt 3 TyUnit) fieldExpression
   in showAstDebug (typedAt 0 (MkSourceFileNode [] [typedAt 1 (ItemConst declaration)]))
 
 --------------------------------------------------------------------------------
@@ -168,7 +168,7 @@ typedDump =
 
 previewEscape : Char -> List Char
 previewEscape '\n' = ['\\', 'n']
-previewEscape c = [c]
+previewEscape character = [character]
 
 ||| Deliberately failing sentinel: the prefix renderer must never force this.
 ||| assert_total permits this unreachable test branch under %default covering.
@@ -197,7 +197,7 @@ previewName (MkNameNode spelling) =
   prettyPathDoc _ = Append (text (pack (replicate 100 'p'))) (unrequestedText ())
 
 preview : SourceText -> String
-preview = renderSourcePreview (\c => [c]) snippetLimit
+preview = renderSourcePreview (\character => [character]) snippetLimit
 
 longInteger : SurfaceExpr
 longInteger = integerAt 10 (pack (replicate 100 '1'))
@@ -226,19 +226,19 @@ runASTDebugPrinterTests = runTests $ Test.do
        ] `shouldBe` [truncatedPreview "" 'p', truncatedPreview "let x: " 'p']
 
   test "full paths and previews agree across all AST phases" $
-    let first = "self"
-        rest = replicate 20 "part"
+    let firstSegmentText = "self"
+        remainingSegmentTexts = replicate 20 "part"
         surfacePath : PathNode SurfaceAstPhase = MkPathNode
-          (surfaceAt 1 PathSegmentSelf) (map (\s => surfaceAt 2 (PathSegmentName s)) rest)
+          (surfaceAt 1 PathSegmentSelf) (map (\segmentText => surfaceAt 2 (PathSegmentName segmentText)) remainingSegmentTexts)
         canonicalPath : PathNode CanonicalAstPhase = MkPathNode
           (canonicalAstNode (fixtureInfo 1) WrittenCode PathSegmentSelf)
-          (map (\s => canonicalAstNode (fixtureInfo 2) WrittenCode (PathSegmentName s)) rest)
-        resolvedPath = MkResolvedPathNode first rest (MkSymbolId 5)
+          (map (\segmentText => canonicalAstNode (fixtureInfo 2) WrittenCode (PathSegmentName segmentText)) remainingSegmentTexts)
+        resolvedPath = MkResolvedPathNode firstSegmentText remainingSegmentTexts (MkSymbolId 5)
         documents = [ prettyPathDoc {phase=SurfaceAstPhase} surfacePath
                     , prettyPathDoc {phase=CanonicalAstPhase} canonicalPath
                     , prettyPathDoc {phase=ResolvedAstPhase} resolvedPath
                     , prettyPathDoc {phase=TypedAstPhase} resolvedPath ]
-        full = joinBy "::" (first :: rest)
+        full = joinBy "::" (firstSegmentText :: remainingSegmentTexts)
     in map (\document => (renderSource document, preview document)) documents
       `shouldBe` replicate 4 (full, substr 0 (minus snippetLimit 1) full ++ "…")
 
@@ -250,26 +250,26 @@ runASTDebugPrinterTests = runTests $ Test.do
                        surfaceAt 4 (ExprArray [longInteger, hidden]),
                        surfaceAt 4 (ExprCall callee [longInteger, hidden]),
                        surfaceAt 4 (ExprMethodCall receiver (nameAt 26 "m") [longInteger, hidden])]
-    in sameInBothStyles (\style => map (\expr => preview (showExprDoc @{previewPhase} style expr)) expressions)
+    in sameInBothStyles (\style => map (\expression => preview (showExprDoc @{previewPhase} style expression)) expressions)
          (map expectedPrefix ["(", "[", "f(", "x.m("])
 
   test "pattern and type collections defer their later children" $
     let pattern = surfaceAt 30 (PatternTuple
           (surfaceAt 31 (PatternLiteral (surfaceAt 32 (LiteralIntegerRaw (pack (replicate 100 '1'))))) :::
             [surfaceAt 33 (PatternName Nothing (nameAt 34 "hidden"))]))
-        ty = surfaceAt 40 (TyTuple (surfaceAt 41 (TyArray (surfaceAt 42 (TyPrimitive TypPrimI32)) longInteger) :::
+        tupleType = surfaceAt 40 (TyTuple (surfaceAt 41 (TyArray (surfaceAt 42 (TyPrimitive TypPrimI32)) longInteger) :::
                [surfaceAt 43 (TyPath (pathAt 44 "Hidden"))]))
         binding = surfaceAt 50 (StatementLet (MkLetBindingNode [] pattern Nothing Nothing))
         typedBinding = surfaceAt 51 (StatementLet (MkLetBindingNode []
-          (surfaceAt 52 (PatternName Nothing (nameAt 53 "x"))) (Just ty) Nothing))
+          (surfaceAt 52 (PatternName Nothing (nameAt 53 "x"))) (Just tupleType) Nothing))
     in map (\statement => preview (showStatementDoc @{previewPhase} PrettyStrict statement)) [binding, typedBinding]
       `shouldBe` map expectedPrefix ["let (", "let x: ([i32; "]
 
   test "function parameter previews defer later parameter names" $
-    let first = surfaceAt 60 (NormalParameter [] Nothing (nameAt 61 "x")
+    let firstParameter = surfaceAt 60 (NormalParameter [] Nothing (nameAt 61 "x")
           (surfaceAt 62 (TyArray (surfaceAt 63 (TyPrimitive TypPrimI32)) longInteger)))
-        later = surfaceAt 64 (NormalParameter [] Nothing (nameAt 65 "hidden") (surfaceAt 66 TyUnit))
-        declaration = { functionParameters := [first, later] } (function (valueBlockAt 3 (integerAt 4 "0")))
+        laterParameter = surfaceAt 64 (NormalParameter [] Nothing (nameAt 65 "hidden") (surfaceAt 66 TyUnit))
+        declaration = { functionParameters := [firstParameter, laterParameter] } (function (valueBlockAt 3 (integerAt 4 "0")))
     in preview (showFunctionDeclarationDoc @{previewPhase} PrettyStrict (surfaceAt 1 declaration))
       `shouldBe` expectedPrefix "fn f(x: [i32; "
 
@@ -287,8 +287,8 @@ runASTDebugPrinterTests = runTests $ Test.do
     docHeading "/*! café λ 漢字 😀 */" `shouldBe` "#1 MkDocCommentNode block inner /*! café λ 漢字 😀 */ @2:3-9"
 
   test "a payload cannot imitate the separator of nodes sharing a line" $
-    let raw = "/*! a > #7 Name b */"
-    in (docHeading raw, debugNodeSurfaceIds (docDump raw))
+    let rawDocText = "/*! a > #7 Name b */"
+    in (docHeading rawDocText, debugNodeSurfaceIds (docDump rawDocText))
       `shouldBe` ("#1 MkDocCommentNode block inner /*! a > \\#7 Name b */ @2:3-9", Just [0, 1])
 
   test "node headings are not split inside a snippet" $
@@ -329,7 +329,7 @@ runASTDebugPrinterTests = runTests $ Test.do
                   Right ["Name f @1:4-5", "ExprName > Name g @1:10-11", "ExprName > Name x @1:12-13"])
 
   test "repeated provenance on a shared line is marked as the same" $
-    map (\ast => filter (isInfixOf "ExprReturn") (debugNodeLines (showAstDebug (desugarSurfaceSyntax ast))))
+    map (\surfaceSourceFile => filter (isInfixOf "ExprReturn") (debugNodeLines (showAstDebug (desugarSurfaceSyntax surfaceSourceFile))))
       (lexThenParse "fn f() -> i32 { g() }")
       `shouldBe` Right [("#4.1 StatementSemiExpression [desugared return statement] > #4.2 " ++
                          "ExprReturn [same] > #7 ExprCall @1:17-20 `return g();`")]
@@ -382,12 +382,12 @@ runASTDebugPrinterTests = runTests $ Test.do
       `shouldBe` ""
 
   test "deep debug trees retain every node while bounding each snippet" $
-    let output = expressionDump (nestedBlocks 800).nodeValue
-        headers = debugNodeHeaders output
-        snippets = filter (isInfixOf "`") (debugNodeLines output)
+    let debugDump = expressionDump (nestedBlocks 800).nodeValue
+        headers = debugNodeHeaders debugDump
+        snippets = filter (isInfixOf "`") (debugNodeLines debugDump)
     in (length (filter (isInfixOf "MkBlockNode") headers),
         filter (not . snippetWithinLimit) snippets,
-        missingNodes [(10, "ExprLiteral"), (11, "LiteralIntegerRaw")] output)
+        missingNodes [(10, "ExprLiteral"), (11, "LiteralIntegerRaw")] debugDump)
       `shouldBe` (801, [], [])
 
   test "function types include effects, parameter names, array lengths and results" $
@@ -427,19 +427,19 @@ runASTDebugPrinterTests = runTests $ Test.do
       `shouldBe` Just [0, 1, 2, 3, 4, 10]
 
   test "desugared nodes show both ID components and only generated provenance" $
-    map (\ast => let output = showAstDebug (desugarSurfaceSyntax ast) in
+    map (\surfaceSourceFile => let debugDump = showAstDebug (desugarSurfaceSyntax surfaceSourceFile) in
       (missingLines ["#5.1 TyQualified", "#5 TyPrimitive qbit", "#5.2 QuantumUsageQualifier linear",
-                     "[inferred default qbit qualifier]"] output,
-       phaseLine output,
-       filter (isInfixOf "user written code") (lines output)))
+                     "[inferred default qbit qualifier]"] debugDump,
+       phaseLine debugDump,
+       filter (isInfixOf "user written code") (lines debugDump)))
       (lexThenParse "fn f(q: qbit) {}")
       `shouldBe` Right ([], "phase=canonical file=\{fixtureFile}", [])
 
   test "spans are half-open and name a file only when it differs" $
     let foreign : SurfaceExpr = surfaceAstNode (MkAstInfo (MkNodeId 4 0)
           (MkSourceSpan "other.lf" (MkSourcePos 1 2) (MkSourcePos 3 4))) ExprContinue
-        output = showAstDebug (sourceWith [surfaceAt 1 (ItemFunction (function (valueBlockAt 3 foreign)))])
-    in (phaseLine output, missingLines ["#3 MkBlockNode @2:3-9", "#4 ExprContinue @other.lf:1:2-3:4"] output)
+        debugDump = showAstDebug (sourceWith [surfaceAt 1 (ItemFunction (function (valueBlockAt 3 foreign)))])
+    in (phaseLine debugDump, missingLines ["#3 MkBlockNode @2:3-9", "#4 ExprContinue @other.lf:1:2-3:4"] debugDump)
       `shouldBe` ("phase=surface file=\{fixtureFile}", [])
 
   test "resolved names, paths and self retain distinct symbol IDs" $
@@ -498,7 +498,7 @@ runASTDebugPrinterTests = runTests $ Test.do
 
   test "nested modules traverse every declaration family" $
     let field = surfaceAt 20 (MkStructFieldNode [] (nameAt 21 "x") (surfaceAt 22 (TyPrimitive TypPrimI32)))
-        items =
+        moduleItems =
           [ surfaceAt 10 (ItemStruct (MkStructDeclarationNode [] [] Nothing (nameAt 11 "Point") [field]))
           , surfaceAt 30 (ItemEnum (MkEnumDeclarationNode [] [] Nothing (nameAt 31 "E")
               [ surfaceAt 32 (MkEnumVariantNode [] (nameAt 33 "A") VariantUnit)
@@ -511,13 +511,13 @@ runASTDebugPrinterTests = runTests $ Test.do
           , surfaceAt 60 (ItemUse (MkUseDeclarationNode [] Nothing (pathAt 61 "Point") (Just (nameAt 63 "P"))))
           , surfaceAt 70 (ItemModule (MkModuleDeclarationNode [] Nothing (nameAt 71 "external") ModuleExternal))
           ]
-        outer = surfaceAt 1 (ItemModule (MkModuleDeclarationNode [] Nothing (nameAt 2 "M") (ModuleInline [] items)))
-        output = showAstDebug (sourceWith [outer])
+        outer = surfaceAt 1 (ItemModule (MkModuleDeclarationNode [] Nothing (nameAt 2 "M") (ModuleInline [] moduleItems)))
+        debugDump = showAstDebug (sourceWith [outer])
     in (missingNodes [(20, "MkStructFieldNode"), (22, "TyPrimitive"), (36, "TyUnit"), (42, "MkQEnumVariantNode"),
                       (44, "TyPrimitive"), (53, "MkFunctionDeclarationNode"), (55, "ExprLiteral"),
-                      (63, "MkNameNode"), (71, "Name")] output,
+                      (63, "MkNameNode"), (71, "Name")] debugDump,
         missingLines ["#1 ItemModule inline", "#70 ItemModule external", "#32 MkEnumVariantNode unit",
-                      "#34 MkEnumVariantNode tuple", "#37 MkEnumVariantNode struct"] output)
+                      "#34 MkEnumVariantNode tuple", "#37 MkEnumVariantNode struct"] debugDump)
       `shouldBe` ([], [])
 
   test "docs, support clauses and all contract predicates are traversed" $
@@ -532,8 +532,8 @@ runASTDebugPrinterTests = runTests $ Test.do
         declaration = { functionDocs := [surfaceAt 60 (MkDocCommentNode DocCommentLine DocCommentOuter "/// docs")],
                         supportClause := [surfaceAt 61 SupportAdjoint, surfaceAt 62 SupportCtrl],
                         contractClauses := contracts } (function (valueBlockAt 3 (integerAt 4 "8")))
-        output = showAstDebug (sourceWith [surfaceAt 1 (ItemFunction declaration)])
+        debugDump = showAstDebug (sourceWith [surfaceAt 1 (ItemFunction declaration)])
     in missingLines ["MkDocCommentNode line outer /// docs", "SupportKind adjoint", "SupportKind ctrl",
                      "RequiresClause", "EnsuresClause", "ContractClean", "ContractBasis", "ContractSeparable",
                      "ContractIsolated", "ContractProduct", "ContractStabilized", "MkSignedPauliTermNode -",
-                     "MkPauliStringNode XZ"] output `shouldBe` []
+                     "MkPauliStringNode XZ"] debugDump `shouldBe` []

@@ -23,7 +23,7 @@ runPreludeFunctionsResolutionTests = runTests $ Test.do
 
   test "every specified prelude name resolves as an ordinary value" $
     useOrigins "fn f() { abs; acos; asin; atan; ceil; cos; exp; floor; ln; log2; log10; max; min; Param; phase; round; sin; sqrt; tan; turns; I; X; Y; Z; H; S; SDG; T; TDG; SX; SXDG; RX; RY; RZ; U1; U2; U3; CNOT; CX; CY; CZ; CS; CSDG; CT; CTDG; CSX; CSXDG; CRX; CRY; CRZ; CU1; CU2; CU3; SWAP; RXX; RYY; RZZ; CCX; CSWAP; GPI; GPI2; MS; ZZ; }"
-      `shouldBe` Just (map (\name => (name, "prelude")) preludeFunctionNames)
+      `shouldBe` Just (map (\functionName => (functionName, "prelude")) preludeFunctionNames)
 
   test "source functions shadow the prelude even before their declaration" $
     useOrigins "fn f() { sin(0.0); } fn sin(x: f64) { x; }"
@@ -56,27 +56,27 @@ runPreludeFunctionsResolutionTests = runTests $ Test.do
        _ => False) `shouldBe` True
 
   test "prelude registration creates no source occurrences or locals" $
-    (do resolved <- resolvedSource ""
-        root <- lookup resolved.rootScopeId resolved.tables.scopes
-        pure (length (SortedMap.toList resolved.tables.references),
-              length (SortedMap.toList resolved.tables.nodeScopes),
-              length (SortedMap.toList resolved.tables.localVarsMeta),
-              length (SortedMap.toList root.valueBindings),
-              length (SortedMap.toList root.typeBindings)))
+    (do resolvedModule <- resolvedSource ""
+        rootScope <- lookup resolvedModule.rootScopeId resolvedModule.tables.scopes
+        pure (length (SortedMap.toList resolvedModule.tables.references),
+              length (SortedMap.toList resolvedModule.tables.nodeScopes),
+              length (SortedMap.toList resolvedModule.tables.localVarsMeta),
+              length (SortedMap.toList rootScope.valueBindings),
+              length (SortedMap.toList rootScope.typeBindings)))
       `shouldBe` Just (0, 1, 0, 0, 0)
 
   test "repeated prelude uses retain their symbol identity and use-site scopes" $
-    (do resolved <- resolvedSource "fn f() { sin; { sin; } }"
-        [first, second] <- pure (valueReferences resolved)
+    (do resolvedModule <- resolvedSource "fn f() { sin; { sin; } }"
+        [outerSinReference, innerSinReference] <- pure (valueReferences resolvedModule)
           | _ => Nothing
-        pure (first.target == second.target &&
-              first.enclosingScope /= second.enclosingScope &&
-              lookup first.occurrence.nodeId resolved.tables.nodeScopes == Just first.enclosingScope &&
-              lookup second.occurrence.nodeId resolved.tables.nodeScopes == Just second.enclosingScope))
+        pure (outerSinReference.target == innerSinReference.target &&
+              outerSinReference.enclosingScope /= innerSinReference.enclosingScope &&
+              lookup outerSinReference.occurrence.nodeId resolvedModule.tables.nodeScopes == Just outerSinReference.enclosingScope &&
+              lookup innerSinReference.occurrence.nodeId resolvedModule.tables.nodeScopes == Just innerSinReference.enclosingScope))
       `shouldBe` Just True
 
   test "resolved prelude and shadowing tables pass invariant validation" $
-    traverse (\source => map (map show . validateResolvedModule) (resolvedSource source))
+    traverse (\sourceText => map (map show . validateResolvedModule) (resolvedSource sourceText))
       [ ""
       , "fn f() { sin(0.0); cos(0.0); }"
       , "fn f() { sin(0.0); } fn sin(x: f64) { x; }"

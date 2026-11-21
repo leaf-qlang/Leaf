@@ -11,8 +11,8 @@ import Compiler.Frontend.Syntax.Common
 
 export
 recordNodeScope : NodeId -> StateT ScopeTables (Either ResolutionError) ()
-recordNodeScope nodeId = modify $ \tables =>
-  { nodeScopes := insert nodeId tables.currentScopeId tables.nodeScopes } tables
+recordNodeScope nodeId = modify $ \scopeTables =>
+  { nodeScopes := insert nodeId scopeTables.currentScopeId scopeTables.nodeScopes } scopeTables
 
 export
 symbolVisibility : Maybe (AstNode CanonicalAstPhase VisibilityQualifier) -> SymbolVisibility
@@ -27,21 +27,22 @@ data BindingRetrievalResult
 
 export
 retrieveSymbolBinding : String -> ScopeTables -> BindingRetrievalResult
-retrieveSymbolBinding symbolName tables =
-  search (length (SortedMap.toList tables.scopes)) tables.currentScopeId
+retrieveSymbolBinding symbolName scopeTables =
+  searchScopeAndAncestors (length (SortedMap.toList scopeTables.scopes)) scopeTables.currentScopeId
   where
-    search : Nat -> ScopeId -> BindingRetrievalResult
-    search Z _ = UnresolvedBinding
-    search (S remaining) scopeId =
-      case lookup scopeId tables.scopes of
+    -- `remainingScopeCount` bounds the walk, so it terminates even on a malformed parent chain.
+    searchScopeAndAncestors : (remainingScopeCount : Nat) -> ScopeId -> BindingRetrievalResult
+    searchScopeAndAncestors Z _ = UnresolvedBinding
+    searchScopeAndAncestors (S remainingScopeCount) scopeId =
+      case lookup scopeId scopeTables.scopes of
         Nothing => UnresolvedBinding
-        Just scope =>
-          case lookup symbolName scope.valueBindings of
-            Just binding => Binding binding
+        Just scopeInfo =>
+          case lookup symbolName scopeInfo.valueBindings of
+            Just scopeBinding => Binding scopeBinding
             Nothing =>
-              case scope.parent of
+              case scopeInfo.parent of
                 Nothing => UnresolvedBinding
-                Just parentId => search remaining parentId
+                Just parentScopeId => searchScopeAndAncestors remainingScopeCount parentScopeId
 
 export
 isLocalSymbolKind : SymbolKind -> Bool
@@ -50,16 +51,17 @@ isLocalSymbolKind SymbolFunctionParameter = True
 isLocalSymbolKind SymbolSelfReceiverParameter = True
 isLocalSymbolKind _ = False
 
-||| True when `candidate` is `start` or one of its parent scopes.
+||| True when `candidateScopeId` is `startScopeId` or one of its parent scopes.
 export
 isScopeOrAncestor : ScopeId -> ScopeId -> ScopeTables -> Bool
-isScopeOrAncestor candidate start tables =
-  walk (length (SortedMap.toList tables.scopes)) start
+isScopeOrAncestor candidateScopeId startScopeId scopeTables =
+  isCandidateOnPathToRoot (length (SortedMap.toList scopeTables.scopes)) startScopeId
   where
-    walk : Nat -> ScopeId -> Bool
-    walk Z _ = False
-    walk (S remaining) scopeId =
-      scopeId == candidate ||
-        case lookup scopeId tables.scopes >>= (.parent) of
+    -- `remainingScopeCount` bounds the walk, so it terminates even on a malformed parent chain.
+    isCandidateOnPathToRoot : (remainingScopeCount : Nat) -> ScopeId -> Bool
+    isCandidateOnPathToRoot Z _ = False
+    isCandidateOnPathToRoot (S remainingScopeCount) scopeId =
+      scopeId == candidateScopeId ||
+        case lookup scopeId scopeTables.scopes >>= (.parent) of
           Nothing => False
-          Just parentId => walk remaining parentId
+          Just parentScopeId => isCandidateOnPathToRoot remainingScopeCount parentScopeId

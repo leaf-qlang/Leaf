@@ -24,15 +24,15 @@ record NodeId where
 
 public export
 Eq NodeId where
-  MkNodeId leftSurface leftDesugar == MkNodeId rightSurface rightDesugar =
-    leftSurface == rightSurface && leftDesugar == rightDesugar
+  MkNodeId leftSurfaceId leftDesugarId == MkNodeId rightSurfaceId rightDesugarId =
+    leftSurfaceId == rightSurfaceId && leftDesugarId == rightDesugarId
 
 public export
 Ord NodeId where
-  compare (MkNodeId leftSurface leftDesugar) (MkNodeId rightSurface rightDesugar) =
-    case compare leftSurface rightSurface of
-      EQ => compare leftDesugar rightDesugar
-      ordering => ordering
+  compare (MkNodeId leftSurfaceId leftDesugarId) (MkNodeId rightSurfaceId rightDesugarId) =
+    case compare leftSurfaceId rightSurfaceId of
+      EQ => compare leftDesugarId rightDesugarId
+      surfaceIdOrdering => surfaceIdOrdering
 
 -- Unique id for a declared entity, not for each name bound to it in a scope.
 -- Imports and aliases introduce ScopeBindings that retain the target entity's
@@ -46,11 +46,11 @@ record SymbolId where
 
 public export
 Eq SymbolId where
-  MkSymbolId left == MkSymbolId right = left == right
+  MkSymbolId leftSymbolNumber == MkSymbolId rightSymbolNumber = leftSymbolNumber == rightSymbolNumber
 
 public export
 Ord SymbolId where
-  compare (MkSymbolId left) (MkSymbolId right) = compare left right
+  compare (MkSymbolId leftSymbolNumber) (MkSymbolId rightSymbolNumber) = compare leftSymbolNumber rightSymbolNumber
 
 -- Unique id for a lexical scope or a member namespace.
 -- Blocks, functions, and modules can introduce lexical scopes; types and
@@ -62,11 +62,11 @@ record ScopeId where
 
 public export
 Eq ScopeId where
-  MkScopeId left == MkScopeId right = left == right
+  MkScopeId leftScopeNumber == MkScopeId rightScopeNumber = leftScopeNumber == rightScopeNumber
 
 public export
 Ord ScopeId where
-  compare (MkScopeId left) (MkScopeId right) = compare left right
+  compare (MkScopeId leftScopeNumber) (MkScopeId rightScopeNumber) = compare leftScopeNumber rightScopeNumber
 
 --------------------------------------------------------------------------------
 -- Node provenance: written/desugaring/type-checker

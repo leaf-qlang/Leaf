@@ -38,52 +38,52 @@ isSignedInteger _ = False
 
 public export
 integerBounds : TypPrimName -> Maybe (Integer, Integer)
-integerBounds primitive = do
-  bitWidth <- integerBitWidth primitive
+integerBounds integerType = do
+  bitWidth <- integerBitWidth integerType
   let modulus = the Integer 1 `shiftL` bitWidth
-  pure $ if isSignedInteger primitive
+  pure $ if isSignedInteger integerType
     then (negate (modulus `div` 2), modulus `div` 2 - 1)
     else (0, modulus - 1)
 
 fitsInteger : TypPrimName -> Integer -> Bool
-fitsInteger primitive value =
-  case integerBounds primitive of
+fitsInteger integerType value =
+  case integerBounds integerType of
     Nothing => False
-    Just (lower, upper) => (value >= lower) && (value <= upper)
+    Just (lowerBound, upperBound) => (value >= lowerBound) && (value <= upperBound)
 
 literalBounds : TypPrimName -> Maybe (Integer, Integer)
 literalBounds TypPrimBit = Just (0, 1)
-literalBounds primitive = integerBounds primitive
+literalBounds literalType = integerBounds literalType
 
 fitsLiteral : TypPrimName -> Integer -> Bool
-fitsLiteral primitive value =
-  case literalBounds primitive of
+fitsLiteral literalType value =
+  case literalBounds literalType of
     Nothing => False
-    Just (lower, upper) => (value >= lower) && (value <= upper)
+    Just (lowerBound, upperBound) => (value >= lowerBound) && (value <= upperBound)
 
-inferLiteral : (negated : Bool) -> Maybe TypPrimName -> String -> SourceSpan -> Either TypeError (TypPrimName, Integer)
-inferLiteral negated expected raw sourceSpan = do
-  let contextualTypPrimName = do
-        primitiveName <- expected
+inferLiteral : (isNegated : Bool) -> Maybe TypPrimName -> String -> SourceSpan -> Either TypeError (TypPrimName, Integer)
+inferLiteral isNegated expectedPrimitive rawLiteralText sourceSpan = do
+  let expectedLiteralType = do
+        primitiveName <- expectedPrimitive
         _ <- literalBounds primitiveName
         pure primitiveName
-  let primitiveName = fromMaybe (fromMaybe TypPrimI32 contextualTypPrimName) (integerLiteralSuffixType raw)
-  case expected of
+  let literalType = fromMaybe (fromMaybe TypPrimI32 expectedLiteralType) (integerLiteralSuffixType rawLiteralText)
+  case expectedPrimitive of
     Just expectedType =>
-      if expectedType /= primitiveName
-        then Left (TypeMismatch (LeafPrimitiveType expectedType) (LeafPrimitiveType primitiveName) sourceSpan)
+      if expectedType /= literalType
+        then Left (TypeMismatch (LeafPrimitiveType expectedType) (LeafPrimitiveType literalType) sourceSpan)
         else Right ()
     Nothing => Right ()
-  value <- case integerLiteralValue raw of
+  literalMagnitude <- case integerLiteralValue rawLiteralText of
     Nothing => Left (CannotInferType sourceSpan)
-    Just value => Right (the Integer (cast value))
-  if negated && not (isSignedInteger primitiveName)
-    then Left (InvalidUnaryOperand (show UnaryNegate) (LeafPrimitiveType primitiveName) sourceSpan)
+    Just digitsValue => Right (the Integer (cast digitsValue))
+  if isNegated && not (isSignedInteger literalType)
+    then Left (InvalidUnaryOperand (show UnaryNegate) (LeafPrimitiveType literalType) sourceSpan)
     else do
-      let signed = if negated then negate value else value
-      if fitsLiteral primitiveName signed
-        then Right (primitiveName, signed)
-        else Left (IntegerLiteralOutOfRange signed (LeafPrimitiveType primitiveName) sourceSpan)
+      let literalValue = if isNegated then negate literalMagnitude else literalMagnitude
+      if fitsLiteral literalType literalValue
+        then Right (literalType, literalValue)
+        else Left (IntegerLiteralOutOfRange literalValue (LeafPrimitiveType literalType) sourceSpan)
 
 export
 inferIntegerLiteral : Maybe TypPrimName -> String -> SourceSpan -> Either TypeError (TypPrimName, Integer)
@@ -95,55 +95,55 @@ inferNegatedIntegerLiteral = inferLiteral True
 
 export
 checkArrayLength : LeafType -> Integer -> SourceSpan -> Either TypeError Nat
-checkArrayLength actual value sourceSpan =
-  if actual /= LeafPrimitiveType TypPrimUsize
-    then Left (IncorrectArrayLengthType actual sourceSpan)
-    else if value < 0 || value > cast usizeMaximum
-      then Left (ArrayLengthTooLarge value sourceSpan)
-      else Right (cast value)
+checkArrayLength lengthType lengthValue sourceSpan =
+  if lengthType /= LeafPrimitiveType TypPrimUsize
+    then Left (IncorrectArrayLengthType lengthType sourceSpan)
+    else if lengthValue < 0 || lengthValue > cast usizeMaximum
+      then Left (ArrayLengthTooLarge lengthValue sourceSpan)
+      else Right (cast lengthValue)
 
 truncateAndInterpretInteger : TypPrimName -> Nat -> Integer -> Integer
-truncateAndInterpretInteger primitive width value =
-  let modulus = the Integer 1 `shiftL` width
-      bits = value .&. (modulus - 1)
-  in if isSignedInteger primitive && bits >= modulus `div` 2
-       then bits - modulus
-       else bits
+truncateAndInterpretInteger integerType bitWidth value =
+  let modulus = the Integer 1 `shiftL` bitWidth
+      lowBits = value .&. (modulus - 1)
+  in if isSignedInteger integerType && lowBits >= modulus `div` 2
+       then lowBits - modulus
+       else lowBits
 
 checkedResult : TypPrimName -> Integer -> SourceSpan -> Either TypeError ConstValue
-checkedResult primitive value sourceSpan =
-  if fitsInteger primitive value
-    then Right (ConstInteger value)
-    else Left (ArithmeticOverflow (LeafPrimitiveType primitive) sourceSpan)
+checkedResult resultType resultValue sourceSpan =
+  if fitsInteger resultType resultValue
+    then Right (ConstInteger resultValue)
+    else Left (ArithmeticOverflow (LeafPrimitiveType resultType) sourceSpan)
 
 export
 evalIntegerUnary : UnaryOperator -> TypPrimName -> Integer -> SourceSpan -> Either TypeError ConstValue
-evalIntegerUnary operator TypPrimBit value sourceSpan =
-  case operator of
+evalIntegerUnary unaryOperator TypPrimBit operandValue sourceSpan =
+  case unaryOperator of
     UnaryLogicalNot =>
-      if fitsLiteral TypPrimBit value
-        then Right (ConstInteger (1 - value))
-        else invalid
-    _ => invalid
+      if fitsLiteral TypPrimBit operandValue
+        then Right (ConstInteger (1 - operandValue))
+        else invalidOperand
+    _ => invalidOperand
   where
-    invalid : Either TypeError ConstValue
-    invalid = Left (InvalidUnaryOperand (show operator) (LeafPrimitiveType TypPrimBit) sourceSpan)
-evalIntegerUnary operator primitive value sourceSpan =
-  case integerBitWidth primitive of
-    Nothing => Left (InvalidUnaryOperand (show operator) (LeafPrimitiveType primitive) sourceSpan)
-    Just width => case operator of
+    invalidOperand : Either TypeError ConstValue
+    invalidOperand = Left (InvalidUnaryOperand (show unaryOperator) (LeafPrimitiveType TypPrimBit) sourceSpan)
+evalIntegerUnary unaryOperator operandType operandValue sourceSpan =
+  case integerBitWidth operandType of
+    Nothing => Left (InvalidUnaryOperand (show unaryOperator) (LeafPrimitiveType operandType) sourceSpan)
+    Just bitWidth => case unaryOperator of
       UnaryNegate =>
-        if isSignedInteger primitive
-          then checkedResult primitive (negate value) sourceSpan
-          else Left (InvalidUnaryOperand (show operator) (LeafPrimitiveType primitive) sourceSpan)
-      UnaryLogicalNot => Right (ConstInteger (truncateAndInterpretInteger primitive width (complement value)))
-      _ => Left (InvalidUnaryOperand (show operator) (LeafPrimitiveType primitive) sourceSpan)
+        if isSignedInteger operandType
+          then checkedResult operandType (negate operandValue) sourceSpan
+          else Left (InvalidUnaryOperand (show unaryOperator) (LeafPrimitiveType operandType) sourceSpan)
+      UnaryLogicalNot => Right (ConstInteger (truncateAndInterpretInteger operandType bitWidth (complement operandValue)))
+      _ => Left (InvalidUnaryOperand (show unaryOperator) (LeafPrimitiveType operandType) sourceSpan)
 
 -- Rust integer division truncates toward zero; remainder has the dividend's sign.
 quotient : Integer -> Integer -> Integer
-quotient left right =
-  let magnitude = abs left `div` abs right
-  in if (left < 0) /= (right < 0) then negate magnitude else magnitude
+quotient dividend divisor =
+  let magnitude = abs dividend `div` abs divisor
+  in if (dividend < 0) /= (divisor < 0) then negate magnitude else magnitude
 
 isShiftOperator : BinaryOperator -> Bool
 isShiftOperator BinaryShiftLeft = True
@@ -152,55 +152,55 @@ isShiftOperator _ = False
 
 export
 evalIntegerBinaryOperation : BinaryOperator -> TypPrimName -> Integer -> TypPrimName -> Integer -> SourceSpan -> Either TypeError ConstValue
-evalIntegerBinaryOperation binaryOperator leftType left rightType right sourceSpan =
+evalIntegerBinaryOperation binaryOperator leftType leftValue rightType rightValue sourceSpan =
   case (integerBitWidth leftType, integerBitWidth rightType) of
-    (Just width, Just _) =>
+    (Just leftBitWidth, Just _) =>
       if leftType /= rightType && not (isShiftOperator binaryOperator)
-        then invalid
-        else evaluate width
-    _ => invalid
+        then invalidOperands
+        else evaluateOperation leftBitWidth
+    _ => invalidOperands
   where
-    invalid : Either TypeError ConstValue
-    invalid = Left (InvalidBinaryOperands (show binaryOperator) (LeafPrimitiveType leftType) (LeafPrimitiveType rightType) sourceSpan)
+    invalidOperands : Either TypeError ConstValue
+    invalidOperands = Left (InvalidBinaryOperands (show binaryOperator) (LeafPrimitiveType leftType) (LeafPrimitiveType rightType) sourceSpan)
 
-    divide : Bool -> Either TypeError ConstValue
-    divide remainder =
-      if right == 0 then Left (DivisionByZeroInConstant sourceSpan)
-      else if not (fitsInteger leftType (quotient left right))
+    divideOrTakeRemainder : (isRemainder : Bool) -> Either TypeError ConstValue
+    divideOrTakeRemainder isRemainder =
+      if rightValue == 0 then Left (DivisionByZeroInConstant sourceSpan)
+      else if not (fitsInteger leftType (quotient leftValue rightValue))
         then Left (ArithmeticOverflow (LeafPrimitiveType leftType) sourceSpan)
-        else checkedResult leftType (if remainder then left - quotient left right * right else quotient left right) sourceSpan
+        else checkedResult leftType (if isRemainder then leftValue - quotient leftValue rightValue * rightValue else quotient leftValue rightValue) sourceSpan
 
-    evaluate : Nat -> Either TypeError ConstValue
-    evaluate width = case binaryOperator of
-      BinaryAdd => checkedResult leftType (left + right) sourceSpan
-      BinarySubtract => checkedResult leftType (left - right) sourceSpan
-      BinaryMultiply => checkedResult leftType (left * right) sourceSpan
-      BinaryDivide => divide False
-      BinaryRemainder => divide True
-      BinaryEqual => Right (ConstBool (left == right))
-      BinaryNotEqual => Right (ConstBool (left /= right))
-      BinaryGreater => Right (ConstBool (left > right))
-      BinaryGreaterEqual => Right (ConstBool (left >= right))
-      BinaryLess => Right (ConstBool (left < right))
-      BinaryLessEqual => Right (ConstBool (left <= right))
-      BinaryBitAnd => Right (ConstInteger (truncateAndInterpretInteger leftType width (left .&. right)))
-      BinaryBitOr => Right (ConstInteger (truncateAndInterpretInteger leftType width (left .|. right)))
-      BinaryBitXor => Right (ConstInteger (truncateAndInterpretInteger leftType width (left `xor` right)))
+    evaluateOperation : (leftBitWidth : Nat) -> Either TypeError ConstValue
+    evaluateOperation leftBitWidth = case binaryOperator of
+      BinaryAdd => checkedResult leftType (leftValue + rightValue) sourceSpan
+      BinarySubtract => checkedResult leftType (leftValue - rightValue) sourceSpan
+      BinaryMultiply => checkedResult leftType (leftValue * rightValue) sourceSpan
+      BinaryDivide => divideOrTakeRemainder False
+      BinaryRemainder => divideOrTakeRemainder True
+      BinaryEqual => Right (ConstBool (leftValue == rightValue))
+      BinaryNotEqual => Right (ConstBool (leftValue /= rightValue))
+      BinaryGreater => Right (ConstBool (leftValue > rightValue))
+      BinaryGreaterEqual => Right (ConstBool (leftValue >= rightValue))
+      BinaryLess => Right (ConstBool (leftValue < rightValue))
+      BinaryLessEqual => Right (ConstBool (leftValue <= rightValue))
+      BinaryBitAnd => Right (ConstInteger (truncateAndInterpretInteger leftType leftBitWidth (leftValue .&. rightValue)))
+      BinaryBitOr => Right (ConstInteger (truncateAndInterpretInteger leftType leftBitWidth (leftValue .|. rightValue)))
+      BinaryBitXor => Right (ConstInteger (truncateAndInterpretInteger leftType leftBitWidth (leftValue `xor` rightValue)))
       BinaryShiftLeft =>
-        if right < 0 || right >= cast width
+        if rightValue < 0 || rightValue >= cast leftBitWidth
           then Left (ArithmeticOverflow (LeafPrimitiveType leftType) sourceSpan)
-          else Right (ConstInteger (truncateAndInterpretInteger leftType width (left `shiftL` cast right)))
+          else Right (ConstInteger (truncateAndInterpretInteger leftType leftBitWidth (leftValue `shiftL` cast rightValue)))
       BinaryShiftRight =>
-        if right < 0 || right >= cast width
+        if rightValue < 0 || rightValue >= cast leftBitWidth
           then Left (ArithmeticOverflow (LeafPrimitiveType leftType) sourceSpan)
-          else Right (ConstInteger (left `shiftR` cast right))
-      _ => invalid
+          else Right (ConstInteger (leftValue `shiftR` cast rightValue))
+      _ => invalidOperands
 
 export
 castInteger : TypPrimName -> TypPrimName -> Integer -> SourceSpan -> Either TypeError Integer
-castInteger sourceType targetType value sourceSpan =
+castInteger sourceType targetType integerValue sourceSpan =
   case (integerBitWidth sourceType, integerBitWidth targetType) of
-    (Just _, Just width) => Right (truncateAndInterpretInteger targetType width value)
+    (Just _, Just targetBitWidth) => Right (truncateAndInterpretInteger targetType targetBitWidth integerValue)
     _ => Left (InvalidCast (LeafPrimitiveType sourceType) (LeafPrimitiveType targetType) sourceSpan)
 
 ||| Cast an already-rounded floating-point value to an integer: truncate toward
@@ -208,19 +208,19 @@ castInteger sourceType targetType value sourceSpan =
 ||| evaluator must round to f32 before calling this helper with its Double carrier.
 export
 castFloatToInteger : TypPrimName -> TypPrimName -> Double -> SourceSpan -> Either TypeError Integer
-castFloatToInteger sourceType targetType value sourceSpan =
+castFloatToInteger sourceType targetType floatValue sourceSpan =
   if sourceType /= TypPrimF32 && sourceType /= TypPrimF64
-    then invalid
+    then invalidCast
     else case integerBounds targetType of
-      Nothing => invalid
-      Just (lower, upper) =>
-        if value /= value then Right 0
-        else if value <= cast lower then Right lower
-        else if value >= cast upper then Right upper
-        else Right (cast (if value < 0 then ceiling value else floor value))
+      Nothing => invalidCast
+      Just (targetMinimum, targetMaximum) =>
+        if floatValue /= floatValue then Right 0
+        else if floatValue <= cast targetMinimum then Right targetMinimum
+        else if floatValue >= cast targetMaximum then Right targetMaximum
+        else Right (cast (if floatValue < 0 then ceiling floatValue else floor floatValue))
   where
-    invalid : Either TypeError Integer
-    invalid = Left (InvalidCast (LeafPrimitiveType sourceType) (LeafPrimitiveType targetType) sourceSpan)
+    invalidCast : Either TypeError Integer
+    invalidCast = Left (InvalidCast (LeafPrimitiveType sourceType) (LeafPrimitiveType targetType) sourceSpan)
 
 public export
 maxObjectSize : Nat
@@ -236,8 +236,8 @@ data ArrayLayoutError
 ||| impose a byte-size limit on mere lengths or on an unlaid-out quantum type.
 export
 arrayLayoutSize : Nat -> Nat -> Either ArrayLayoutError Nat
-arrayLayoutSize elementSize count =
-  if count > usizeMaximum then Left (LayoutCountTooLarge count)
-  else let bytes = elementSize * count in
-    if bytes > maxObjectSize then Left (LayoutSizeTooLarge bytes)
-    else Right bytes
+arrayLayoutSize elementSize elementCount =
+  if elementCount > usizeMaximum then Left (LayoutCountTooLarge elementCount)
+  else let byteSize = elementSize * elementCount in
+    if byteSize > maxObjectSize then Left (LayoutSizeTooLarge byteSize)
+    else Right byteSize

@@ -76,8 +76,8 @@ data PreludeSignature
 
 export
 preludeSignature : String -> Maybe PreludeSignature
-preludeSignature name =
-  case name of
+preludeSignature preludeName =
+  case preludeName of
     -- 0 angle arguments, 1 qbit argument
     "I"    => Just (GateSignature 0 1)
     "X"    => Just (GateSignature 0 1)
@@ -172,33 +172,33 @@ mathArity "max" = 2
 mathArity _     = 1
 
 -- every Leaf gate returns the qbits it was given
-gateReturnType : (qbitArgs : Nat) -> (qbitType : LeafType) -> LeafType
+gateReturnType : (qbitArgumentCount : Nat) -> (qbitType : LeafType) -> LeafType
 gateReturnType Z _ = unreachable __FILE__ {function = "gateReturnType"} {reason = "every prelude gate returns at least one qbit"}
 gateReturnType (S Z) qbitType = qbitType
-gateReturnType (S (S n)) qbitType = LeafTupleType (qbitType ::: replicate (S n) qbitType)
+gateReturnType (S (S qbitCountBeyondTwo)) qbitType = LeafTupleType (qbitType ::: replicate (S qbitCountBeyondTwo) qbitType)
 
 -- builds the function type of a prelude gate
-gateFunctionType : (gateName : String) -> (angleArgs : Nat) -> (qbitArgs : Nat) -> LeafType
-gateFunctionType gateName angleArgs qbitArgs =
+gateFunctionType : (gateName : String) -> (angleArgumentCount : Nat) -> (qbitArgumentCount : Nat) -> LeafType
+gateFunctionType gateName angleArgumentCount qbitArgumentCount =
   let angleType = LeafPrimitiveType TypPrimAngle64
       qbitType  = LeafQuantumQualifiedType QuantumUsageLinear (LeafPrimitiveType TypPrimQbit)
-      parameterTypes = replicate angleArgs angleType ++ replicate qbitArgs qbitType
+      parameterTypes = replicate angleArgumentCount angleType ++ replicate qbitArgumentCount qbitType
   in LeafFunctionType (gateLeastEffect gateName) gateCapabilities parameterTypes
-       (gateReturnType qbitArgs qbitType)
+       (gateReturnType qbitArgumentCount qbitType)
 
 public export
 preludeValueType : String -> InferredType
 preludeValueType "Param" = NoValueType
 preludeValueType "phase" = NoValueType
-preludeValueType name =
-  case preludeSignature name of
-    Just (GateSignature angleArgs qbitArgs) =>
-      ResolvedType (gateFunctionType name angleArgs qbitArgs)
+preludeValueType preludeName =
+  case preludeSignature preludeName of
+    Just (GateSignature angleArgumentCount qbitArgumentCount) =>
+      ResolvedType (gateFunctionType preludeName angleArgumentCount qbitArgumentCount)
     Just (MathSignature _ resultType) =>
-      ResolvedType (LeafFunctionType EffectClassical [] (replicate (mathArity name) resultType) resultType)
+      ResolvedType (LeafFunctionType EffectClassical [] (replicate (mathArity preludeName) resultType) resultType)
     Just (TurnsSignature _) =>
       ResolvedType (LeafFunctionType EffectClassical [] [LeafPrimitiveType TypPrimF64] (LeafPrimitiveType TypPrimAngle64))
     Just ParamSignature =>
       unreachable __FILE__ {function = "preludeValueType"} {reason = "Param is handled above, as it has no value type"}
     Nothing =>
-      unreachable __FILE__ {function = "preludeValueType"} {reason = "\{name} is not a prelude symbol"}
+      unreachable __FILE__ {function = "preludeValueType"} {reason = "\{preludeName} is not a prelude symbol"}

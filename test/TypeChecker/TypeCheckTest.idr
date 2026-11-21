@@ -949,9 +949,9 @@ examples =
 covering
 exampleOutcome : (String, String) -> IO (String, Either String ())
 exampleOutcome (fileName, testName) = do
-  Right source <- readFile ("examples/" ++ fileName)
-    | Left err => pure (testName, Left ("Failed to read examples/" ++ fileName ++ ": " ++ show err))
-  pure (testName, typeCheckOutcome source)
+  Right exampleSource <- readFile ("examples/" ++ fileName)
+    | Left fileError => pure (testName, Left ("Failed to read examples/" ++ fileName ++ ": " ++ show fileError))
+  pure (testName, typeCheckOutcome exampleSource)
 
 exampleTests : List (String, Either String ()) -> List TestResult
 exampleTests = concatMap (\(testName, outcome) => test testName (outcome `shouldBe` accepted))

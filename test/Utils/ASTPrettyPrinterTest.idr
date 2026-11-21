@@ -30,31 +30,31 @@ import Parser.Helper
 ||| alone would miss a call turning into a block statement followed by a
 ||| separate unit-expression statement.
 sameSyntax : CanonicalSourceFile -> CanonicalSourceFile -> Bool
-sameSyntax first second =
-  debugNodeLabels (showAstDebug first) == debugNodeLabels (showAstDebug second) &&
-  showSourceFileStrict first == showSourceFileStrict second
+sameSyntax firstSourceFile secondSourceFile =
+  debugNodeLabels (showAstDebug firstSourceFile) == debugNodeLabels (showAstDebug secondSourceFile) &&
+  showSourceFileStrict firstSourceFile == showSourceFileStrict secondSourceFile
 
 ||| The printed forms of a source that do not reparse to its canonical tree:
 ||| both styles, for the surface tree and for the canonical tree, where explicit
 ||| parentheses have been removed and the printer must reconstruct grouping.
 ||| Left if the source itself does not parse.
 roundTripFailures : String -> Either String (List String)
-roundTripFailures source = do
-  original <- lexThenParse source
-  let canonical = desugarSurfaceSyntax original
-      printed = concatMap (\style => [showSourceFile style original, showSourceFile style canonical])
+roundTripFailures sourceText = do
+  parsedSourceFile <- lexThenParse sourceText
+  let canonicalSourceFile = desugarSurfaceSyntax parsedSourceFile
+      printedSources = concatMap (\style => [showSourceFile style parsedSourceFile, showSourceFile style canonicalSourceFile])
                   [PrettyLax, PrettyStrict]
-  Right (filter (not . reparsesAs canonical) printed)
+  Right (filter (not . reparsesAs canonicalSourceFile) printedSources)
   where
     reparsesAs : CanonicalSourceFile -> String -> Bool
-    reparsesAs canonical text = either (const False) (sameSyntax canonical . desugarSurfaceSyntax) (lexThenParse text)
+    reparsesAs canonicalSourceFile printedText = either (const False) (sameSyntax canonicalSourceFile . desugarSurfaceSyntax) (lexThenParse printedText)
 
 roundTrips : String -> Diagnostic (Either String (List String))
-roundTrips source = roundTripFailures source `shouldBe` Right []
+roundTrips sourceText = roundTripFailures sourceText `shouldBe` Right []
 
 ||| A source that lax style prints exactly as written, and that round trips.
 printsAsWritten : String -> Diagnostic (Either String String, Either String (List String))
-printsAsWritten source = (parseAndPrettyPrintLax source, roundTripFailures source) `shouldBe` (Right source, Right [])
+printsAsWritten sourceText = (parseAndPrettyPrintLax sourceText, roundTripFailures sourceText) `shouldBe` (Right sourceText, Right [])
 
 ||| Whether the lax rendering of the canonical tree, where every source
 ||| parenthesis is gone, contains every fragment; if not, the missing ones and
@@ -62,14 +62,14 @@ printsAsWritten source = (parseAndPrettyPrintLax source, roundTripFailures sourc
 ||| these tests independent of what desugaring adds, such as a function's
 ||| default effect and result or an `if`'s empty `else`.
 canonicalHasAll : List String -> String -> Either String ()
-canonicalHasAll fragments source = do
-  printed <- map (showSourceFileLax . desugarSurfaceSyntax) (lexThenParse source)
+canonicalHasAll fragments sourceText = do
+  printed <- map (showSourceFileLax . desugarSurfaceSyntax) (lexThenParse sourceText)
   case filter (\fragment => not (isInfixOf fragment printed)) fragments of
     [] => Right ()
     missing => Left "missing \{show missing} from: \{printed}"
 
 canonicalContains : List String -> String -> Diagnostic (Either String ())
-canonicalContains fragments source = canonicalHasAll fragments source `shouldBe` Right ()
+canonicalContains fragments sourceText = canonicalHasAll fragments sourceText `shouldBe` Right ()
 
 comparisonOperators : List String
 comparisonOperators = ["==", "!=", "<", "<=", ">", ">="]
@@ -85,15 +85,15 @@ comparisonCases = do
 ||| The symbols a token rule classifies differently from the given set, in
 ||| either direction. The result does not depend on the order of either.
 misclassified : (Token -> Bool) -> List Symbol -> List Symbol
-misclassified rule expected =
-  filter (\symbol => rule (TokSym symbol) /= elem symbol expected) (map snd symbolTable)
+misclassified tokenRule expectedSymbols =
+  filter (\symbol => tokenRule (TokSym symbol) /= elem symbol expectedSymbols) (map snd symbolTable)
 
 --------------------------------------------------------------------------------
 -- Fixtures
 --------------------------------------------------------------------------------
 
 moduleWith : List SurfaceDocComment -> List SurfaceItem -> SurfaceItem
-moduleWith docs items = surface (ItemModule (MkModuleDeclarationNode [] Nothing (name "m") (ModuleInline docs items)))
+moduleWith innerDocs moduleItems = surface (ItemModule (MkModuleDeclarationNode [] Nothing (name "m") (ModuleInline innerDocs moduleItems)))
 
 export
 runASTPrettyPrinterTests : IO Bool
@@ -177,8 +177,8 @@ runASTPrettyPrinterTests = runTests $ Test.do
   -- so before `then`, `selse`, `qelse` or `=>` it must be closed off.
   test "an open range before a keyword is parenthesized, or printed as a block in a qif" $
     let openRange = surface (ExprRange (Just (integer "1")) (surface RangeExclusive) Nothing)
-        arm = surface (MkClassicalMatchArmNode (surface PatternWildcard) (Just openRange) (integer "2"))
-        matched = surface (ExprMatch (MkClassicalMatchNode (integer "0") [arm]))
+        guardedWildcardArm = surface (MkClassicalMatchArmNode (surface PatternWildcard) (Just openRange) (integer "2"))
+        matched = surface (ExprMatch (MkClassicalMatchNode (integer "0") [guardedWildcardArm]))
     in map (showExpr PrettyLax)
          [ sif openRange (integer "2") (integer "3"), sif (integer "0") openRange (integer "3")
          , sif (integer "0") (returning openRange) (integer "3"), sif (integer "0") (integer "2") openRange
@@ -254,7 +254,7 @@ runASTPrettyPrinterTests = runTests $ Test.do
       `shouldBe` Right "fn f() { ctrl(c).apply(g)(q); adjoint(g)(q) }"
 
   test "all nested comparison operator combinations round trip on either side" $
-    filter (\source => roundTripFailures source /= Right []) comparisonCases `shouldBe` []
+    filter (\sourceText => roundTripFailures sourceText /= Right []) comparisonCases `shouldBe` []
 
   test "comparison grouping coexists with logical and arithmetic precedence" $
     roundTrips "fn f() { ((a + b < c) == flag) && (d > e || f <= g) }"
@@ -276,15 +276,15 @@ runASTPrettyPrinterTests = runTests $ Test.do
                 TokIntLitRaw "7", TokSym SymSemi, TokIntLitRaw "8", TokSym SymRBrace, TokEOF])
 
   test "a module containing only an inner line doc retains its closing brace" $
-    let item = moduleWith [innerDoc DocCommentLine "//! docs"] []
-    in sameInBothStyles (\style => lexFixture (showItem style item))
+    let moduleItem = moduleWith [innerDoc DocCommentLine "//! docs"] []
+    in sameInBothStyles (\style => lexFixture (showItem style moduleItem))
          (Right [TokKw KwMod, TokIdent "m", TokSym SymLBrace, TokInnerDoc "//! docs", TokSym SymRBrace, TokEOF])
 
   test "module items remain outside preceding inner line docs" $
     let constant = surface (ItemConst (MkConstDeclarationNode [] Nothing (name "N")
                      (surface (TyPrimitive TypPrimI32)) (integer "7")))
-        item = moduleWith [innerDoc DocCommentLine "//! docs"] [constant]
-    in sameInBothStyles (\style => lexFixture (showItem style item))
+        moduleItem = moduleWith [innerDoc DocCommentLine "//! docs"] [constant]
+    in sameInBothStyles (\style => lexFixture (showItem style moduleItem))
          (Right [TokKw KwMod, TokIdent "m", TokSym SymLBrace, TokInnerDoc "//! docs",
                 TokKw KwConst, TokIdent "N", TokSym SymColon, TokTypPrim TypPrimI32,
                 TokSym SymEq, TokIntLitRaw "7", TokSym SymSemi, TokSym SymRBrace, TokEOF])
@@ -312,10 +312,10 @@ runASTPrettyPrinterTests = runTests $ Test.do
                      "let z = a + loop { break 1 }; }")
 
   test "a block-like expression starting a longer statement is parenthesized" $
-    let source = ("fn f() { ({ 1 }) + 2 * 3; (if a {1} else {2}).foo(); (({ 1 }) + 2) * 3; " ++
+    let sourceText = ("fn f() { ({ 1 }) + 2 * 3; (if a {1} else {2}).foo(); (({ 1 }) + 2) * 3; " ++
                   "(loop { break 1 })..2; }")
         fragments = ["({ 1 }) + 2 * 3;", "(if a { 1 } else { 2 }).foo();", "({ 1 } + 2) * 3;", "(loop { break 1 })..2;"]
-    in (canonicalHasAll fragments source, roundTripFailures source) `shouldBe` (Right (), Right [])
+    in (canonicalHasAll fragments sourceText, roundTripFailures sourceText) `shouldBe` (Right (), Right [])
 
   test "a block-like expression starting a final expression is parenthesized" $
     map (showBlock PrettyLax) [valueBlock (plus (blockOf (integer "1")) (integer "2")),

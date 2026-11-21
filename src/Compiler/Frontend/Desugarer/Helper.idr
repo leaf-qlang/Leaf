@@ -14,24 +14,28 @@ import Compiler.Frontend.Token
 
 %default total
 
+||| Maps over a list with a function that also takes the next free desugar id
+||| offset and returns the one after what it used, threading it through the list.
 export
-mapWithId :
+mapThreadingDesugarIdOffset :
   {a : Type} ->
   {b : Type} ->
-  (fun : Nat -> a -> (b, Nat)) ->
-  (startingId : Nat) ->
-  (values : List a) ->
+  (desugarWithOffset : Nat -> a -> (b, Nat)) ->
+  (startingOffset : Nat) ->
+  (inputs : List a) ->
   (List b, Nat)
-mapWithId fun fstId [] = ([], fstId)
-mapWithId fun fstId (x :: xs) =
-  let (result, sndId) = fun fstId x
-      (remaining, finalId) = mapWithId fun sndId xs
-  in (result :: remaining, finalId)
+mapThreadingDesugarIdOffset desugarWithOffset currentOffset [] = ([], currentOffset)
+mapThreadingDesugarIdOffset desugarWithOffset currentOffset (firstInput :: remainingInputs) =
+  let (firstOutput, nextOffset) = desugarWithOffset currentOffset firstInput
+      (remainingOutputs, finalOffset) = mapThreadingDesugarIdOffset desugarWithOffset nextOffset remainingInputs
+  in (firstOutput :: remainingOutputs, finalOffset)
 
+||| The same node position with its desugar id raised by `desugarIdOffset`: the
+||| identity of a node generated from the given one.
 export
-incrementedAstInfo : AstInfo -> Nat -> AstInfo
-incrementedAstInfo astInfo inc =
-  MkAstInfo (MkNodeId astInfo.nodeId.surfaceId (astInfo.nodeId.desugarId + inc)) astInfo.span
+astInfoWithDesugarIdOffset : AstInfo -> (desugarIdOffset : Nat) -> AstInfo
+astInfoWithDesugarIdOffset astInfo desugarIdOffset =
+  MkAstInfo (MkNodeId astInfo.nodeId.surfaceId (astInfo.nodeId.desugarId + desugarIdOffset)) astInfo.span
 
 ||| A quantum usage qualifier to insert into a type, and where it came from.
 public export
@@ -39,7 +43,7 @@ record QuantumUsageInsertion where
   constructor MkQuantumUsageInsertion
   quantumUsage : QuantumUsageQualifier
   provenance   : NodeProvenance
-  keywordSpan  : Maybe SourceSpan  -- the `let` keyword it was moved from; Nothing for the default
+  keywordSpan  : Maybe SourceSpan  -- the qualifier keyword written on the `let` it was moved from; Nothing for the default
 
 defaultLinearInsertion : QuantumUsageInsertion
 defaultLinearInsertion =
@@ -50,29 +54,29 @@ defaultLinearInsertion =
 -- spans the keyword it was written as, so diagnostics point at that keyword
 -- (and so lies outside its wrapper's span), while a default one spans the type.
 wrapInQuantumUsage : QuantumUsageInsertion -> CanonicalTy -> CanonicalTy
-wrapInQuantumUsage insertion qualifiedType@(MkAstNode typeInfo _ _) =
+wrapInQuantumUsage quantumUsageInsertion qualifiedType@(MkAstNode typeInfo _ _) =
   let qualifierInfo =
-        { span := fromMaybe typeInfo.span insertion.keywordSpan } (incrementedAstInfo typeInfo 2)
-  in canonicalAstNode (incrementedAstInfo typeInfo 1) insertion.provenance $
+        { span := fromMaybe typeInfo.span quantumUsageInsertion.keywordSpan } (astInfoWithDesugarIdOffset typeInfo 2)
+  in canonicalAstNode (astInfoWithDesugarIdOffset typeInfo 1) quantumUsageInsertion.provenance $
        TyQualified
-         (canonicalAstNode qualifierInfo insertion.provenance insertion.quantumUsage)
+         (canonicalAstNode qualifierInfo quantumUsageInsertion.provenance quantumUsageInsertion.quantumUsage)
          qualifiedType
 
 -- Qualifies every owned position of a type that has no quantum usage qualifier
 -- yet (see "Owned positions" in Compiler.Frontend.Syntax.Type).
-qualifyOwnedQbits : QuantumUsageInsertion -> CanonicalTy -> CanonicalTy
-qualifyOwnedQbits insertion = mapOwnedPositions qualify
+qualifyUnqualifiedOwnedQbits : QuantumUsageInsertion -> CanonicalTy -> CanonicalTy
+qualifyUnqualifiedOwnedQbits quantumUsageInsertion = mapOwnedPositions qualifyIfUnqualified
   where
-    qualify : CanonicalTy -> CanonicalTy
-    qualify position =
-      case positionQualifier position of
-        Just _ => position
-        Nothing => wrapInQuantumUsage insertion position
+    qualifyIfUnqualified : CanonicalTy -> CanonicalTy
+    qualifyIfUnqualified ownedPosition =
+      case positionQualifier ownedPosition of
+        Just _ => ownedPosition
+        Nothing => wrapInQuantumUsage quantumUsageInsertion ownedPosition
 
 ||| Adds the default `linear` to every unqualified owned position of a type.
 export
-defaultQbitQuantumUsage : CanonicalTy -> CanonicalTy
-defaultQbitQuantumUsage = qualifyOwnedQbits defaultLinearInsertion
+addDefaultLinearToUnqualifiedQbits : CanonicalTy -> CanonicalTy
+addDefaultLinearToUnqualifiedQbits = qualifyUnqualifiedOwnedQbits defaultLinearInsertion
 
 ||| Moves a `let` binding's `linear`/`affine` into the owned positions of its
 ||| annotation, or adds the default `linear` when none was written. Each moved
@@ -85,22 +89,23 @@ moveLetQuantumUsageIntoType :
      List (CanonicalAstNode QuantumStorageQualifier)
   -> Maybe CanonicalTy
   -> (List (CanonicalAstNode QuantumStorageQualifier), Maybe CanonicalTy)
-moveLetQuantumUsageIntoType qualifiers Nothing = (qualifiers, Nothing)
-moveLetQuantumUsageIntoType qualifiers (Just annotation) =
-  case mapMaybe writtenQuantumUsage qualifiers of
-    [] => (qualifiers, Just (defaultQbitQuantumUsage annotation))
-    insertion :: _ =>
-      if any (isNothing . positionQualifier) (ownedPositions annotation)
+moveLetQuantumUsageIntoType letQualifiers Nothing = (letQualifiers, Nothing)
+moveLetQuantumUsageIntoType letQualifiers (Just typeAnnotation) =
+  case mapMaybe quantumUsageInsertionFromKeyword letQualifiers of
+    [] => (letQualifiers, Just (addDefaultLinearToUnqualifiedQbits typeAnnotation))
+    writtenInsertion :: _ =>
+      if any (isNothing . positionQualifier) (ownedPositions typeAnnotation)
         then
-          ( filter (\qualifier => qualifier.nodeValue == QualifierScratch) qualifiers
-          , Just (qualifyOwnedQbits insertion annotation)
+          ( filter (\letQualifier => letQualifier.nodeValue == QualifierScratch) letQualifiers
+          , Just (qualifyUnqualifiedOwnedQbits writtenInsertion typeAnnotation)
           )
-        else (qualifiers, Just annotation)
+        else (letQualifiers, Just typeAnnotation)
   where
-    writtenQuantumUsage : CanonicalAstNode QuantumStorageQualifier -> Maybe QuantumUsageInsertion
-    writtenQuantumUsage (MkAstNode keywordInfo _ keyword) =
+    -- A written `linear`/`affine` as an insertion carrying its keyword's span; `scratch` gives none.
+    quantumUsageInsertionFromKeyword : CanonicalAstNode QuantumStorageQualifier -> Maybe QuantumUsageInsertion
+    quantumUsageInsertionFromKeyword (MkAstNode keywordInfo _ storageQualifier) =
       map (\quantumUsage => MkQuantumUsageInsertion quantumUsage DesugaredMovedQbitQualifier (Just keywordInfo.span))
-          (storageQuantumUsage keyword)
+          (storageQuantumUsage storageQualifier)
 
 export
 assignmentOperatorToBinary : AssignmentOperator -> Maybe BinaryOperator

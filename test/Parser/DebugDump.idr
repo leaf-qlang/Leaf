@@ -20,11 +20,11 @@ debugNodeHeaders : String -> List String
 debugNodeHeaders = concatMap (map pack . splitChain [<] . unpack) . debugNodeLines
   where
     splitChain : SnocList Char -> List Char -> List (List Char)
-    splitChain current ('\\' :: c :: rest) = splitChain (current :< '\\' :< c) rest
-    splitChain current ('`' :: rest) = [current <>> ('`' :: rest)]
-    splitChain current (' ' :: '>' :: ' ' :: '#' :: rest) = (current <>> []) :: splitChain [< '#'] rest
-    splitChain current (c :: rest) = splitChain (current :< c) rest
-    splitChain current [] = [current <>> []]
+    splitChain currentHeader ('\\' :: character :: remainingCharacters) = splitChain (currentHeader :< '\\' :< character) remainingCharacters
+    splitChain currentHeader ('`' :: remainingCharacters) = [currentHeader <>> ('`' :: remainingCharacters)]
+    splitChain currentHeader (' ' :: '>' :: ' ' :: '#' :: remainingCharacters) = (currentHeader <>> []) :: splitChain [< '#'] remainingCharacters
+    splitChain currentHeader (character :: remainingCharacters) = splitChain (currentHeader :< character) remainingCharacters
+    splitChain currentHeader [] = [currentHeader <>> []]
 
 ||| A node line without the ID of any of its nodes, for tests about the rest of
 ||| the line, which the parser's numbering should not break.
