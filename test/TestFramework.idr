@@ -10,8 +10,8 @@ import Data.Maybe
 public export
 record Diagnostic a where
   constructor MkDiagnostic
-  actual : a
-  expected : a
+  actualValue : a
+  expectedValue : a
 
 export infixl 9 `shouldBe`
 
@@ -23,26 +23,26 @@ export
 record TestResult where
   constructor MkTestResult
   testName : String
-  testFailure : Maybe String
+  failureReport : Maybe String
 
 export
 test : Eq a => Show a => String -> Diagnostic a -> List TestResult
-test name (MkDiagnostic actual expected) =
+test testName (MkDiagnostic actualValue expectedValue) =
   [
-    MkTestResult name (if actual == expected then Nothing else Just report)
+    MkTestResult testName (if actualValue == expectedValue then Nothing else Just mismatchReport)
   ]
   where
-    report : String
-    report = "    expected: \{show expected}\n    actual:   \{show actual}"
+    mismatchReport = "    expected: \{show expectedValue}\n    actual:   \{show actualValue}"
 
-||| One test per case: `run` applied to each input should give the value paired
-||| with it. Each test is named after `name` and its input.
+||| One test per case: `computeActualValue` applied to each input should give
+||| the value paired with it. Each test is named after `testGroupName` and its input.
 export
 testEach : Eq b => Show b => String -> (String -> b) -> List (String, b) -> List TestResult
-testEach name run = concatMap check
+testEach testGroupName computeActualValue = concatMap testOneCase
   where
-    check : (String, b) -> List TestResult
-    check (input, expected) = test "\{name}: \{input}" (run input `shouldBe` expected)
+    testOneCase : (String, b) -> List TestResult
+    testOneCase (caseInput, expectedValue) =
+      test "\{testGroupName}: \{caseInput}" (computeActualValue caseInput `shouldBe` expectedValue)
 
 namespace Test
   export
@@ -54,17 +54,17 @@ export
 coloredText : (colorCode : String) -> (text : String) -> String
 coloredText colorCode text = "\ESC[\{colorCode}m\{text}\ESC[0m"
 
-printResult : TestResult -> IO ()
-printResult (MkTestResult name Nothing) = putStrLn (coloredText {colorCode = "32"} {text = "success: \{name}"})
-printResult (MkTestResult name (Just report)) = do
-  putStrLn (coloredText {colorCode = "31"} {text = "failure: \{name}"})
-  putStrLn report
+printTestResult : TestResult -> IO ()
+printTestResult (MkTestResult testName Nothing) = putStrLn (coloredText {colorCode = "32"} {text = "success: \{testName}"})
+printTestResult (MkTestResult testName (Just failureReport)) = do
+  putStrLn (coloredText {colorCode = "31"} {text = "failure: \{testName}"})
+  putStrLn failureReport
 
 export
 runTests : List TestResult -> IO Bool
-runTests results = do
-  traverse_ printResult results
-  let passed = length (filter (isNothing . testFailure) results)
-  putStrLn "Done \{show passed}/\{show (length results)}"
+runTests testResults = do
+  traverse_ printTestResult testResults
+  let passedTestCount = length (filter (isNothing . failureReport) testResults)
+  putStrLn "Done \{show passedTestCount}/\{show (length testResults)}"
   -- True if all tests pass
-  pure (passed == length results)
+  pure (passedTestCount == length testResults)

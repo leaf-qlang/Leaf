@@ -11,7 +11,7 @@ import TypeChecker.Helper
 --------------------------------------------------------------------------------
 -- Type checker integration tests
 --------------------------------------------------------------------------------
--- Whole programs through every phase (plan §9 items 1 and 4): the examples in
+-- Whole programs through every phase (plan step 17): the examples in
 -- `examples/`, read at run time, and the in-scope sections of the language
 -- specification, each placed in the smallest context that declares what it
 -- uses. Example 08 is excluded: the parser rejects its qmatch. Spec snippets
@@ -738,8 +738,8 @@ literalsProgram = """
   """
 
 ||| Spec §61, with the `prepare_minus` it calls. The scratch ancilla's history
-||| includes H and an opaque oracle, so its cleanup cannot be proved (plan §8.3,
-||| §11.2); which check reports it first is not fixed.
+||| includes H and an opaque oracle, so its cleanup cannot be proved (plan step 21);
+||| which check reports it first is not fixed.
 phaseKickbackProgram : String
 phaseKickbackProgram = """
   unitary fn prepare_minus(q: qbit) -> qbit {
@@ -839,7 +839,7 @@ recursionProgram = """
   }
   """
 
--- Language specification sections (plan §1.4, §9 item 4)
+-- Language specification sections (plan part A.6, step 17)
 specificationTests : List TestResult
 specificationTests = Test.do
   test "spec §5 every primitive type except qstate type-checks" $

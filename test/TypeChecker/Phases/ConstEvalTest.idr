@@ -12,14 +12,14 @@ import TypeChecker.Helper
 --------------------------------------------------------------------------------
 -- ConstEval interprets checked constant initializers, array lengths, repeat
 -- counts and qalloc counts, including calls to const fns, after the shared
--- ConstRules have checked const eligibility (plan §3). A computed value is
+-- ConstRules have checked const eligibility (plan step 10). A computed value is
 -- observed through a length: `let a: [i32; N] = [0; 4];` type-checks exactly
 -- when N evaluates to 4. An evaluation error points at the operation that
 -- fails; an eligibility error at the offending call, loop or operation; the
 -- step limit at the expression whose evaluation exhausted it.
 --------------------------------------------------------------------------------
 
--- Constant values (plan §3.1, §3.5)
+-- Constant values (plan step 10)
 constantValueTests : List TestResult
 constantValueTests = Test.do
   test "a constant's value is its initializer's value" $
@@ -65,7 +65,7 @@ constantValueTests = Test.do
     typeCheckOutcome "const N: u32 = 1 + 1; fn f() { let qs: [qbit; 2] = qalloc(N as usize); discard(qs); }"
       `shouldBe` accepted
 
--- Statements and control flow in constants (plan §3.2)
+-- Statements and control flow in constants (plan step 10)
 constantControlFlowTests : List TestResult
 constantControlFlowTests = Test.do
   test "blocks and lets are evaluated" $
@@ -124,7 +124,7 @@ constantControlFlowTests = Test.do
     typeCheckOutcome "fn f() -> i32 { let a = [0; { return 1; 3 }]; 0 }"
       `shouldBe` rejectedWith (InvalidConstantControlFlow "return" (spanAt 1 31))
 
--- Interpreter storage, frames and exported constants (plan §3.2, §3.5;
+-- Interpreter storage, frames and exported constants (plan step 10;
 -- spec §9 slices, §34 tuple projection, §46 const functions and §51 references).
 constantStorageTests : List TestResult
 constantStorageTests = Test.do
@@ -179,7 +179,7 @@ constantStorageTests = Test.do
     typeCheckOutcome "const A: [u32; 1] = [2]; const fn count() -> u32 { let mut a = A; a[0] = 9; A[0] } fn f() { let a: [i32; count() as usize] = [0; 2]; }"
       `shouldBe` accepted
 
--- Sequencing is observable through mutations (plan §3.2, §5.6 Assignment).
+-- Sequencing is observable through mutations (plan steps 8 and 10).
 -- The Rust convention evaluates ordinary operands left-to-right, but an
 -- assignment's value before its target; primitive compound assignments do too.
 constantEvaluationOrderTests : List TestResult
@@ -200,7 +200,7 @@ constantEvaluationOrderTests = Test.do
     typeCheckOutcome "const fn count() -> u32 { let mut a = [0u32, 0]; let mut i = 0; a[i] += { i = 1; 7 }; a[0] * 10 + a[1] } fn f() { let a: [i32; count() as usize] = [0; 7]; }"
       `shouldBe` accepted
 
--- Integer arithmetic follows each operation's checked type (plan §3.2)
+-- Integer arithmetic follows each operation's checked type (plan step 10)
 constantArithmeticTests : List TestResult
 constantArithmeticTests = Test.do
   test "integer division truncates toward zero" $
@@ -291,7 +291,7 @@ constantArithmeticTests = Test.do
     typeCheckOutcome "const B: bit = 1; const C: bit = B ^ 1; const D: bit = C | B; const N: u32 = C as u32 + D as u32 * 2; fn f() { let a: [i32; N as usize] = [0; 2]; }"
       `shouldBe` accepted
 
--- Casts in constants (plan §3.2, §5.6 Casts)
+-- Casts in constants (plan steps 6 and 10)
 constantCastTests : List TestResult
 constantCastTests = Test.do
   test "an integer narrowing cast truncates" $
@@ -335,7 +335,7 @@ constantCastTests = Test.do
       `shouldBe` accepted
 
 -- Observe each prelude result, not only that the call is const-eligible
--- (plan §3.2, §4.2; spec §3, §14).
+-- (plan steps 10 and 11; spec §3, §14).
 constantMathValueTests : List TestResult
 constantMathValueTests = Test.do
   test "integer abs computes negative, positive and zero magnitudes" $
@@ -374,7 +374,7 @@ constantMathValueTests = Test.do
     typeCheckOutcome "const N: u32 = if min(-2i32, 1i32) == -2i32 && max(-1.5, 2.0) == 2.0 { min(3u32, 5u32) + max(3u32, 5u32) } else { 0 }; fn f() { let a: [i32; N as usize] = [0; 8]; }"
       `shouldBe` accepted
 
--- Static const eligibility (plan §3.2, §7.4)
+-- Static const eligibility (plan step 10)
 constEligibilityTests : List TestResult
 constEligibilityTests = Test.do
   test "a non-const function cannot be called in a constant" $
@@ -447,7 +447,7 @@ constEligibilityTests = Test.do
     typeCheckOutcome "const N: u32 = { let mut s = 0; for i in 0..3 { s += i; } s };"
       `shouldBe` rejectedWith (NotAConstantExpression (spanAt 1 33))
 
--- Evaluation limits and runtime errors (plan §3.2, §3.3)
+-- Evaluation limits and runtime errors (plan step 10)
 constantLimitTests : List TestResult
 constantLimitTests = Test.do
   test "a nonterminating loop exhausts the evaluation budget" $

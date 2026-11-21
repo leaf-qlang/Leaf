@@ -13,7 +13,7 @@ import TypeChecker.Helper
 -- Pass A: signatures
 --------------------------------------------------------------------------------
 -- Pass A records the type of every function and constant without entering
--- bodies (plan §4). Signatures and bodies are checked in rounds (§2.3): a
+-- bodies (plan step 4). Signatures and bodies are checked in rounds (plan part B.4): a
 -- signature can need a constant's value, a constant's value needs its checked
 -- initializer, and a constant initializer can call a const fn whose body must
 -- be checked first. Every test runs only phases A and B on a program that

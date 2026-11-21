@@ -10,7 +10,6 @@ import Compiler.Frontend.ScopeAndNameResolver.Data
 import Compiler.Frontend.TypeChecker.Data
 import Compiler.Frontend.TypeChecker.Helper
 import Compiler.Frontend.TypeChecker.Phases.BodyCheck
-import Compiler.Frontend.TypeChecker.Phases.ConstEval
 import Compiler.Frontend.TypeChecker.State
 import Compiler.Frontend.TypeChecker.Type
 import Compiler.Frontend.ASTData

@@ -18,6 +18,8 @@ import ScopeAndNameResolution.PreludeTest
 import ScopeAndNameResolution.ResolveTest
 import ScopeAndNameResolution.ValidationTest
 import TypeChecker.NumericTest
+import TypeChecker.Phases.BodyCheckTest
+import TypeChecker.Phases.SignatureCheckTest
 import TypeChecker.TypeTranslationTest
 import Utils.ASTDebugPrinterTest
 import Utils.ASTPrettyPrinterTest
@@ -39,6 +41,8 @@ suites =
   , ("ScopeAndNameResolution.ValidationTest", runResolutionValidationTests)
   , ("TypeChecker.NumericTest", runNumericTests)
   , ("TypeChecker.TypeTranslationTest", runTypeTranslationTests)
+--  , ("TypeChecker.Phases.SignatureCheckTest", runSignatureCheckTests)
+--  , ("TypeChecker.Phases.BodyCheckTest", runBodyCheckTests)
   , ("Examples.CompileCodeExamplesTest", runCompileCodeExamplesTests)
   ]
 
