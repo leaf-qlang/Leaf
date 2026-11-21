@@ -1,6 +1,8 @@
 module Compiler.Frontend.Lexer.Error
 
 import Data.Bits
+import Data.List
+import Data.String
 import Derive.Prelude
 import Language.Reflection
 import Text.Bounds
@@ -24,6 +26,7 @@ data LexerError
   | LexUnexpectedInput (List String) String
   | LexUnclosed String
   | LexUnexpectedOrInvalidByte Bits8
+  | LexUnsupportedCharacter Char
   | LexUnterminatedBlockComment
   | LexInvalidBasisStringLiteral String
   | LexInvalidByteLiteral String
@@ -34,10 +37,64 @@ data LexerError
   | LexUnterminatedBasisStringLiteral
   | LexUnterminatedByteStringLiteral
   | LexUnterminatedByteLiteral
-  | LexOrdinaryCharLiteralNeedsToken
+  | LexUnsupportedCharLiteral
   | LexInternalLexerError String
 
 %runElab derive "LexerError" [Show, Eq]
+
+--------------------------------------------------------------------------------
+-- Rendering unsupported characters.
+--
+-- A character is named by its Unicode code point, followed by the character
+-- itself when it is visible on its own. Control characters, whitespace,
+-- invisible formatting characters such as U+FEFF, and combining marks (which
+-- would attach to the quoting backtick) are named by their code point only.
+--------------------------------------------------------------------------------
+-- `U+` followed by at least four uppercase hexadecimal digits, as in U+00E9.
+unicodeCodePointText : Char -> String
+unicodeCodePointText character =
+  let codePoint = ord character
+      codePointBytes = the (List Int) [codePoint `div` 0x10000, (codePoint `div` 0x100) `mod` 0x100, codePoint `mod` 0x100]
+      sixHexDigits = unpack (toUpper (concatMap (\codePointByte => toHex (cast codePointByte)) codePointBytes))
+  in "U+" ++ pack (dropLeadingZerosBeyondFourDigits sixHexDigits)
+  where
+    dropLeadingZerosBeyondFourDigits : List Char -> List Char
+    dropLeadingZerosBeyondFourDigits ('0' :: laterDigits) =
+      if length laterDigits >= 4
+        then dropLeadingZerosBeyondFourDigits laterDigits
+        else '0' :: laterDigits
+    dropLeadingZerosBeyondFourDigits hexDigits = hexDigits
+
+-- Inclusive code point ranges of characters that do not render visibly on
+-- their own.
+invisibleOrCombiningCodePointRanges : List (Int, Int)
+invisibleOrCombiningCodePointRanges =
+  [ (0x0000, 0x0020)  -- ASCII control characters and space
+  , (0x007F, 0x00A0)  -- delete, C1 control characters, and no-break space
+  , (0x00AD, 0x00AD)  -- soft hyphen
+  , (0x0300, 0x036F)  -- combining diacritical marks
+  , (0x061C, 0x061C)  -- Arabic letter mark
+  , (0x180E, 0x180E)  -- Mongolian vowel separator
+  , (0x2000, 0x200F)  -- spaces, zero-width characters, and direction marks
+  , (0x2028, 0x202F)  -- line and paragraph separators, embedding controls
+  , (0x205F, 0x206F)  -- medium mathematical space and invisible operators
+  , (0x3000, 0x3000)  -- ideographic space
+  , (0xFE00, 0xFE0F)  -- variation selectors
+  , (0xFEFF, 0xFEFF)  -- byte order mark
+  , (0xFFF9, 0xFFFB)  -- interlinear annotation controls
+  ]
+
+characterIsVisibleOnItsOwn : Char -> Bool
+characterIsVisibleOnItsOwn character =
+  let codePoint = ord character in
+  not (any (\(firstCodePoint, lastCodePoint) => firstCodePoint <= codePoint && codePoint <= lastCodePoint)
+           invisibleOrCombiningCodePointRanges)
+
+describeUnsupportedCharacter : Char -> String
+describeUnsupportedCharacter character =
+  if characterIsVisibleOnItsOwn character
+    then unicodeCodePointText character ++ " `" ++ pack [character] ++ "`"
+    else unicodeCodePointText character
 
 --------------------------------------------------------------------------------
 -- Human-readable error messages.
@@ -50,11 +107,14 @@ Interpolation LexerError where
   interpolate (LexUnexpectedInput expectedDescriptions actualText) =
     case expectedDescriptions of
       [] =>
-        "Unexpected input " ++ actualText
+        "Unexpected input `" ++ actualText ++ "`"
 
-      firstExpected :: remainingExpected =>
-        "Expected " ++ show (firstExpected :: remainingExpected) ++
-        ", but got " ++ actualText
+      _ =>
+        "Expected " ++ joinBy " or " expectedDescriptions ++
+        ", but got `" ++ actualText ++ "`"
+
+  interpolate (LexUnsupportedCharacter character) =
+    "Unsupported character " ++ describeUnsupportedCharacter character
 
   interpolate (LexUnclosed description) =
     "Unclosed " ++ description
@@ -97,8 +157,8 @@ Interpolation LexerError where
   interpolate LexUnterminatedByteLiteral =
     "Unterminated byte literal"
 
-  interpolate LexOrdinaryCharLiteralNeedsToken =
-    "Ordinary character literals are not currently part of Leaf's token set. Use a byte literal like b'a' or add a dedicated character token."
+  interpolate LexUnsupportedCharLiteral =
+    "Character literals such as 'a' are not supported in Leaf yet"
 
   interpolate (LexInternalLexerError message) =
     "Internal Leaf lexer error: " ++ message

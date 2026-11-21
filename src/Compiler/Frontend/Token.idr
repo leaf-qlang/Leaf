@@ -59,26 +59,26 @@ public export
 showTypPrimLeaf : TypPrimName -> String
 showTypPrimLeaf primitiveName =
   case primitiveName of
-    TypPrimAngle32  => "angle32"
-    TypPrimAngle64  => "angle64"
-    TypPrimBit      => "bit"
-    TypPrimBool     => "bool"
-    TypPrimF32      => "f32"
-    TypPrimF64      => "f64"
-    TypPrimI8       => "i8"
-    TypPrimI16      => "i16"
-    TypPrimI32      => "i32"
-    TypPrimI64      => "i64"
-    TypPrimI128     => "i128"
-    TypPrimParam    => "param"
-    TypPrimU8       => "u8"
-    TypPrimU16      => "u16"
-    TypPrimU32      => "u32"
-    TypPrimU64      => "u64"
-    TypPrimU128     => "u128"
-    TypPrimUsize    => "usize"
+    TypPrimAngle32 => "angle32"
+    TypPrimAngle64 => "angle64"
+    TypPrimBit     => "bit"
+    TypPrimBool    => "bool"
+    TypPrimF32     => "f32"
+    TypPrimF64     => "f64"
+    TypPrimI8      => "i8"
+    TypPrimI16     => "i16"
+    TypPrimI32     => "i32"
+    TypPrimI64     => "i64"
+    TypPrimI128    => "i128"
+    TypPrimParam   => "param"
+    TypPrimU8      => "u8"
+    TypPrimU16     => "u16"
+    TypPrimU32     => "u32"
+    TypPrimU64     => "u64"
+    TypPrimU128    => "u128"
+    TypPrimUsize   => "usize"
     TypPrimQbit    => "qbit"
-    TypPrimQState   => "qstate"
+    TypPrimQState  => "qstate"
 
 public export
 implementation Show TypPrimName where
@@ -131,10 +131,10 @@ data Keyword
   | KwAffine
   | KwAs
   | KwBreak
-  | KwCoisometry
   | KwClassical
-  | KwContinue
+  | KwCoisometry
   | KwConst
+  | KwContinue
   | KwElse
   | KwEnsures
   | KwEnum
@@ -152,17 +152,17 @@ data Keyword
   | KwMod
   | KwMut
   | KwPub
-  | KwQenum
   | KwQelse
+  | KwQenum
   | KwQif
   | KwQmatch
   | KwRequires
   | KwReturn
+  | KwScratch
+  | KwSelf
   | KwSelse
   | KwSif
   | KwSmatch
-  | KwScratch
-  | KwSelf
   | KwStruct
   | KwSupports
   | KwThen
@@ -177,49 +177,49 @@ public export
 showKeywordLeaf : Keyword -> String
 showKeywordLeaf keyword =
   case keyword of
-    KwAdjoint  => "adjoint"
-    KwAffine    => "affine"
-    KwAs        => "as"
-    KwBreak     => "break"
+    KwAdjoint    => "adjoint"
+    KwAffine     => "affine"
+    KwAs         => "as"
+    KwBreak      => "break"
+    KwClassical  => "classical"
     KwCoisometry => "coisometry"
-    KwClassical => "classical"
-    KwConst     => "const"
-    KwContinue  => "continue"
-    KwElse      => "else"
-    KwEnsures   => "ensures"
-    KwEnum      => "enum"
-    KwFn        => "fn"
-    KwFor       => "for"
-    KwGeneral   => "general"
-    KwIf        => "if"
-    KwImpl      => "impl"
-    KwIn        => "in"
-    KwIsometry  => "isometry"
-    KwLet       => "let"
-    KwLinear    => "linear"
-    KwLoop      => "loop"
-    KwMatch     => "match"
-    KwMod       => "mod"
-    KwMut       => "mut"
-    KwPub       => "pub"
-    KwQenum     => "qenum"
-    KwQelse     => "qelse"
-    KwQif       => "qif"
-    KwQmatch    => "qmatch"
-    KwRequires  => "requires"
-    KwReturn    => "return"
-    KwScratch   => "scratch"
-    KwSelf      => "self"
-    KwSelse     => "selse"
-    KwSif       => "sif"
-    KwSmatch    => "smatch"
-    KwStruct    => "struct"
-    KwSupports  => "supports"
-    KwThen      => "then"
+    KwConst      => "const"
+    KwContinue   => "continue"
+    KwElse       => "else"
+    KwEnsures    => "ensures"
+    KwEnum       => "enum"
+    KwFn         => "fn"
+    KwFor        => "for"
+    KwGeneral    => "general"
+    KwIf         => "if"
+    KwImpl       => "impl"
+    KwIn         => "in"
+    KwIsometry   => "isometry"
+    KwLet        => "let"
+    KwLinear     => "linear"
+    KwLoop       => "loop"
+    KwMatch      => "match"
+    KwMod        => "mod"
+    KwMut        => "mut"
+    KwPub        => "pub"
+    KwQelse      => "qelse"
+    KwQenum      => "qenum"
+    KwQif        => "qif"
+    KwQmatch     => "qmatch"
+    KwRequires   => "requires"
+    KwReturn     => "return"
+    KwScratch    => "scratch"
+    KwSelf       => "self"
+    KwSelse      => "selse"
+    KwSif        => "sif"
+    KwSmatch     => "smatch"
+    KwStruct     => "struct"
+    KwSupports   => "supports"
+    KwThen       => "then"
     KwUncompsafe => "uncompsafe"
-    KwUnitary   => "unitary"
-    KwUse       => "use"
-    KwWhile     => "while"
+    KwUnitary    => "unitary"
+    KwUse        => "use"
+    KwWhile      => "while"
 
 public export
 implementation Show Keyword where
@@ -261,25 +261,25 @@ public export
 showBuiltinLeaf : Builtin -> String
 showBuiltinLeaf builtin =
   case builtin of
-    BuiltinBarrier   => "barrier"
-    BuiltinCtrl      => "ctrl"
-    BuiltinOn        => "on"
-    BuiltinApply     => "apply"
-    BuiltinBasis     => "basis"
-    BuiltinClean     => "clean"
-    BuiltinDiscard   => "discard"
-    BuiltinIsolated  => "isolated"
-    BuiltinLen       => "len"
-    BuiltinMeasr     => "measr"
-    BuiltinProduct   => "product"
-    BuiltinQAlloc    => "qalloc"
-    BuiltinReset     => "reset"
-    BuiltinRev       => "rev"
-    BuiltinTensor    => "tensor"
-    BuiltinSeparable => "separable"
+    BuiltinBarrier    => "barrier"
+    BuiltinCtrl       => "ctrl"
+    BuiltinOn         => "on"
+    BuiltinApply      => "apply"
+    BuiltinBasis      => "basis"
+    BuiltinClean      => "clean"
+    BuiltinDiscard    => "discard"
+    BuiltinIsolated   => "isolated"
+    BuiltinLen        => "len"
+    BuiltinMeasr      => "measr"
+    BuiltinProduct    => "product"
+    BuiltinQAlloc     => "qalloc"
+    BuiltinReset      => "reset"
+    BuiltinRev        => "rev"
+    BuiltinTensor     => "tensor"
+    BuiltinSeparable  => "separable"
     BuiltinStabilized => "stabilized"
-    BuiltinUncompute => "uncompute"
-    BuiltinWeaken    => "weaken"
+    BuiltinUncompute  => "uncompute"
+    BuiltinWeaken     => "weaken"
 
 public export
 implementation Show Builtin where
@@ -295,7 +295,7 @@ builtinFromString = findByShow showBuiltinLeaf
 public export
 data Symbol
   = SymHash                               -- #   (starts an annotation: #[...])
-  | SymAmp                                -- &   (reserved; && exists too)
+  | SymAmp                                -- &   (borrow and bitwise and)
   | SymLParen | SymRParen                 -- ( )
   | SymLBracket | SymRBracket             -- [ ]
   | SymLBrace | SymRBrace                 -- { }
@@ -401,7 +401,7 @@ symbolTable = map (\symbol => (showSymbolLeaf symbol, symbol)) values
 --   TokTypPrim TypPrimI32
 --   TokSym SymPlusEq
 --   TokBuiltin BuiltinMeasr
---   TokUnderscore "_"
+--   TokUnderscore          (the wildcard `_`)
 --   TokEOF
 ----------------------------------------------------------------------
 public export

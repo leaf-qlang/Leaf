@@ -1,6 +1,7 @@
 module Compiler.Frontend.Lexer.Lexer
 
 import Text.Bounds
+import Text.ByteBounds
 import Text.ILex
 import Text.ParseError
 
@@ -53,6 +54,48 @@ translateInnerLexerError (InvalidByte byteValue) =
   LexUnexpectedOrInvalidByte byteValue
 
 --------------------------------------------------------------------------------
+-- Unsupported characters.
+--
+-- When no rule matches, ilex reports what it read in several forms: the text
+-- it consumed, which for a non-ASCII character can be empty, invisible, or
+-- start at an earlier token, or just the first byte of the character. All of
+-- them mean that the character at the error's start position cannot start a
+-- Leaf token, so they are reported uniformly as that unsupported character,
+-- bounded by the character alone.
+--------------------------------------------------------------------------------
+innerErrorMeansNoRuleMatched : InnerError LexerError -> Bool
+innerErrorMeansNoRuleMatched (Expected _ _) = True
+innerErrorMeansNoRuleMatched (ExpectedChar _) = True
+innerErrorMeansNoRuleMatched (InvalidControl _) = True
+innerErrorMeansNoRuleMatched (Unknown _) = True
+innerErrorMeansNoRuleMatched (InvalidByte _) = True
+innerErrorMeansNoRuleMatched _ = False
+
+-- The character whose UTF-8 encoding starts at the given byte offset, or
+-- Nothing when the offset is past the end or inside a character's encoding.
+characterAtByteOffset : (byteOffset : Nat) -> List Char -> Maybe Char
+characterAtByteOffset _ [] = Nothing
+characterAtByteOffset Z (character :: _) = Just character
+characterAtByteOffset (S remainingByteOffset) (character :: laterCharacters) =
+  let characterByteLength = utf8ByteLength character in
+  case characterByteLength <= S remainingByteOffset of
+    True => characterAtByteOffset (minus (S remainingByteOffset) characterByteLength) laterCharacters
+    False => Nothing
+
+translateLexerFailure : (programText : String) -> BBErr LexerError -> ByteBounded LexerError
+translateLexerFailure programText (B innerError (BB errorStart errorEnd)) =
+  case innerErrorMeansNoRuleMatched innerError of
+    False => B (translateInnerLexerError innerError) (BB errorStart errorEnd)
+    True =>
+      case characterAtByteOffset errorStart.pos (unpack programText) of
+        Just unsupportedCharacter =>
+          B (LexUnsupportedCharacter unsupportedCharacter)
+            (BB errorStart (incLen (utf8ByteLength unsupportedCharacter) errorStart))
+        Nothing => B (translateInnerLexerError innerError) (BB errorStart errorEnd)
+translateLexerFailure _ lexerFailure =
+  map translateInnerLexerError lexerFailure
+
+--------------------------------------------------------------------------------
 -- Position-map input
 --
 -- Leaf treats a bare carriage return as a line break, but ilex's position map
@@ -77,6 +120,20 @@ positionMapInput =
       character :: replaceBareCarriageReturns remainingCharacters
 
 --------------------------------------------------------------------------------
+-- Leading byte order mark
+--
+-- Some editors save UTF-8 files with a leading byte order mark (U+FEFF). As in
+-- Rust, a single byte order mark at the very start of the input is not part of
+-- the program and is removed before lexing, so positions are reported as if it
+-- were absent. A byte order mark anywhere else is ordinary unexpected input.
+--------------------------------------------------------------------------------
+removeLeadingByteOrderMark : String -> String
+removeLeadingByteOrderMark sourceText =
+  case strUncons sourceText of
+    Just ('\xFEFF', textAfterByteOrderMark) => textAfterByteOrderMark
+    _ => sourceText
+
+--------------------------------------------------------------------------------
 -- Main entry point: lexFile
 --
 -- The installed ilex tracks positions as raw byte offsets while lexing and only
@@ -88,10 +145,11 @@ positionMapInput =
 public export
 lexFile : String -> Either (Bounded LexerError) (List (Bounded Token))
 lexFile sourceText =
-  let positionMap := stringPositionMap (positionMapInput sourceText)
-  in case runLeafLexer sourceText of
+  let programText := removeLeadingByteOrderMark sourceText
+      positionMap := stringPositionMap (positionMapInput programText)
+  in case runLeafLexer programText of
     Left byteBoundedError =>
-      Left (toBounded (map translateInnerLexerError byteBoundedError))
+      Left (toBounded (translateLexerFailure programText byteBoundedError))
 
     Right byteBoundedTokens =>
       Right (map toBounded byteBoundedTokens)

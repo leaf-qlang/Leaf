@@ -2014,6 +2014,26 @@ parsePostfixExpression receiver smaller nodeId
    in succF $
         parsePostfixExpression expression smaller afterNameNodeId afterField
           (suffixWithin (uncons $ uncons Same) suffix) recur
+-- TODO: nested tuple indexing such as `t.0.1` does not parse yet.
+--
+-- The lexer uses maximal munch and has no notion of a field-access position,
+-- so after `t` and `.` it reads `0.1` as one float literal. The token stream
+-- is `TokIdent "t"`, `TokSym SymDot`, `TokFloatLitRaw "0.1"`, not the
+-- `.0` `.1` pair this function expects. Only `.` followed by `TokIdent` (a
+-- field) or `TokIntLitRaw` (a tuple index) continues the postfix chain, so
+-- the chain ends after `t` and the caller reports "expected ';', but got
+-- symbol .". `(t.0).1` and `t.0 .1` parse today because there the tokens
+-- after each dot are plain integers.
+--
+-- Fix (rustc's approach): add a clause for `.` followed by `TokFloatLitRaw`.
+-- Accept the raw text only when it is decimal digits, `.`, decimal digits,
+-- without an exponent, a suffix or underscores (reject `t.1e2` and
+-- `t.0.1f32`). Split it at the dot into two `ExprTupleIndex` nodes, nested
+-- left to right, each with its own part of the float token's source span.
+--
+-- The tuple-index clause below accepts any integer literal spelling, so
+-- `t.0x1`, `t.1_0` and `t.0u8` parse as tuple indexes. Rust rejects them;
+-- restrict tuple indexes to plain decimal digits when fixing the case above.
 parsePostfixExpression receiver smaller nodeId
     ((B (TokSym SymDot) _) ::
      (B (TokIntLitRaw indexRaw) indexBounds) :: afterIndex)

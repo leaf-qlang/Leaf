@@ -51,7 +51,7 @@ runCompileCodeExamplesTests = runTests $ Test.do
   -- The lexer never sees the filename, so the pipeline prefixes it.
   test "the source compilation pipeline reports lexer failures" $
     compileFixture "@" `shouldBe`
-      Left "test-fixture.rs: Lexer error at 1:1: Unexpected input @"
+      Left "test-fixture.rs: Lexer error at 1:1: Unsupported character U+0040 `@`"
 
   test "the source compilation pipeline reports parser failures" $
     isFailure (compileFixture "fn f( {}") `shouldBe` True

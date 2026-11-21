@@ -10,8 +10,19 @@ import Text.ILex.RExp.Unicode as Uni
 --------------------------------------------------------------------------------
 -- Whitespace and line structure.
 --
--- Leaf accepts CRLF, LF, and bare CR as line breaks, and spaces and tabs as
--- horizontal whitespace.
+-- Leaf accepts CRLF, LF, and bare CR as line breaks. Like Rust (Unicode
+-- Pattern_White_Space), it also accepts space, tab, vertical tab, form feed,
+-- next line (U+0085), the left-to-right and right-to-left marks (U+200E,
+-- U+200F), and the line and paragraph separators (U+2028, U+2029) as
+-- whitespace. Only CR and LF end a line or a line comment.
+--
+-- The non-ASCII whitespace characters are matched one at a time by their own
+-- rule instead of inside the `plus` loop of `asciiWhitespace`: inside the loop,
+-- the first byte of such a character would make the pinned ilex DFA keep
+-- extending after already accepted whitespace, so an unsupported character
+-- sharing that first byte (such as U+2012) would be reported at the start of
+-- the whitespace instead of at its own position (see the known-limitation note
+-- at the top of Rules.idr).
 --------------------------------------------------------------------------------
 lineBreak : RExp True
 lineBreak =
@@ -19,14 +30,23 @@ lineBreak =
   <|> '\n'
   <|> '\r'
 
-horizontalWhitespace : RExp True
-horizontalWhitespace =
-  oneof [' ', '\t']
+horizontalAsciiWhitespace : RExp True
+horizontalAsciiWhitespace =
+  oneof [' ', '\t', '\x0B', '\x0C']
 
 export
-leafWhitespace : RExp True
-leafWhitespace =
-  plus (horizontalWhitespace <|> lineBreak)
+asciiWhitespace : RExp True
+asciiWhitespace =
+  plus (horizontalAsciiWhitespace <|> lineBreak)
+
+||| The non-ASCII characters Leaf treats as whitespace.
+export
+nonAsciiWhitespaceCharacters : List Char
+nonAsciiWhitespaceCharacters = ['\x85', '\x200E', '\x200F', '\x2028', '\x2029']
+
+export
+nonAsciiWhitespaceCharacter : RExp True
+nonAsciiWhitespaceCharacter = oneof (map chr nonAsciiWhitespaceCharacters)
 
 -- In ilex, `dot` means a printable (non-control) code point, not an arbitrary
 -- character. Comments and broad literal candidates must also consume tabs and
@@ -36,6 +56,10 @@ leafWhitespace =
 validCodePoint : RExp True
 validCodePoint =
   range32 0x0 0x10ffff
+
+nonAsciiCodePoint : RExp True
+nonAsciiCodePoint =
+  range32 0x80 0x10ffff
 
 notLineBreakChar : RExp True
 notLineBreakChar =
@@ -66,29 +90,51 @@ asciiAlphaNumUnderscore = asciiAlphaNum <|> '_'
 -- Compiler.Frontend.Token owns the classification into TokUnderscore, booleans,
 -- keywords, primitive types, state literals, builtins, and ordinary identifiers.
 --
--- Leaf identifier syntax is:
---   start = Unicode alphabetic or '_'
---   rest  = Unicode alphabetic, Unicode digit, '_', or apostrophe
+-- Leaf follows Rust's identifier syntax (Unicode XID_Start / XID_Continue),
+-- approximated with Unicode general categories:
+--   start = letter (Lu, Ll, Lt, Lm, Lo), letter number (Nl), or '_'
+--   rest  = a start character, nonspacing mark (Mn), spacing mark (Mc),
+--           decimal digit (Nd), or connector punctuation (Pc, which includes '_')
 --
--- Therefore `foo'` is a single identifier and `fn'` is not split into `fn` plus
--- an apostrophe.
+-- The marks make words such as `नमस्ते` and a decomposed `é` (`e` followed by
+-- U+0301) single identifiers. Unlike rustc, Leaf does not normalize
+-- identifiers to NFC, so a composed and a decomposed `é` spell different
+-- identifiers.
+--
+-- As in Rust, an apostrophe is never part of an identifier, so `foo'` is the
+-- identifier `foo` followed by a separate apostrophe.
 --
 -- `Text.ILex`'s own `alpha`/`alphaNum` are ASCII-only (`a`-`z`/`A`-`Z`/`0`-`9`),
--- despite reading as generic names, so they cannot be used here. Genuine
--- Unicode letters and digits come from `Text.ILex.RExp.Unicode`'s generated
--- Unicode general-category tables instead: `letter` is categories
--- Lu+Ll+Lt+Lm+Lo ("Unicode alphabetic") and `decimalNumber` is category Nd
--- ("Unicode digit").
+-- despite reading as generic names, so they cannot be used here. The Unicode
+-- categories come from `Text.ILex.RExp.Unicode`'s generated tables instead.
 --------------------------------------------------------------------------------
 identifierStart : RExp True
-identifierStart = Uni.letter <|> '_'
+identifierStart = Uni.letter <|> Uni.letterNumber <|> '_'
 
 identifierRest : RExp True
-identifierRest = Uni.letter <|> Uni.decimalNumber <|> '_' <|> '\''
+identifierRest =
+      identifierStart
+  <|> Uni.nonspacingMark
+  <|> Uni.spacingMark
+  <|> Uni.decimalNumber
+  <|> Uni.connectorPunctuation
 
 export
 identifierLike : RExp True
 identifierLike = identifierStart >> star identifierRest
+
+-- An identifier directly followed by one more non-ASCII character. It exists
+-- only to work around the ilex limitation described at the top of Rules.idr:
+-- after an identifier, the first byte of any non-ASCII character could still
+-- begin an identifier character, so without this rule an identifier followed
+-- by, say, `→` or U+2028 would fail at the start of the identifier instead of
+-- falling back to it. When the extra character continues the identifier, the
+-- plain identifier rule matches the same text and wins because it is listed
+-- first, so this rule is the longest match only when the character cannot
+-- continue the identifier.
+export
+identifierFollowedByNonAsciiCharacter : RExp True
+identifierFollowedByNonAsciiCharacter = identifierLike >> nonAsciiCodePoint
 
 --------------------------------------------------------------------------------
 -- Numeric literal components.
@@ -96,44 +142,40 @@ identifierLike = identifierStart >> star identifierRest
 -- Unary minus is deliberately not included here.  `-7` is lexed as the symbol
 -- `-` followed by `TokIntLitRaw "7"`.
 --------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+-- Digit runs follow Rust:
+--
+--   * a decimal digit run starts with a digit, followed by any mix of digits
+--     and `_` (`1_000`, `1_`, `1__2`);
+--   * the digits after a radix prefix (`0b`/`0o`/`0x`) and the digits of an
+--     exponent may start and end with `_` but must contain at least one digit
+--     (`0x_FF_`, `1e_3`, but not `0x_` or `1e_`).
+--
+-- `decimalDigits` is used both by the broad candidates below and by the
+-- strict literal regexes, since every match of it is a valid decimal digit
+-- run. Radix candidates (`radixNumberCandidate` below) instead swallow any
+-- alphanumeric run after the prefix, so an out-of-range digit like the `2` in
+-- `0b102` still ends up in one malformed-literal token instead of being split
+-- off, and the strict radix digit runs then reject it.
+--------------------------------------------------------------------------------
 decimalDigits : RExp True
 decimalDigits = digit >> star (digit <|> '_')
 
---------------------------------------------------------------------------------
--- Strict digit runs, used only for validating an already-matched literal (see
--- `Rules.idr`'s `numberClassifier`), never for the broad candidates above.
---
--- Interior `_` is freely placed (including consecutive underscores), but a
--- decimal digit run may not start or end with `_`, while a radix digit run
--- (used after `0b`/`0o`/`0x`) may start with `_` (Rust-style `0x_FF`) but still
--- may not end with one. The permissive `decimalDigits` above must stay
--- permissive so malformed spellings are swallowed into one token instead of
--- being split, so this is a separate definition rather than a tightened
--- version of it. Radix candidates (`radixNumberCandidate` below) don't have an
--- equivalent permissive per-radix helper: they swallow any alphanumeric run
--- after the `0b`/`0o`/`0x` prefix directly, so an out-of-range digit like the
--- `2` in `0b102` still ends up in one malformed-literal token instead of
--- being split off.
---------------------------------------------------------------------------------
-strictDigitRun : RExp True -> RExp True
-strictDigitRun singleDigit =
-  singleDigit >> opt (star (singleDigit <|> '_') >> singleDigit)
-
-strictRadixDigitRun : RExp True -> RExp True
-strictRadixDigitRun singleDigit =
-  star (singleDigit <|> '_') >> singleDigit
-
-strictDecimalDigits : RExp True
-strictDecimalDigits = strictDigitRun digit
+digitRunWithAtLeastOneDigit : RExp True -> RExp True
+digitRunWithAtLeastOneDigit singleDigit =
+  star (singleDigit <|> '_') >> singleDigit >> star (singleDigit <|> '_')
 
 strictBinaryDigits : RExp True
-strictBinaryDigits = strictRadixDigitRun bindigit
+strictBinaryDigits = digitRunWithAtLeastOneDigit bindigit
 
 strictOctalDigits : RExp True
-strictOctalDigits = strictRadixDigitRun octdigit
+strictOctalDigits = digitRunWithAtLeastOneDigit octdigit
 
 strictHexDigits : RExp True
-strictHexDigits = strictRadixDigitRun hexdigit
+strictHexDigits = digitRunWithAtLeastOneDigit hexdigit
+
+strictExponentDigits : RExp True
+strictExponentDigits = digitRunWithAtLeastOneDigit digit
 
 signedIntegerTypeSuffix : RExp True
 signedIntegerTypeSuffix =
@@ -155,18 +197,14 @@ unsignedIntegerTypeSuffix =
 integerTypeSuffix : RExp True
 integerTypeSuffix = signedIntegerTypeSuffix <|> unsignedIntegerTypeSuffix
 
-integerSuffix : RExp True
-integerSuffix = opt '_' >> integerTypeSuffix
-
+-- No separate `_` before a suffix is needed: a digit run may already end with
+-- `_`, so `10_u32` is the digits `10_` followed by the suffix `u32`.
 floatTypeSuffix : RExp True
 floatTypeSuffix = "f32" <|> "f64"
 
-floatSuffix : RExp True
-floatSuffix = opt '_' >> floatTypeSuffix
-
 exponentPart : RExp True
 exponentPart =
-  oneof ['e', 'E'] >> opt (oneof ['+', '-']) >> strictDecimalDigits
+  oneof ['e', 'E'] >> opt (oneof ['+', '-']) >> strictExponentDigits
 
 --------------------------------------------------------------------------------
 -- Valid numeric regexes.
@@ -179,19 +217,19 @@ exponentPart =
 --------------------------------------------------------------------------------
 binaryIntegerLiteral : RExp True
 binaryIntegerLiteral =
-  ("0b" <|> "0B") >> strictBinaryDigits >> opt integerSuffix
+  ("0b" <|> "0B") >> strictBinaryDigits >> opt integerTypeSuffix
 
 octalIntegerLiteral : RExp True
 octalIntegerLiteral =
-  ("0o" <|> "0O") >> strictOctalDigits >> opt integerSuffix
+  ("0o" <|> "0O") >> strictOctalDigits >> opt integerTypeSuffix
 
 hexIntegerLiteral : RExp True
 hexIntegerLiteral =
-  ("0x" <|> "0X") >> strictHexDigits >> opt integerSuffix
+  ("0x" <|> "0X") >> strictHexDigits >> opt integerTypeSuffix
 
 decimalIntegerLiteral : RExp True
 decimalIntegerLiteral =
-  strictDecimalDigits >> opt integerSuffix
+  decimalDigits >> opt integerTypeSuffix
 
 export
 integerLiteral : RExp True
@@ -214,9 +252,9 @@ integerLiteral =
 export
 floatLiteral : RExp True
 floatLiteral =
-      (strictDecimalDigits >> '.' >> strictDecimalDigits >> opt exponentPart >> opt floatSuffix)
-  <|> (strictDecimalDigits >> exponentPart >> opt floatSuffix)
-  <|> (strictDecimalDigits >> floatSuffix)
+      (decimalDigits >> '.' >> decimalDigits >> opt exponentPart >> opt floatTypeSuffix)
+  <|> (decimalDigits >> exponentPart >> opt floatTypeSuffix)
+  <|> (decimalDigits >> floatTypeSuffix)
 
 --------------------------------------------------------------------------------
 -- Broad numeric candidates.
@@ -271,7 +309,8 @@ numberCandidate =
 -- `dottedDecimalNumberCandidate` consumes the longer span and wins by ilex's
 -- maximal-munch rule. When no digit follows the first dot, this candidate wins
 -- instead and the action splits the match into an integer plus `.`, `..`, or
--- `..=`; thus `1..2` lexes as `1`, `..`, `2` and `1.` as `1`, `.`.
+-- `..=`; thus `1..2` lexes as `1`, `..`, `2` and `1.` as `1`, `.`. The digits
+-- are always a valid decimal integer, since every match of `decimalDigits` is.
 --------------------------------------------------------------------------------
 export
 digitsThenDotOperatorCandidate : RExp True

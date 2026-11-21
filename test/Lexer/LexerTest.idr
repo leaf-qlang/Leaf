@@ -30,6 +30,22 @@ lexErrorHasBounds sourceText =
     Right _ =>
       Nothing
 
+-- The one-character text of a code point. Invisible characters are built from
+-- their code points: a `"\xFEFF"` string literal does not survive the compiled
+-- test executable, and inside a longer literal a hex escape would also consume
+-- any following hex digits.
+textOfCodePoint : Int -> String
+textOfCodePoint codePoint = pack [chr codePoint]
+
+byteOrderMark : String
+byteOrderMark = textOfCodePoint 0xFEFF
+
+renderedLexerError : String -> Maybe String
+renderedLexerError sourceText =
+  case lexFile sourceText of
+    Left boundedError => Just (renderLexerError boundedError)
+    Right _ => Nothing
+
 lexErrorBounds : String -> Maybe Bounds
 lexErrorBounds sourceText =
   case lexFile sourceText of
@@ -313,6 +329,109 @@ runLexerTests = runTests $ Test.do
       Right [TokKw KwLet, TokIdent "x", TokEOF]
 
   ------------------------------------------------------------
+  -- Leading byte order mark.
+  ------------------------------------------------------------
+  test "a leading byte order mark is skipped" $
+    lexTokenValues (byteOrderMark ++ "fn main") `shouldBe`
+      Right [TokKw KwFn, TokIdent "main", TokEOF]
+
+  test "input consisting only of a byte order mark lexes as just end of file" $
+    lexTokenValues byteOrderMark `shouldBe` Right [TokEOF]
+
+  test "coordinates after a leading byte order mark start at column zero" $
+    lexFile (byteOrderMark ++ "fn x\ny") `shouldBe`
+      Right
+        [ B (TokKw KwFn) (BS (P 0 0) (P 0 1))
+        , B (TokIdent "x") (BS (P 0 3) (P 0 3))
+        , B (TokIdent "y") (BS (P 1 0) (P 1 0))
+        , B TokEOF (BS (P 1 1) (P 1 1))
+        ]
+
+  test "an inner doc comment directly after a leading byte order mark is emitted" $
+    lexTokenValues (byteOrderMark ++ "//! crate docs\nfn") `shouldBe`
+      Right [TokInnerDoc "//! crate docs", TokKw KwFn, TokEOF]
+
+  test "a byte order mark after leading whitespace is an unsupported character" $
+    lexFile (" " ++ byteOrderMark ++ "fn") `shouldBe`
+      Left (B (LexUnsupportedCharacter (chr 0xFEFF)) (BS (P 0 1) (P 0 1)))
+
+  test "only the first of two leading byte order marks is skipped" $
+    lexFile (byteOrderMark ++ byteOrderMark ++ "fn") `shouldBe`
+      Left (B (LexUnsupportedCharacter (chr 0xFEFF)) (BS (P 0 0) (P 0 0)))
+
+  test "a byte order mark between tokens is an unsupported character" $
+    lexFile ("fn " ++ byteOrderMark) `shouldBe`
+      Left (B (LexUnsupportedCharacter (chr 0xFEFF)) (BS (P 0 3) (P 0 3)))
+
+  test "a byte order mark directly after a keyword is reported at its own position" $
+    lexFile ("fn" ++ byteOrderMark) `shouldBe`
+      Left (B (LexUnsupportedCharacter (chr 0xFEFF)) (BS (P 0 2) (P 0 2)))
+
+  ------------------------------------------------------------
+  -- Whitespace beyond space, tab, and line breaks.
+  ------------------------------------------------------------
+  test "vertical tab and form feed are whitespace" $
+    lexTokenValues ("x" ++ textOfCodePoint 0x0B ++ "y" ++ textOfCodePoint 0x0C ++ "z") `shouldBe`
+      Right [TokIdent "x", TokIdent "y", TokIdent "z", TokEOF]
+
+  test "every non-ASCII whitespace character separates tokens" $
+    [ lexTokenValues ("x" ++ textOfCodePoint 0x85 ++ "y")
+    , lexTokenValues ("x" ++ textOfCodePoint 0x200E ++ "y")
+    , lexTokenValues ("x" ++ textOfCodePoint 0x200F ++ "y")
+    , lexTokenValues ("x" ++ textOfCodePoint 0x2028 ++ "y")
+    , lexTokenValues ("x" ++ textOfCodePoint 0x2029 ++ "y")
+    ] `shouldBe`
+      [ Right [TokIdent "x", TokIdent "y", TokEOF]
+      , Right [TokIdent "x", TokIdent "y", TokEOF]
+      , Right [TokIdent "x", TokIdent "y", TokEOF]
+      , Right [TokIdent "x", TokIdent "y", TokEOF]
+      , Right [TokIdent "x", TokIdent "y", TokEOF]
+      ]
+
+  test "consecutive non-ASCII whitespace characters are skipped" $
+    lexTokenValues (textOfCodePoint 0x2028 ++ textOfCodePoint 0x2029 ++ " " ++ textOfCodePoint 0x85 ++ "fn") `shouldBe`
+      Right [TokKw KwFn, TokEOF]
+
+  test "non-ASCII whitespace after a symbol or a number is skipped" $
+    lexTokenValues (";" ++ textOfCodePoint 0x2028 ++ "1" ++ textOfCodePoint 0x2029 ++ "2") `shouldBe`
+      Right [TokSym SymSemi, TokIntLitRaw "1", TokIntLitRaw "2", TokEOF]
+
+  test "non-ASCII whitespace directly after a keyword ends the keyword" $
+    lexTokenValues ("let" ++ textOfCodePoint 0x2028 ++ "x") `shouldBe`
+      Right [TokKw KwLet, TokIdent "x", TokEOF]
+
+  test "non-ASCII whitespace after an identifier keeps both tokens' coordinates" $
+    lexFile ("café" ++ textOfCodePoint 0x85 ++ "x") `shouldBe`
+      Right
+        [ B (TokIdent "café") (BS (P 0 0) (P 0 3))
+        , B (TokIdent "x") (BS (P 0 5) (P 0 5))
+        , B TokEOF (BS (P 0 6) (P 0 6))
+        ]
+
+  test "the line and paragraph separators do not start a new line" $
+    lexFile ("a" ++ textOfCodePoint 0x2028 ++ "b" ++ textOfCodePoint 0x2029 ++ "c") `shouldBe`
+      Right
+        [ B (TokIdent "a") (BS (P 0 0) (P 0 0))
+        , B (TokIdent "b") (BS (P 0 2) (P 0 2))
+        , B (TokIdent "c") (BS (P 0 4) (P 0 4))
+        , B TokEOF (BS (P 0 5) (P 0 5))
+        ]
+
+  test "non-ASCII whitespace does not end a line comment" $
+    lexTokenValues ("// comment" ++ textOfCodePoint 0x2028 ++ "x\ny") `shouldBe`
+      Right [TokIdent "y", TokEOF]
+
+  test "an unsupported character after whitespace is reported at its own position" $
+    [ lexFile ("x " ++ textOfCodePoint 0x2012)
+    , lexFile (textOfCodePoint 0x2028 ++ textOfCodePoint 0x2012)
+    , lexFile (textOfCodePoint 0x2028 ++ textOfCodePoint 0x2028 ++ "@")
+    ] `shouldBe`
+      [ Left (B (LexUnsupportedCharacter (chr 0x2012)) (BS (P 0 2) (P 0 2)))
+      , Left (B (LexUnsupportedCharacter (chr 0x2012)) (BS (P 0 1) (P 0 1)))
+      , Left (B (LexUnsupportedCharacter '@') (BS (P 0 2) (P 0 2)))
+      ]
+
+  ------------------------------------------------------------
   -- Identifiers and reserved words.
   ------------------------------------------------------------
   test "underscore alone is a wildcard token" $
@@ -321,9 +440,31 @@ runLexerTests = runTests $ Test.do
   test "underscore-prefixed names are identifiers" $
     lexTokenValues "_x" `shouldBe` Right [TokIdent "_x", TokEOF]
 
-  test "apostrophe remains part of identifiers" $
-    lexTokenValues "foo' fn'" `shouldBe`
-      Right [TokIdent "foo'", TokIdent "fn'", TokEOF]
+  test "an apostrophe after an identifier is not part of it" $
+    lexFile "foo'" `shouldBe`
+      Left (B (LexUnsupportedCharacter '\'') (BS (P 0 3) (P 0 3)))
+
+  test "an apostrophe after a keyword does not extend it into an identifier" $
+    lexFile "fn'" `shouldBe`
+      Left (B (LexUnsupportedCharacter '\'') (BS (P 0 2) (P 0 2)))
+
+  test "an apostrophe after a reserved name does not extend it into an identifier" $
+    [ lexFile "qalloc'"
+    , lexFile "zero'"
+    , lexFile "qbit'"
+    ] `shouldBe`
+      [ Left (B (LexUnsupportedCharacter '\'') (BS (P 0 6) (P 0 6)))
+      , Left (B (LexUnsupportedCharacter '\'') (BS (P 0 4) (P 0 4)))
+      , Left (B (LexUnsupportedCharacter '\'') (BS (P 0 4) (P 0 4)))
+      ]
+
+  test "an apostrophe inside an identifier-like spelling splits it" $
+    lexFile "don't" `shouldBe`
+      Left (B (LexUnsupportedCharacter '\'') (BS (P 0 3) (P 0 3)))
+
+  test "apostrophes after two identifiers enclose a character literal" $
+    lexFile "foo' bar'" `shouldBe`
+      Left (B LexUnsupportedCharLiteral (BS (P 0 3) (P 0 8)))
 
   test "Unicode letters are valid identifier start and continuation characters" $
     lexTokenValues "café Ω θ_variable" `shouldBe`
@@ -336,11 +477,49 @@ runLexerTests = runTests $ Test.do
     lexTokenValues "x०१ n१" `shouldBe`
       Right [TokIdent "x०१", TokIdent "n१", TokEOF]
 
+  test "nonspacing and spacing combining marks continue identifiers" $
+    lexTokenValues "नमस्ते गणना" `shouldBe`
+      Right [TokIdent "नमस्ते", TokIdent "गणना", TokEOF]
+
+  test "a decomposed accented letter is one identifier" $
+    lexFile ("cafe" ++ textOfCodePoint 0x301 ++ " x") `shouldBe`
+      Right
+        [ B (TokIdent ("cafe" ++ textOfCodePoint 0x301)) (BS (P 0 0) (P 0 4))
+        , B (TokIdent "x") (BS (P 0 6) (P 0 6))
+        , B TokEOF (BS (P 0 7) (P 0 7))
+        ]
+
+  test "a combining mark after a keyword turns it into an identifier" $
+    lexTokenValues ("fn" ++ textOfCodePoint 0x301) `shouldBe`
+      Right [TokIdent ("fn" ++ textOfCodePoint 0x301), TokEOF]
+
+  test "letter numbers start and continue identifiers" $
+    lexTokenValues "Ⅻ xⅫ" `shouldBe`
+      Right [TokIdent "Ⅻ", TokIdent "xⅫ", TokEOF]
+
+  test "connector punctuation continues identifiers" $
+    lexTokenValues "a‿b x⁀" `shouldBe`
+      Right [TokIdent "a‿b", TokIdent "x⁀", TokEOF]
+
+  test "connector punctuation other than underscore cannot start an identifier" $
+    lexFile "‿a" `shouldBe`
+      Left (B (LexUnsupportedCharacter '‿') (BS (P 0 0) (P 0 0)))
+
+  test "an unsupported character directly after an identifier is reported at its own position" $
+    [ lexFile "x→y"
+    , lexFile "café→"
+    , lexFile "Ω≠"
+    ] `shouldBe`
+      [ Left (B (LexUnsupportedCharacter '→') (BS (P 0 1) (P 0 1)))
+      , Left (B (LexUnsupportedCharacter '→') (BS (P 0 4) (P 0 4)))
+      , Left (B (LexUnsupportedCharacter '≠') (BS (P 0 1) (P 0 1)))
+      ]
+
   test "reserved prefixes remain identifiers when extended" $
-    lexTokenValues "truex zerox minusi1 qalloc'" `shouldBe`
+    lexTokenValues "truex zerox minusi1 qalloc_" `shouldBe`
       Right
         [ TokIdent "truex", TokIdent "zerox"
-        , TokIdent "minusi1", TokIdent "qalloc'"
+        , TokIdent "minusi1", TokIdent "qalloc_"
         , TokEOF
         ]
 
@@ -602,14 +781,47 @@ runLexerTests = runTests $ Test.do
      in lexTokenValues "( ) [ ] { } , ; : :: . -> = := += -= *= /= %= + - * / % == != > >= < <= => >> >>= << <<= ! && || & | ^ .. ..= &= |= ^= #" `shouldBe`
           Right (symbolTokens symbols)
 
-  test "punctuation outside the language's reserved token set is rejected" $
-    lexTokenValues "@" `shouldBe`
-      Left (LexUnexpectedInput [] "@")
+  test "punctuation outside the language's reserved token set is an unsupported character" $
+    [ lexFile "@"
+    , lexFile "a $"
+    , lexFile "?"
+    ] `shouldBe`
+      [ Left (B (LexUnsupportedCharacter '@') (BS (P 0 0) (P 0 0)))
+      , Left (B (LexUnsupportedCharacter '$') (BS (P 0 2) (P 0 2)))
+      , Left (B (LexUnsupportedCharacter '?') (BS (P 0 0) (P 0 0)))
+      ]
 
   test "unsupported valid Unicode is not diagnosed as malformed UTF-8" $
-    let combiningAcuteAccent = "́" -- U+0301, which cannot start an identifier.
-    in lexTokenValues combiningAcuteAccent `shouldBe`
-      Left (LexUnexpectedOrInvalidByte 0xcc)
+    lexFile (textOfCodePoint 0x301) `shouldBe` -- a combining mark cannot start an identifier
+      Left (B (LexUnsupportedCharacter (chr 0x301)) (BS (P 0 0) (P 0 0)))
+
+  test "an unsupported control character is reported as an unsupported character" $
+    lexFile ("x" ++ textOfCodePoint 0) `shouldBe`
+      Left (B (LexUnsupportedCharacter (chr 0)) (BS (P 0 1) (P 0 1)))
+
+  test "unsupported characters are rendered by code point and, when visible, by glyph" $
+    [ renderedLexerError "@"
+    , renderedLexerError "a→b"
+    , renderedLexerError ("x " ++ textOfCodePoint 0x1F600)
+    , renderedLexerError ("x " ++ byteOrderMark)
+    , renderedLexerError (textOfCodePoint 0x301)
+    , renderedLexerError ("x" ++ textOfCodePoint 0x0)
+    ] `shouldBe`
+      [ Just "Lexer error at 1:1: Unsupported character U+0040 `@`"
+      , Just "Lexer error at 1:2: Unsupported character U+2192 `→`"
+      , Just "Lexer error at 1:3: Unsupported character U+1F600 `\{textOfCodePoint 0x1F600}`"
+      , Just "Lexer error at 1:3: Unsupported character U+FEFF"
+      , Just "Lexer error at 1:1: Unsupported character U+0301"
+      , Just "Lexer error at 1:2: Unsupported character U+0000"
+      ]
+
+  test "unexpected input and expected alternatives are rendered with quoted input" $
+    [ interpolate (LexUnexpectedInput [] "abc")
+    , interpolate (LexUnexpectedInput ["a digit", "a letter"] "?")
+    ] `shouldBe`
+      [ "Unexpected input `abc`"
+      , "Expected a digit or a letter, but got `?`"
+      ]
 
   test "range forms tokenize structurally" $
     lexTokenValues "a..b a..=b 1.. ..5 ..=5 .." `shouldBe`
@@ -913,22 +1125,24 @@ runLexerTests = runTests $ Test.do
           ]
       ]
 
-  test "malformed integers before dot operators are number literal errors" $
+  test "integers with trailing underscores before dot operators split correctly" $
     [ lexTokenValues "1_.x"
     , lexTokenValues "1_..2"
-    , lexTokenValues "1_..=2"
+    , lexTokenValues "1__..=2"
     ] `shouldBe`
-      [ Left (LexInvalidNumberLiteral "1_")
-      , Left (LexInvalidNumberLiteral "1_")
-      , Left (LexInvalidNumberLiteral "1_")
+      [ Right [TokIntLitRaw "1_", TokSym SymDot, TokIdent "x", TokEOF]
+      , Right [TokIntLitRaw "1_", TokSym SymDotDot, TokIntLitRaw "2", TokEOF]
+      , Right [TokIntLitRaw "1__", TokSym SymDotDotEq, TokIntLitRaw "2", TokEOF]
       ]
 
-  test "malformed integer before a dot operator excludes the operator from its bounds" $
+  test "an integer with a trailing underscore before a dot operator keeps its own bounds" $
     lexFile "1_..2" `shouldBe`
-      Left
-        (B
-          (LexInvalidNumberLiteral "1_")
-          (BS (P 0 0) (P 0 1)))
+      Right
+        [ B (TokIntLitRaw "1_") (BS (P 0 0) (P 0 1))
+        , B (TokSym SymDotDot) (BS (P 0 2) (P 0 3))
+        , B (TokIntLitRaw "2") (BS (P 0 4) (P 0 4))
+        , B TokEOF (BS (P 0 5) (P 0 5))
+        ]
 
   test "leading zeros are preserved in decimal integer literals" $
     lexTokenValues "007" `shouldBe` Right [TokIntLitRaw "007", TokEOF]
@@ -937,14 +1151,50 @@ runLexerTests = runTests $ Test.do
     [ lexTokenValues "0b_"
     , lexTokenValues "1abc"
     , lexTokenValues "1u9"
-    , lexTokenValues "123_"
-    , lexTokenValues "1.0_"
     ] `shouldBe`
       [ Left (LexInvalidNumberLiteral "0b_")
       , Left (LexInvalidNumberLiteral "1abc")
       , Left (LexInvalidNumberLiteral "1u9")
-      , Left (LexInvalidNumberLiteral "123_")
-      , Left (LexInvalidNumberLiteral "1.0_")
+      ]
+
+  test "integer digit runs may end with underscores" $
+    lexTokenValues "123_ 1_000_ 1__2 0x_FF_ 0b1_ 0o7__" `shouldBe`
+      Right
+        [ TokIntLitRaw "123_", TokIntLitRaw "1_000_", TokIntLitRaw "1__2"
+        , TokIntLitRaw "0x_FF_", TokIntLitRaw "0b1_", TokIntLitRaw "0o7__"
+        , TokEOF
+        ]
+
+  test "float digit runs and exponents may contain leading and trailing underscores" $
+    lexTokenValues "1.0_ 1_.5 1e_3 1e_3_ 1E+_5 1_e3" `shouldBe`
+      Right
+        [ TokFloatLitRaw "1.0_", TokFloatLitRaw "1_.5", TokFloatLitRaw "1e_3"
+        , TokFloatLitRaw "1e_3_", TokFloatLitRaw "1E+_5", TokFloatLitRaw "1_e3"
+        , TokEOF
+        ]
+
+  test "any number of underscores may precede a type suffix" $
+    lexTokenValues "10_u32 1__u8 0xF__i64 1_f32 1.5__f32 1.0e_3_f64" `shouldBe`
+      Right
+        [ TokIntLitRaw "10_u32", TokIntLitRaw "1__u8", TokIntLitRaw "0xF__i64"
+        , TokFloatLitRaw "1_f32", TokFloatLitRaw "1.5__f32", TokFloatLitRaw "1.0e_3_f64"
+        , TokEOF
+        ]
+
+  test "radix digits and exponents still need at least one digit" $
+    [ lexTokenValues "0x_"
+    , lexTokenValues "0b__"
+    , lexTokenValues "0o_"
+    , lexTokenValues "1e_"
+    , lexTokenValues "1e+_"
+    , lexTokenValues "1.0e_f32"
+    ] `shouldBe`
+      [ Left (LexInvalidNumberLiteral "0x_")
+      , Left (LexInvalidNumberLiteral "0b__")
+      , Left (LexInvalidNumberLiteral "0o_")
+      , Left (LexInvalidNumberLiteral "1e_")
+      , Left (LexInvalidNumberLiteral "1e+_")
+      , Left (LexInvalidNumberLiteral "1.0e_f32")
       ]
 
   test "digits before dot operator still split when followed by identifiers" $
@@ -1147,11 +1397,15 @@ runLexerTests = runTests $ Test.do
   test "a byte string body ending in a bare backslash at end of input is unterminated" $
     lexTokenValues "b\"abc\\" `shouldBe` Left LexUnterminatedByteStringLiteral
 
-  test "ordinary character literals request a dedicated token" $
-    lexTokenValues "'a'" `shouldBe` Left LexOrdinaryCharLiteralNeedsToken
+  test "character literals are reported as unsupported" $
+    lexTokenValues "'a'" `shouldBe` Left LexUnsupportedCharLiteral
 
-  test "multi-character ordinary literals also request a dedicated token" $
-    lexTokenValues "'ab'" `shouldBe` Left LexOrdinaryCharLiteralNeedsToken
+  test "multi-character quoted text is also reported as an unsupported character literal" $
+    lexTokenValues "'ab'" `shouldBe` Left LexUnsupportedCharLiteral
+
+  test "the unsupported character literal message addresses the user" $
+    interpolate LexUnsupportedCharLiteral `shouldBe`
+      "Character literals such as 'a' are not supported in Leaf yet"
 
   ------------------------------------------------------------
   -- Unit literal and attributes.

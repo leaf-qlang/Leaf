@@ -32,7 +32,7 @@ import Compiler.Frontend.Lexer.Regex
 -- between led to a state with further transitions and no accept of its own.
 -- A shorter match followed immediately by a dead end backtracks fine; a
 -- shorter match, then one or more such "extend-only" bytes, then a dead end,
--- does not. Worked around below for four distinct grammar shapes; if you hit
+-- does not. Worked around below for six distinct grammar shapes; if you hit
 -- a case that doesn't fit any of these, it is likely the same underlying
 -- bug: read this first rather than removing a workaround that appears
 -- redundant.
@@ -66,6 +66,17 @@ import Compiler.Frontend.Lexer.Regex
 --     because the node reached after the lone backslash extends toward a
 --     two-character escape but isn't itself an accept. Basis strings
 --     have no escape syntax, so they don't share this dead end.
+--   - `identifierFollowedByNonAsciiCharacter` /
+--     `emitIdentifierThenNonAsciiCharacter` (this file and `Regex.idr`):
+--     without it, an identifier directly followed by a non-ASCII character
+--     that cannot continue it (`x→y`, or `x` followed by U+2028) hard-fails
+--     at the start of the identifier, because the first byte of the
+--     character could still begin an identifier character.
+--   - `nonAsciiWhitespaceCharacter` (`Regex.idr`): the non-ASCII whitespace
+--     characters have their own single-character rule instead of joining the
+--     `plus` loop of `asciiWhitespace`, so that an unsupported character
+--     sharing a first byte with one of them is reported at its own position
+--     rather than at the start of the preceding whitespace.
 --
 -- If you add a new rule whose prefix overlaps an existing shorter rule with
 -- a possible dead end in between, test that overlap directly; don't assume
@@ -152,22 +163,21 @@ unterminatedCommentBounds openPosition = T1.do
   pure (BB openPosition endPosition)
 
 --------------------------------------------------------------------------------
--- Suffix-stripping helper, used by `classifyDotOperatorSuffix` below to split
--- the `.`/`..`/`..=` operator off the trailing end of a matched
--- `digitsThenDotOperatorCandidate`.
+-- UTF-8 byte lengths.
+--
+-- ilex positions are byte offsets, while Idris strings are sequences of code
+-- points. Splitting a match into several tokens, or locating a character by
+-- its byte offset, therefore needs each character's UTF-8 encoded length.
 --------------------------------------------------------------------------------
-stripReversedSuffix : List Char -> List Char -> Maybe (List Char)
-stripReversedSuffix [] remainingReversedChars =
-  Just (reverse remainingReversedChars)
-stripReversedSuffix (suffixChar :: remainingSuffixChars) (valueChar :: remainingValueChars) =
-  case suffixChar == valueChar of
-    True  => stripReversedSuffix remainingSuffixChars remainingValueChars
-    False => Nothing
-stripReversedSuffix _ [] = Nothing
-
-stripSuffixChars : List Char -> List Char -> Maybe (List Char)
-stripSuffixChars suffixChars valueChars =
-  stripReversedSuffix (reverse suffixChars) (reverse valueChars)
+||| The number of bytes in the UTF-8 encoding of a character.
+export
+utf8ByteLength : Char -> Nat
+utf8ByteLength character =
+  let codePoint = ord character in
+  if codePoint < 0x80 then 1
+  else if codePoint < 0x800 then 2
+  else if codePoint < 0x10000 then 3
+  else 4
 
 --------------------------------------------------------------------------------
 -- Literal validation.
@@ -239,21 +249,21 @@ validByteStringLiteral : String -> Bool
 validByteStringLiteral = matchesLiteral byteStringValidator
 
 --------------------------------------------------------------------------------
--- Splits the dot-operator suffix matched by `digitsThenDotOperatorCandidate`
--- (one of `.`, `..`, or `..=`) off the trailing end of the matched text,
--- returning the leading digits together with the matched `Symbol`.
+-- Splits the dot operator matched by `digitsThenDotOperatorCandidate` (one of
+-- `.`, `..`, or `..=`) off the end of the matched text, returning the leading
+-- digits together with the operator. The longest operator is tried first, so
+-- `1..=` splits as `1` and `..=` rather than `1..` and `=`. `Nothing` means the
+-- text does not end in a dot operator, which the candidate regex rules out.
 --------------------------------------------------------------------------------
-classifyDotOperatorSuffix : List Char -> (List Char, Symbol)
-classifyDotOperatorSuffix matchedChars =
-  case stripSuffixChars (unpack "..=") matchedChars of
-    Just digitChars => (digitChars, SymDotDotEq)
-    Nothing =>
-      case stripSuffixChars (unpack "..") matchedChars of
-        Just digitChars => (digitChars, SymDotDot)
-        Nothing =>
-          case stripSuffixChars (unpack ".") matchedChars of
-            Just digitChars => (digitChars, SymDot)
-            Nothing => (matchedChars, SymDot)
+splitDigitsFromDotOperator : String -> Maybe (String, Symbol)
+splitDigitsFromDotOperator rawText =
+  map splitOffOperator
+    (Data.List.find (\dotOperator => showSymbolLeaf dotOperator `isSuffixOf` rawText)
+       [SymDotDotEq, SymDotDot, SymDot])
+  where
+    splitOffOperator : Symbol -> (String, Symbol)
+    splitOffOperator dotOperator =
+      (substr 0 (length rawText `minus` length (showSymbolLeaf dotOperator)) rawText, dotOperator)
 
 --------------------------------------------------------------------------------
 -- Token and error actions.
@@ -365,25 +375,49 @@ emitDigitsThenDotOperator :
      (lexerStack : LeafLexerStack q)
   => String
   -> F1 q LeafState
-emitDigitsThenDotOperator rawText = T1.do
-  let (digitChars, dotSymbol) = classifyDotOperatorSuffix (unpack rawText)
-  let digitText = pack digitChars
-  case classifyNumberLiteral digitText of
-    Just IntegerNumberLiteral => T1.do
-      let digitsLength = length digitChars
+emitDigitsThenDotOperator rawText =
+  case splitDigitsFromDotOperator rawText of
+    Nothing =>
+      rememberFatalError
+        (LexInternalLexerError ("digits before a dot operator without a dot operator: " ++ rawText))
+
+    -- The digits are ASCII, so their character count is their byte count.
+    Just (digitText, dotOperator) => T1.do
+      let digitsLength = length digitText
       tokenStart <- startPos
       tokenEnd <- endPos
       let integerEnd = incLen digitsLength tokenStart
       let operatorStart = incLen (S digitsLength) tokenStart
       _ <- emitBoundedToken (B (TokIntLitRaw digitText) (BB tokenStart integerEnd))
-      emitBoundedToken (B (TokSym dotSymbol) (BB operatorStart tokenEnd))
+      emitBoundedToken (B (TokSym dotOperator) (BB operatorStart tokenEnd))
 
-    _ => T1.do
+-- Splits a match of `identifierFollowedByNonAsciiCharacter` into the
+-- identifier, emitted as its token, and the trailing character, which is
+-- skipped when it is whitespace and otherwise reported as unsupported.
+emitIdentifierThenNonAsciiCharacter :
+     (lexerStack : LeafLexerStack q)
+  => String
+  -> F1 q LeafState
+emitIdentifierThenNonAsciiCharacter rawText =
+  case reverse (unpack rawText) of
+    [] =>
+      rememberFatalError
+        (LexInternalLexerError "empty match for an identifier followed by a non-ASCII character")
+
+    trailingCharacter :: reversedIdentifierCharacters => T1.do
+      let identifierText = pack (reverse reversedIdentifierCharacters)
+      let identifierByteLength = sum (map utf8ByteLength reversedIdentifierCharacters)
       tokenStart <- startPos
-      let integerEnd = incLen (length digitChars) tokenStart
-      rememberFatalErrorAt
-        (BB tokenStart integerEnd)
-        (LexInvalidNumberLiteral digitText)
+      tokenEnd <- endPos
+      let identifierEnd = incLen identifierByteLength tokenStart
+      let trailingCharacterStart = incLen (S identifierByteLength) tokenStart
+      _ <- emitBoundedToken (B (tokenFromIdentLike identifierText) (BB tokenStart identifierEnd))
+      case elem trailingCharacter nonAsciiWhitespaceCharacters of
+        True => pure Initial
+        False =>
+          rememberFatalErrorAt
+            (BB trailingCharacterStart tokenEnd)
+            (LexUnsupportedCharacter trailingCharacter)
 
 --------------------------------------------------------------------------------
 -- Block-comment actions.
@@ -475,7 +509,9 @@ symbolRules =
 --   1. documentation comments before ordinary comments and before `/`
 --   2. broad literal candidates before identifiers
 --   3. broad number candidate before identifier-like suffixes
---   4. single identifier rule through `tokenFromIdentLike`
+--   4. single identifier rule through `tokenFromIdentLike`, before the rule for
+--      an identifier followed by a non-ASCII character, so that an identifier
+--      character wins over that workaround rule (see Regex.idr)
 --   5. generated symbol rules from the finite `Symbol` values
 --------------------------------------------------------------------------------
 initialRules : List (LeafRule q)
@@ -489,7 +525,8 @@ initialRules =
   , string bareOuterBlockCommentOpen (beginBlockComment NormalBlockComment)
   , ignore normalLineComment
   , string normalBlockCommentOpen (beginBlockComment NormalBlockComment)
-  , ignore leafWhitespace
+  , ignore asciiWhitespace
+  , ignore nonAsciiWhitespaceCharacter
 
   , string basisStringCandidate emitBasisStringLiteral
   , string byteStringCandidate emitByteStringLiteral
@@ -519,11 +556,12 @@ initialRules =
   , step unterminatedNormalStringTrailingBackslashCandidate
       (rememberFatalError LexUnterminatedStringLiteral)
   , step ordinaryCharLiteralCandidate
-      (rememberFatalError LexOrdinaryCharLiteralNeedsToken)
+      (rememberFatalError LexUnsupportedCharLiteral)
 
   , string numberCandidate emitNumberLiteral
   , string digitsThenDotOperatorCandidate emitDigitsThenDotOperator
   , string identifierLike (\rawText => emitToken (tokenFromIdentLike rawText))
+  , string identifierFollowedByNonAsciiCharacter emitIdentifierThenNonAsciiCharacter
   ] ++ symbolRules
 
 --------------------------------------------------------------------------------
