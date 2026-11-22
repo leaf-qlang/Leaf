@@ -54,6 +54,8 @@ TDG(&q);
 
 ### Parametric Single-Qubit Gates
 
+Rotation angles values get truncated to the [-2π, 2π) range.
+
 ```leaf
 RX(1.0, &q);
 RY(1.0, &q);
@@ -64,6 +66,8 @@ U3(1.0, 2.0, 3.0, &q);
 ```
 
 ### Controlled Gates
+
+Rotation angles values get truncated to the [-2π, 2π) range.
 
 ```leaf
 CX(&q1, &q2);
@@ -85,6 +89,8 @@ CU3(1.0, 2.0, 3.0, &q1, &q2);
 ```
 
 ### Two-Qubit Interaction Gates
+
+Rotation angles values get truncated to the [-2π, 2π) range.
 
 ```leaf
 SWAP(&q1, &q2);
@@ -120,19 +126,19 @@ barrier(&q1, &q2);
 
 Parameterized gates rotation angle arguments can be of type: param, angle32, angle64.
 
-(i) angle32 and angle64 represent floating point numbers radians modulo 2π using 32 or 64 bits
+(i) angle32 and angle64 represent floating point numbers radians in the [-2π, 2π) range using 32 or 64 bits:
 ```leaf
 let angle: angle64 = 3.141592653589793;
 let q: qbit = U1(angle, q);
 ```
 
-(ii) use the turns() prelude function to convert integer to angles: turns(0.25) = π/2
+(ii) use the turns() prelude function to convert integer to angles: turns(0.25) = π/2, turns(-0.25) = - π/2:
 ```leaf
 let q: qbit = U1(turns(0.25), q);
 ```
 
-// (iii) use of symbolic compile-time parameters for parameterized gates:
+(iii) use of symbolic compile-time parameters for parameterized gates:
 ```leaf
-let theta = Param("theta");
+let theta : param = Param("theta");
 let q: qbit = U1(theta, q);
 ```
