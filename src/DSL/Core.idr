@@ -8,7 +8,7 @@ import DSL.Wrap2Pi
 
 public export
 inBounds : Double -> Bool
-inBounds x = - 2 * Prelude.pi < x && x <= 2 * Prelude.pi
+inBounds x = - 2 * Prelude.pi <= x && x < 2 * Prelude.pi
 
 public export
 data Radians : Type where
