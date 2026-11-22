@@ -106,16 +106,16 @@ evalConstExprNat (MkAstNode astInfo metadata expressionNode) =
 ||| A slice type [T] has no length known at compile time, so it can't be a parameter, result or constant type on its own. 
 ||| A reference to a slice, &[T], is fine, a slice reference carries both a pointer to its first element and its length.
 export
-checkTypeIsSized : ResolvedTy -> StateT TypeCheckerState (Either CheckFailure) ()
-checkTypeIsSized = walk False
+checkWrittenTypeIsSizedAndSupported : ResolvedTy -> StateT TypeCheckerState (Either CheckFailure) ()
+checkWrittenTypeIsSizedAndSupported = walk False
   where
     walk : (unsizedAllowed : Bool) -> ResolvedTy -> StateT TypeCheckerState (Either CheckFailure) ()
     walk unsizedAllowed typeAstNode@(MkAstNode astInfo metadata typeNode) =
       case typeNode of
         TyPrimitive primitiveName => pure ()
-        TyPath typePath => notImplemented __FILE__ {function = "checkTypeIsSized"} {feature = "structs, enums or qenums"}
+        TyPath typePath => notImplemented __FILE__ {function = "checkWrittenTypeIsSizedAndSupported"} {feature = "structs, enums or qenums"}
         TyUnit => pure ()
-        TyParenthesized innerType => unreachable __FILE__ {function = "checkTypeIsSized"} {reason = "parenthesized types should have been removed during the desugaring phase."}
+        TyParenthesized innerType => unreachable __FILE__ {function = "checkWrittenTypeIsSizedAndSupported"} {reason = "parenthesized types should have been removed during the desugaring phase."}
         TyTuple elementTypes => traverse_ (\element => walk False (assert_smaller typeNode element)) elementTypes
         TyArray elementType sizeExpression => walk False (assert_smaller typeNode elementType)
         TySlice elementType =>
@@ -125,7 +125,10 @@ checkTypeIsSized = walk False
               leafType <- writtenLeafTypeM evalConstExprNat typeAstNode
               typeError (UnsizedValue leafType astInfo.span)
         TyReference borrowKind referencedType => walk True (assert_smaller typeNode referencedType)
-        TyQualified quantumUsageQualifier qualifiedType => walk unsizedAllowed (assert_smaller typeNode qualifiedType)
+        TyQualified (MkAstNode qualifierInfo _ quantumUsageQualifier) qualifiedType =>
+          case quantumUsageQualifier of
+            QuantumUsageAffine => typeError (UnsupportedFeature "affine" qualifierInfo.span)
+            QuantumUsageLinear => walk unsizedAllowed (assert_smaller typeNode qualifiedType)
         TyFunction functionEffect functionParameters returnType => do
           traverse_ (\parameter => walk False (assert_smaller typeNode parameter.nodeValue.parameterType)) functionParameters
           traverse_ (\result => walk False (assert_smaller typeNode result)) returnType

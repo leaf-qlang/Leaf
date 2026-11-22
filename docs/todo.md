@@ -10,6 +10,7 @@ Higher priority:
 - Uncomputation support, enable: `:=`, `uncompute`, `scratch`.
 - Add support for `affine` qubits.
 - Add a classical expression language to Idris2 DSL.
+- Add parametrized angles to Idris2 DSL, OpenQASM 3 serializer.
 - Handle supports adjoint/ctrl function clauses.
 - Support for `adjoint` operation.
 - Support for `ctrl` blocks: `ctrl(...) { ... }`. The callable form `ctrl(...).apply(f)` is supported.

@@ -48,10 +48,6 @@ functionSignatureTests = Test.do
   test "a parameter may be a qubit reference or a qubit slice" $
     signaturesAndBodiesOutcome "fn f(q: &qbit, qs: &[qbit]) {}" `shouldBe` accepted
 
-  test "qubit parameters and results may carry quantum usage qualifiers" $
-    signaturesAndBodiesOutcome "fn f(q: affine qbit, p: (linear qbit, affine qbit)) -> (affine qbit, (linear qbit, affine qbit)) { (q, p) }"
-      `shouldBe` accepted
-
   test "a mut parameter has its declared type" $
     signaturesAndBodiesOutcome "fn f(mut x: i32) -> i32 { x += 1; x }" `shouldBe` accepted
 

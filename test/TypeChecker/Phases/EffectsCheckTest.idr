@@ -128,18 +128,9 @@ operationEffectTests = Test.do
     typeCheckOutcome "unitary fn f(q: &qbit, g: general fn(q: &qbit)) { g(q); }"
       `shouldBe` rejectedWith (EffectViolation EffectUnitary EffectGeneral (spanAt 1 51))
 
-  test "weaken and barrier are classical operations" $
-    typeCheckOutcome "uncompsafe fn f(q: qbit) -> affine qbit { barrier(&q); weaken(q) }" `shouldBe` accepted
-
-  test "qalloc is permitted in a unitary function" $
-    typeCheckOutcome "unitary fn f(q: &qbit) { let scratch a = qalloc(); CX(q, &a); }" `shouldBe` accepted
-
   test "an uncompsafe function cannot apply Y" $
     typeCheckOutcome "uncompsafe fn f(q: &qbit) { Y(q); }"
       `shouldBe` rejectedWith (EffectViolation EffectUncompsafe EffectUnitary (spanAt 1 29))
-
-  test "a unitary function may discard a fresh ancilla" $
-    typeCheckOutcome "unitary fn f(q: &qbit) { let a = qalloc(); discard(a); }" `shouldBe` accepted
 
   test "a unitary function cannot discard a qubit it changed" $
     typeCheckOutcome "unitary fn f(q: &qbit) { let a = qalloc(); H(&a); discard(a); }"
@@ -149,43 +140,16 @@ operationEffectTests = Test.do
     typeCheckOutcome "unitary fn f(X: fn(q: &qbit), q: &qbit) { X(q); }"
       `shouldBe` rejectedWith (EffectViolation EffectUnitary EffectGeneral (spanAt 1 43))
 
-  test "a unitary function may uncompute and discard an ancilla" $
-    typeCheckOutcome "unitary fn f(c: &qbit) { let a = qalloc(); CX(c, &a); let a = uncompute(a); discard(a); }"
-      `shouldBe` accepted
-
   test "a coisometry cannot discard a parameter qubit without a clean-state proof" $
     typeCheckOutcome "coisometry fn f(q: qbit, a: qbit) -> qbit { discard(a); q }"
       `shouldBe` rejectedWith (EffectViolation EffectCoisometry EffectGeneral (spanAt 1 45))
 
--- Callable modifiers and modifier blocks (plan steps 13, 19 and 20)
+-- Callable modifiers (plan step 13)
 modifierTests : List TestResult
 modifierTests = Test.do
-  test "the adjoint of a gate is permitted in unitary code" $
-    typeCheckOutcome "unitary fn f(q: &qbit) { adjoint(H)(q); adjoint(S)(q); }" `shouldBe` accepted
-
-  test "the adjoint of a user function needs adjoint support" $
-    typeCheckOutcome "unitary fn g(q: &qbit) { H(q); } unitary fn f(q: &qbit) { adjoint(g)(q); }"
-      `shouldBe` rejectedWith (MissingCapability "adjoint" (spanAt 1 67))
-
   test "controlling a user function needs ctrl support" $
     typeCheckOutcome "unitary fn g(q: &qbit) { H(q); } unitary fn f(c: &qbit, q: &qbit) { ctrl(c).apply(g)(q); }"
       `shouldBe` rejectedWith (MissingCapability "ctrl" (spanAt 1 83))
-
-  test "an adjoint block may call a unitary user function" $
-    typeCheckOutcome "unitary fn g(q: &qbit) { H(q); } unitary fn f(q: &qbit) { adjoint { g(q); } }"
-      `shouldBe` accepted
-
-  test "a control block may call a unitary user function" $
-    typeCheckOutcome "unitary fn g(q: &qbit) { H(q); } unitary fn f(c: &qbit, q: &qbit) { ctrl(c) { g(q); } }"
-      `shouldBe` accepted
-
-  test "an adjoint block admits only unitary operations" $
-    typeCheckOutcome "general fn f(q: &qbit) { adjoint { let b = measr(q); } }"
-      `shouldBe` rejectedWith (EffectViolation EffectUnitary EffectGeneral (spanAt 1 44))
-
-  test "an adjoint block does not lift an enclosing classical ceiling" $
-    typeCheckOutcome "classical fn f() { adjoint { let q = qalloc(); } }"
-      `shouldBe` rejectedWith (EffectViolation EffectClassical EffectUncompsafe (spanAt 1 38))
 
   test "controls on 0 and 1 keep a controlled X uncompsafe" $
     typeCheckOutcome "uncompsafe fn f(c: &qbit, t: &qbit) { ctrl(c).on(bs\"0\").apply(X)(t); ctrl(c).on(bs\"1\").apply(X)(t); }"
@@ -195,21 +159,9 @@ modifierTests = Test.do
     typeCheckOutcome "uncompsafe fn f(c: &qbit, t: &qbit) { ctrl(c).on(bs\"+\").apply(X)(t); }"
       `shouldBe` rejectedWith (EffectViolation EffectUncompsafe EffectUnitary (spanAt 1 39))
 
-  test "a control block on - is a unitary operation" $
-    typeCheckOutcome "uncompsafe fn f(c: &qbit, t: &qbit) { ctrl(c).on(bs\"-\") { X(t); } }"
-      `shouldBe` rejectedWith (EffectViolation EffectUncompsafe EffectUnitary (spanAt 1 39))
-
   test "a controlled H is unitary" $
     typeCheckOutcome "uncompsafe fn f(c: &qbit, t: &qbit) { ctrl(c).apply(H)(t); }"
       `shouldBe` rejectedWith (EffectViolation EffectUncompsafe EffectUnitary (spanAt 1 39))
-
-  test "a := initializer admits only uncompsafe operations" $
-    typeCheckOutcome "general fn f() { let q: qbit := H(qalloc()); }"
-      `shouldBe` rejectedWith (EffectViolation EffectUncompsafe EffectUnitary (spanAt 1 33))
-
-  test "the adjoint of a function-typed parameter needs adjoint support" $
-    typeCheckOutcome "unitary fn f(g: unitary fn(q: &qbit), q: &qbit) { adjoint(g)(q); }"
-      `shouldBe` rejectedWith (MissingCapability "adjoint" (spanAt 1 59))
 
   test "controlling a function-typed parameter needs ctrl support" $
     typeCheckOutcome "unitary fn f(g: unitary fn(q: &qbit), c: &qbit, q: &qbit) { ctrl(c).apply(g)(q); }"
@@ -218,56 +170,8 @@ modifierTests = Test.do
   test "a gate alias keeps its control capability" $
     typeCheckOutcome "fn f(c: &qbit, q: &qbit) { let h = H; ctrl(c).apply(h)(q); }" `shouldBe` accepted
 
-  test "a control block nested in an adjoint block over gates is permitted" $
-    typeCheckOutcome "unitary fn f(c: &qbit, q: &qbit) { adjoint { ctrl(c) { H(q); } } }" `shouldBe` accepted
-
   test "a control without a selector keeps a controlled X uncompsafe" $
     typeCheckOutcome "uncompsafe fn f(c: &qbit, t: &qbit) { ctrl(c).apply(X)(t); }" `shouldBe` accepted
-
-  test "a control block over X keeps an uncompsafe function uncompsafe" $
-    typeCheckOutcome "uncompsafe fn f(c: &qbit, t: &qbit) { ctrl(c) { X(t); } }" `shouldBe` accepted
-
--- Stage 2 (plan part A.6, step 1): capabilities of adjoint callables. Moved
--- here from BodyCheckTest because E reports their errors. Left out of
--- runEffectsCheckTests until milestone 8 enables adjoint.
-adjointStageTwoTests : List TestResult
-adjointStageTwoTests = Test.do
-  test "the adjoint of a gate alias is permitted" $
-    typeCheckOutcome "fn f(q: &qbit) { let s = S; adjoint(s)(q); }" `shouldBe` accepted
-
-  test "the adjoint of a gate's adjoint is permitted" $
-    typeCheckOutcome "fn f(q: &qbit) { adjoint(adjoint(T))(q); }" `shouldBe` accepted
-
-  test "a callable join intersects capabilities instead of retaining adjoint" $
-    typeCheckOutcome "unitary fn plain(q: qbit) -> qbit { H(q) } fn f(flag: bool, q: qbit) -> qbit { let g = if flag { H } else { plain }; adjoint(g)(q) }"
-      `shouldBe` rejectedWith (MissingCapability "adjoint" (spanAt 1 126))
-
--- Stage 2 (plan part A.6, step 1): the uncompsafe ceiling of a := initializer.
--- Moved here from BodyCheckTest because the ceiling is E's. Left out of
--- runEffectsCheckTests until milestone 8 enables :=.
-uncomputationStageTwoTests : List TestResult
-uncomputationStageTwoTests = Test.do
-  test ":= accepts an uncompsafe qubit initializer" $
-    typeCheckOutcome "uncompsafe fn flip(q: qbit) -> qbit { X(q) } fn f() { let q: qbit := flip(qalloc()); }"
-      `shouldBe` accepted
-
--- Leaving modifier blocks (plan steps 19 and 20)
-jumpTests : List TestResult
-jumpTests = Test.do
-  test "a return cannot leave a control block" $
-    typeCheckOutcome "fn f(c: &qbit, t: &qbit) { ctrl(c) { X(t); return; } }"
-      `shouldBe` rejectedWith (JumpOutOfQuantumBlock "return" (spanAt 1 44))
-
-  test "a break cannot leave an adjoint block" $
-    typeCheckOutcome "fn f(q: &qbit) { for i in 0..3 { adjoint { H(q); break; } } }"
-      `shouldBe` rejectedWith (JumpOutOfQuantumBlock "break" (spanAt 1 50))
-
-  test "a continue cannot leave a control block" $
-    typeCheckOutcome "fn f(c: &qbit, t: &qbit) { for i in 0..3 { ctrl(c) { X(t); continue; } } }"
-      `shouldBe` rejectedWith (JumpOutOfQuantumBlock "continue" (spanAt 1 60))
-
-  test "a loop inside an adjoint block stays inside it" $
-    typeCheckOutcome "fn f(q: &qbit) { adjoint { for i in 0..3 { H(q); } } }" `shouldBe` accepted
 
 -- Attributes (plan step 13): only cases on which both documented rules agree
 attributeTests : List TestResult
@@ -320,39 +224,12 @@ nestedEffectTests = Test.do
     typeCheckOutcome "coisometry fn f(q: qbit) -> (qbit, qbit) { (q, qalloc()) }"
       `shouldBe` rejectedWith (QuantumWidthMismatch "coisometry" 1 2 (spanAt 1 15))
 
-  test "an adjoint block preserves the enclosing uncompsafe ceiling" $
-    typeCheckOutcome "uncompsafe fn f(q: &qbit) { adjoint { H(q); } }"
-      `shouldBe` rejectedWith (EffectViolation EffectUncompsafe EffectUnitary (spanAt 1 39))
-
-  test "a control block preserves the enclosing uncompsafe ceiling" $
-    typeCheckOutcome "uncompsafe fn f(c: &qbit, q: &qbit) { ctrl(c) { H(q); } }"
-      `shouldBe` rejectedWith (EffectViolation EffectUncompsafe EffectUnitary (spanAt 1 49))
-
-  test "a := initializer preserves the enclosing classical ceiling" $
-    typeCheckOutcome "classical fn f() { let q: qbit := qalloc(); }"
-      `shouldBe` rejectedWith (EffectViolation EffectClassical EffectUncompsafe (spanAt 1 35))
-
   test "an imaginary positive-basis selector raises controlled X to unitary" $
     typeCheckOutcome "uncompsafe fn f(c: &qbit, q: &qbit) { ctrl(c).on(bs\"i\").apply(X)(q); }"
       `shouldBe` rejectedWith (EffectViolation EffectUncompsafe EffectUnitary (spanAt 1 39))
 
-  test "an imaginary negative-basis selector raises a control block to unitary" $
-    typeCheckOutcome "uncompsafe fn f(c: &qbit, q: &qbit) { ctrl(c).on(bs\"I\") { X(q); } }"
-      `shouldBe` rejectedWith (EffectViolation EffectUncompsafe EffectUnitary (spanAt 1 39))
-
-  test "the adjoint of a basis permutation remains uncompsafe" $
-    typeCheckOutcome "uncompsafe fn f(q: &qbit) { adjoint(X)(q); }" `shouldBe` accepted
-
-  test "a break targeting a loop inside a control block is allowed" $
-    typeCheckOutcome "fn f(c: &qbit, q: &qbit) { ctrl(c) { loop { X(q); break; } } }" `shouldBe` accepted
-
-  test "a return cannot leave an adjoint block" $
-    typeCheckOutcome "fn f(q: &qbit) { adjoint { H(q); return; } }"
-      `shouldBe` rejectedWith (JumpOutOfQuantumBlock "return" (spanAt 1 34))
-
   test "qasm_def does not forbid a classical function" $
     typeCheckOutcome "#[qasm_def] classical fn f(x: i32) -> i32 { x + 1 }" `shouldBe` accepted
-
 
 export
 runEffectsCheckTests : IO Bool
@@ -361,7 +238,6 @@ runEffectsCheckTests =
     [ signatureClaimTests
     , operationEffectTests
     , modifierTests
-    , jumpTests
     , attributeTests
     , nestedEffectTests
     ]

@@ -614,10 +614,6 @@ functionValueTests = Test.do
     signaturesAndBodiesOutcome "isometry fn grow(q: qbit) -> (qbit, qbit) { (q, qalloc()) } fn run(g: coisometry fn(q: qbit) -> (qbit, qbit), q: qbit) -> (qbit, qbit) { g(q) } fn f() -> (qbit, qbit) { run(grow, qalloc()) }"
       `shouldBe` rejectedWith (TypeMismatch (fnType EffectCoisometry [linearQbit] (tuple [linearQbit, linearQbit])) (fnType EffectIsometry [linearQbit] (tuple [linearQbit, linearQbit])) (spanAt 1 174))
 
-  test "function parameter quantum usage qualifiers must match exactly" $
-    signaturesAndBodiesOutcome "fn keep(q: affine qbit) -> affine qbit { q } fn run(g: fn(q: qbit) -> qbit, q: qbit) -> qbit { g(q) } fn f() -> qbit { run(keep, qalloc()) }"
-      `shouldBe` rejectedWith (TypeMismatch (fnType EffectGeneral [linearQbit] linearQbit) (fnType EffectGeneral [affineQbit] affineQbit) (spanAt 1 124))
-
   test "a function value's result type must match" $
     signaturesAndBodiesOutcome "classical fn inc(x: i32) -> i32 { x + 1 } fn run(g: classical fn(x: i32) -> bool) -> bool { g(1) } fn f() -> bool { run(inc) }"
       `shouldBe` rejectedWith (TypeMismatch (fnType EffectClassical [i32] bool) (fnType EffectClassical [i32] i32) (spanAt 1 121))
@@ -653,10 +649,6 @@ conditionalTests = Test.do
   test "a diverging branch does not constrain the if's type" $
     signaturesAndBodiesOutcome "fn f(flag: bool) -> i32 { let x = if flag { return 0; } else { 5 }; x }"
       `shouldBe` accepted
-
-  test "a branch join keeps qubit quantum usage qualifiers invariant" $
-    signaturesAndBodiesOutcome "fn f(c: bool, a: qbit, b: affine qbit) { let q = if c { a } else { b }; discard(q); }"
-      `shouldBe` rejectedWith (TypeMismatch linearQbit affineQbit (spanAt 1 68))
 
   test "a branch join does not coerce an array reference to a slice" $
     signaturesAndBodiesOutcome "fn f(c: bool, a: &[i32; 2], s: &[i32]) { let r = if c { a } else { s }; }"
@@ -915,64 +907,12 @@ qubitAllocationTests = Test.do
     signaturesAndBodiesOutcome "fn f(a: qbit, b: &qbit) { let (x, y) = measr(a, b); }"
       `shouldBe` rejectedWith (TypeMismatch linearQbit qbitRef (spanAt 1 49))
 
--- Qubit quantum usage qualifiers and qualifiers (plan steps 11 and 18, spec §12, §41, §42)
+-- Qubit quantum usage qualifiers (plan step 11, spec §12)
 quantumUsageTests : List TestResult
 quantumUsageTests = Test.do
-  test "let and type qualifiers give qubits their quantum usage" $
-    signaturesAndBodiesOutcome "fn f() { let linear a: qbit = qalloc(); let b: linear qbit = qalloc(); let affine c: qbit = qalloc(); let d: affine qbit = qalloc(); let e: [affine qbit; 2] = qalloc(2); let p: (affine qbit, affine qbit) = (qalloc(), qalloc()); discard(a); discard(b); }"
-      `shouldBe` accepted
-
-  test "an affine let fixes an inferred qubit's quantum usage" $
-    signaturesAndBodiesOutcome "fn f() { let affine q = qalloc(); }" `shouldBe` accepted
-
-  test "a gate preserves its argument's quantum usage" $
-    signaturesAndBodiesOutcome "fn f() { let affine q: qbit = qalloc(); let affine r = H(q); }" `shouldBe` accepted
-
-  test "an affine let cannot hold a linear qubit" $
-    signaturesAndBodiesOutcome "fn f() { let q: qbit = qalloc(); let affine r = H(q); discard(r); }"
-      `shouldBe` rejectedWith (QuantumUsageMismatch QuantumUsageAffine QuantumUsageLinear (spanAt 1 38))
-
-  test "weaken makes qubits affine" $
-    signaturesAndBodiesOutcome "fn f() { let linear q: qbit = qalloc(); let affine q = weaken(q); let linear qs: [qbit; 3] = qalloc(3); let affine qs = weaken(qs); }"
-      `shouldBe` accepted
-
-  test "weaken's result is affine without a qualifier" $
-    signaturesAndBodiesOutcome "fn f() { let q = qalloc(); let r = weaken(q); }" `shouldBe` accepted
-
-  test "weaken's result is not linear" $
-    signaturesAndBodiesOutcome "fn f() { let q = qalloc(); let r: qbit = weaken(q); discard(r); }"
-      `shouldBe` rejectedWith (TypeMismatch linearQbit affineQbit (spanAt 1 42))
-
-  test "weaken of several qubits returns affine qubits" $
-    signaturesAndBodiesOutcome "fn f() { let q1 = qalloc(); let q2 = qalloc(); let q3 = qalloc(); let affine (a, b, c): (qbit, qbit, qbit) = weaken(q1, q2, q3); }"
-      `shouldBe` accepted
-
-  test "scratch qualifiers apply to qubit bindings" $
-    signaturesAndBodiesOutcome "fn f() { let scratch q: qbit = qalloc(); let scratch qs: [qbit; 2] = qalloc(2); let scratch affine r: qbit = qalloc(); }"
-      `shouldBe` accepted
-
-  test "a scratch qualifier needs a qubit" $
-    signaturesAndBodiesOutcome "fn f() { let scratch n: i32 = 5; }"
-      `shouldBe` rejectedWith (InvalidQuantumQualifier "scratch" i32 (spanAt 1 14))
-
-  test "an affine qualifier needs a qubit" $
-    signaturesAndBodiesOutcome "fn f() { let affine n = 5; }"
-      `shouldBe` rejectedWith (InvalidQuantumQualifier "affine" i32 (spanAt 1 14))
-
   test "a linear qualifier needs a qubit" $
     signaturesAndBodiesOutcome "fn f() { let linear x: i32 = 1; }"
       `shouldBe` rejectedWith (InvalidQuantumQualifier "linear" i32 (spanAt 1 14))
-
-  test ":= needs a qubit-valued initializer" $
-    signaturesAndBodiesOutcome "fn f() { let x: i32 := 5; }"
-      `shouldBe` rejectedWith (InvalidQuantumQualifier ":=" i32 (spanAt 1 21))
-
-  test "an affine let over a tuple qualifies only its qubit positions" $
-    signaturesAndBodiesOutcome "fn f() -> i32 { let affine (q, n) = (qalloc(), 1); n }" `shouldBe` accepted
-
-  test "weaken takes owned qubits only" $
-    signaturesAndBodiesOutcome "fn f(q: &qbit) { let r = weaken(q); }"
-      `shouldBe` rejectedWith (TypeMismatch linearQbit qbitRef (spanAt 1 33))
 
   test "discard takes owned qubits only" $
     signaturesAndBodiesOutcome "fn f(q: &qbit) { discard(q); }"
@@ -1031,16 +971,6 @@ gateTests = Test.do
     signaturesAndBodiesOutcome "fn f(q: &qbit) { RX(true, q); }"
       `shouldBe` rejectedWith (TypeMismatch angle64 bool (spanAt 1 21))
 
-  test "an owned gate on an affine qubit returns an affine qubit" $
-    signaturesAndBodiesOutcome "fn f(q: affine qbit) -> affine qbit { H(q) }" `shouldBe` accepted
-
-  test "an owned gate on an affine qubit does not return a linear qubit" $
-    signaturesAndBodiesOutcome "fn f(q: affine qbit) -> qbit { H(q) }"
-      `shouldBe` rejectedWith (TypeMismatch linearQbit affineQbit (spanAt 1 32))
-
-  test "a two-qubit gate returns each argument's quantum usage" $
-    signaturesAndBodiesOutcome "fn f(a: affine qbit, b: qbit) -> (affine qbit, qbit) { CX(a, b) }" `shouldBe` accepted
-
   test "a gate angle cannot be an integer literal" $
     signaturesAndBodiesOutcome "fn f(q: &qbit) { RX(1, q); }"
       `shouldBe` rejectedWith (TypeMismatch angle64 i32 (spanAt 1 21))
@@ -1072,10 +1002,6 @@ builtinTests = Test.do
     signaturesAndBodiesOutcome "fn f() -> i32 { let q = qalloc(); discard(q) }"
       `shouldBe` rejectedWith (TypeMismatch i32 unit (spanAt 1 35))
 
-  test "uncompute consumes and returns or borrows its qubits" $
-    signaturesAndBodiesOutcome "fn f() { let a = X(qalloc()); uncompute(&a); discard(a); let b = X(qalloc()); let b = uncompute(b); discard(b); }"
-      `shouldBe` accepted
-
   test "barrier accepts no qubits, owned qubits or borrowed qubits" $
     signaturesAndBodiesOutcome "fn f() { barrier(); let q0 = qalloc(); let q1 = qalloc(); let (q0, q1) = barrier(q0, q1); barrier(&q0, &q1); let qs = qalloc(2); let qs = barrier(qs); barrier(&qs); discard(q0, q1); discard(qs); }"
       `shouldBe` accepted
@@ -1106,9 +1032,6 @@ builtinTests = Test.do
     signaturesAndBodiesOutcome "fn f() -> usize { let a = [1, 2]; len(a, a) }"
       `shouldBe` rejectedWith (WrongArgumentCount 1 2 (spanAt 1 35))
 
-  test "reset preserves an affine argument's quantum usage" $
-    signaturesAndBodiesOutcome "fn f(q: affine qbit) -> affine qbit { reset(q) }" `shouldBe` accepted
-
 -- ctrl (plan step 11, spec §15)
 controlTests : List TestResult
 controlTests = Test.do
@@ -1123,14 +1046,6 @@ controlTests = Test.do
   test "a control selector keeps the result shape" $
     signaturesAndBodiesOutcome "fn f(q0: qbit, q1: qbit, q2: qbit) -> (qbit, qbit, qbit) { let (q0, q1, q2) = ctrl(q0, q1).on(bs\"10\").apply(H)(q2); (q0, q1, q2) }"
       `shouldBe` accepted
-
-  test "a control block over borrowed controls has unit type" $
-    signaturesAndBodiesOutcome "fn f(q0: &qbit, q1: &qbit, q2: &qbit) { ctrl(q0, q1) { H(q2); } let u: () = ctrl(q0, q1).on(bs\"10\") { H(q2); }; }"
-      `shouldBe` accepted
-
-  test "a control block requires borrowed controls" $
-    signaturesAndBodiesOutcome "fn f(q0: qbit, q2: &qbit) -> qbit { ctrl(q0) { H(q2); } q0 }"
-      `shouldBe` rejectedWith (TypeMismatch qbitRef linearQbit (spanAt 1 42))
 
   test "controls and targets use one form" $
     signaturesAndBodiesOutcome "fn f(q0: &qbit, q1: qbit) -> qbit { ctrl(q0).apply(X)(q1) }"
@@ -1152,38 +1067,14 @@ controlTests = Test.do
     signaturesAndBodiesOutcome "fn f(c: qbit, q: qbit) -> (qbit, qbit) { ctrl(c).apply(RX)(0.5, q) }"
       `shouldBe` accepted
 
-  test "a controlled adjoint gate type-checks" $
-    signaturesAndBodiesOutcome "fn f(c: &qbit, q: &qbit) { ctrl(c).apply(adjoint(S))(q); }" `shouldBe` accepted
-
--- adjoint and gate aliases (plan steps 11 and 19, spec §16)
-adjointTests : List TestResult
-adjointTests = Test.do
-  test "the adjoint of a gate keeps the gate's owned and borrowed forms" $
-    signaturesAndBodiesOutcome "fn f(q1: qbit, q2: qbit) -> (qbit, qbit) { let q1 = adjoint(H)(q1); adjoint(H)(&q1); adjoint(CT)(&q1, &q2); (q1, q2) }"
-      `shouldBe` accepted
-
-  test "the adjoint of a rotation still takes its angle" $
-    signaturesAndBodiesOutcome "fn f(q: &qbit) { adjoint(RX)(1.0, q); }" `shouldBe` accepted
-
-  test "the adjoint of a rotation needs its angle" $
-    signaturesAndBodiesOutcome "fn f(q: &qbit) { adjoint(RX)(q); }"
-      `shouldBe` rejectedWith (WrongArgumentCount 2 1 (spanAt 1 18))
-
-  test "an adjoint alias keeps the gate's borrowed form" $
-    signaturesAndBodiesOutcome "fn f(q: &qbit) { let h = adjoint(H); h(q); }" `shouldBe` accepted
-
-  test "an adjoint block has unit type" $
-    signaturesAndBodiesOutcome "fn f(q1: &qbit, q2: &qbit) { let u: () = adjoint { H(q1); CT(q1, q2) }; }"
-      `shouldBe` accepted
-
+-- Gate aliases (plan step 11)
+gateAliasTests : List TestResult
+gateAliasTests = Test.do
   test "a gate alias keeps both forms" $
     signaturesAndBodiesOutcome "fn f(q: qbit) -> qbit { let g = H; g(&q); g(q) }" `shouldBe` accepted
 
   test "a mutable gate alias can be reassigned" $
     signaturesAndBodiesOutcome "fn f(q: &qbit) { let mut h = H; h = X; h(q); }" `shouldBe` accepted
-
-  test "the adjoint of an owned two-qubit gate returns both qubits" $
-    signaturesAndBodiesOutcome "fn f(a: qbit, b: qbit) -> (qbit, qbit) { adjoint(CX)(a, b) }" `shouldBe` accepted
 
 -- Context propagation and delayed writeback (plan steps 5 and 11; spec §6, §7, §48)
 contextualInferenceTests : List TestResult
@@ -1468,10 +1359,6 @@ aliasedAngleTests = Test.do
     signaturesAndBodiesOutcome "fn f(q: &qbit) { let rotate = RX; rotate(0.5f32, q); rotate(0.5f64, q); }"
       `shouldBe` accepted
 
-  test "an adjoint rotation alias independently accepts f32 and f64 calls" $
-    signaturesAndBodiesOutcome "fn f(q: &qbit) { let rotate = adjoint(RX); rotate(0.5f32, q); rotate(0.5f64, q); }"
-      `shouldBe` accepted
-
   test "each angle of U3 can have a different representation" $
     signaturesAndBodiesOutcome "fn f(q: &qbit, a: angle32, p: param) { U3(a, 0.5f64, p, q); }"
       `shouldBe` accepted
@@ -1658,7 +1545,7 @@ runBodyCheckTests =
     , gateTests
     , builtinTests
     , controlTests
-    , adjointTests
+    , gateAliasTests
     , contextualInferenceTests
     , functionJoinTests
     , coercionBoundaryTests

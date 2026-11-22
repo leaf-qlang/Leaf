@@ -57,10 +57,10 @@ checkFunctionDeclaration
       traverse_
         (\parameter =>
           case parameter.nodeValue of
-            NormalParameter _ _ _ parameterType => checkTypeIsSized parameterType
+            NormalParameter _ _ _ parameterType => checkWrittenTypeIsSizedAndSupported parameterType
             ReceiverParameter _ _ => notImplemented __FILE__ {function = "checkFunctionDeclaration"} {feature = "receiver parameters"}
         ) functionParameters
-      traverse_ checkTypeIsSized returnType
+      traverse_ checkWrittenTypeIsSizedAndSupported returnType
       -- Second pass: evaluate array lengths and record the types.
       paramLeafTypes <- traverse
         (\parameter =>
@@ -87,7 +87,7 @@ checkFunctionDeclaration
 
 checkConstDeclaration : ConstDeclarationNode ResolvedAstPhase ->  StateT TypeCheckerState (Either CheckFailure) ()
 checkConstDeclaration (MkConstDeclarationNode constDocs constVisibility constName constType constValue) = do
-      checkTypeIsSized constType
+      checkWrittenTypeIsSizedAndSupported constType
       let constSymbolId = constName.nodeValue.nameNodeSymbolId
       constLeafType <- writtenLeafTypeM evalConstExprNat constType
       recordSymbolType constSymbolId constLeafType

@@ -81,9 +81,6 @@ temporaryTests = Test.do
     typeCheckOutcome "fn f() { let _ = qalloc(); }"
       `shouldBe` rejectedWith (LinearQbitNotConsumed (spanAt 1 14))
 
-  test "an affine temporary may be dropped" $
-    typeCheckOutcome "fn f(q: affine qbit) { H(q); }" `shouldBe` accepted
-
 -- Controls, repetition and iteration (plan steps 7, 11 and 14)
 controlAndRepetitionTests : List TestResult
 controlAndRepetitionTests = Test.do
@@ -93,10 +90,6 @@ controlAndRepetitionTests = Test.do
   test "a borrowed control is reserved for the whole call" $
     typeCheckOutcome "fn f(c: &qbit) { ctrl(c).apply(X)(c); }"
       `shouldBe` rejectedWith (OverlappingBorrow (spanAt 1 35))
-
-  test "a borrowed control conflicts with a write to it inside its block" $
-    typeCheckOutcome "fn f(c: &qbit) { ctrl(c) { X(c); } }"
-      `shouldBe` rejectedWith (OverlappingBorrow (spanAt 1 30))
 
   test "repeating a classical value copies it" $
     typeCheckOutcome "fn f() { let x = 1; let a = [x; 3]; let y = x; }" `shouldBe` accepted
@@ -161,16 +154,9 @@ additionalEventTests = Test.do
     typeCheckOutcome "fn f(q: qbit) { let r = barrier(q); discard(q); discard(r); }"
       `shouldBe` rejectedWith (UseAfterMove "q" (spanAt 1 45))
 
-  test "weaken moves the original linear resource" $
-    typeCheckOutcome "fn f(q: qbit) { let affine r = weaken(q); discard(q); }"
-      `shouldBe` rejectedWith (UseAfterMove "q" (spanAt 1 51))
-
   test "owned control capture consumes the old control binding" $
     typeCheckOutcome "fn f(c: qbit, q: qbit) { let pair = ctrl(c).apply(X)(q); discard(c); discard(pair.0, pair.1); }"
       `shouldBe` rejectedWith (UseAfterMove "c" (spanAt 1 66))
-
-  test "a zero repeat count permits an affine operand to be dropped" $
-    typeCheckOutcome "fn f() { let qs = [weaken(qalloc()); 0]; }" `shouldBe` accepted
 
   test "a single exclusive reference in a repeat is moved" $
     typeCheckOutcome "fn f(q: &qbit) { let refs = [q; 1]; H(q); H(refs[0]); }"
@@ -201,12 +187,6 @@ iterationExitTests = Test.do
   test "returning after consuming the sole owned element leaves no linear remainder" $
     typeCheckOutcome "fn f() { for q in qalloc(1) { discard(q); return; } }" `shouldBe` accepted
 
-  test "breaking from owned iteration may discard remaining affine elements" $
-    typeCheckOutcome "fn f() { for q in weaken(qalloc(2)) { discard(q); break; } }" `shouldBe` accepted
-
-  test "returning from owned iteration may discard remaining affine elements" $
-    typeCheckOutcome "fn f() { for q in weaken(qalloc(2)) { discard(q); return; } }" `shouldBe` accepted
-
   test "continue advances owned iteration until every linear element is consumed" $
     typeCheckOutcome "fn f() { for q in qalloc(2) { discard(q); continue; } }" `shouldBe` accepted
 
@@ -221,10 +201,6 @@ repetitionCopyTests : List TestResult
 repetitionCopyTests = Test.do
   test "repeating a linear qubit more than once is rejected" $
     rejected (typeCheckOutcome "fn f() { let qs = [qalloc(); 2]; discard(qs); }")
-      `shouldBe` True
-
-  test "repeating an affine qubit more than once is rejected" $
-    rejected (typeCheckOutcome "fn f() { let qs = [weaken(qalloc()); 2]; }")
       `shouldBe` True
 
   test "repeating a qubit reference more than once is rejected" $

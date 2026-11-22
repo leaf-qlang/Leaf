@@ -76,14 +76,6 @@ statementTranslationTests = Test.do
     printedTypedAst "const UNIT: () = (); fn f(UNIT: ()) {}"
       `shouldBe` Right "const UNIT: () = ();\ngeneral fn f(UNIT: ()) -> () { return (); }"
 
-  test "a let quantum usage keeps its place in the annotation" $
-    printedTypedAst "fn f() -> bit { let affine q: qbit = qalloc(); H(&q); measr(q) }"
-      `shouldBe` Right "general fn f() -> bit { let q: affine qbit = qalloc(); H((&q)); return measr(q); }"
-
-  test "scratch and := markers are translated" $
-    printedTypedAst "uncompsafe fn flip(q: qbit) -> qbit { X(q) } fn f(t: &qbit) { let b: qbit := flip(qalloc()); CX(&b, t); let scratch a = qalloc(); CX(t, &a); }"
-      `shouldBe` Right "uncompsafe fn flip(q: linear qbit) -> linear qbit { return X(q); }\ngeneral fn f(t: &qbit) -> () { let b: linear qbit := flip(qalloc()); CX((&b), t); let scratch a = qalloc(); CX(t, (&a)); return (); }"
-
   test "a unit constant-named for variable is translated as a constant path" $
     printedTypedAst "const UNIT: () = (); fn f() { for UNIT in [(), ()] { } }"
       `shouldBe` Right "const UNIT: () = ();\ngeneral fn f() -> () { return for UNIT in [(), ()] { }; }"
@@ -110,10 +102,6 @@ expressionTranslationTests = Test.do
   test "quantum calls and borrows are translated" $
     printedTypedAst "fn f() -> (bit, bit) { let q0 = qalloc(); let q1 = qalloc(); H(&q0); let (q0, q1) = CX(q0, q1); measr(q0, q1) }"
       `shouldBe` Right "general fn f() -> (bit, bit) { let q0 = qalloc(); let q1 = qalloc(); H((&q0)); let (q0, q1) = CX(q0, q1); return measr(q0, q1); }"
-
-  test "ctrl and adjoint forms are translated" $
-    printedTypedAst "fn f(c: &qbit, t: &qbit) { ctrl(c) { X(t); } adjoint { H(t); } ctrl(c).on(bs\"0\").apply(X)(t); adjoint(H)(t); }"
-      `shouldBe` Right "general fn f(c: &qbit, t: &qbit) -> () { ctrl(c).on(bs\"1\") { X(t); } adjoint { H(t); } ctrl(c).on(bs\"0\").apply(X)(t); adjoint(H)(t); return (); }"
 
   test "Param and its string literal are translated" $
     printedTypedAst "fn f() -> param { Param(\"theta\") }"

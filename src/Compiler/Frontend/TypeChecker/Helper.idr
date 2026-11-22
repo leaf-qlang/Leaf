@@ -57,3 +57,28 @@ toInferredType = maybe TypeNotYetResolved ResolvedType . writtenLeafTypeM litera
         (Nothing, _) => unreachable __FILE__ {function = "toInferredType"} {reason = "the lexer accepted a malformed integer literal: " ++ rawLiteralText}
     literalArrayLength _ = Nothing
 
+export
+isEffectAtMost : (effect : FunctionEffect) -> (upperBoundEffect : FunctionEffect) -> Bool
+isEffectAtMost EffectClassical  _                = True
+isEffectAtMost _                EffectGeneral    = True
+isEffectAtMost EffectUncompsafe upperBoundEffect = upperBoundEffect /= EffectClassical
+isEffectAtMost EffectUnitary    upperBoundEffect = upperBoundEffect `elem` [EffectUnitary, EffectIsometry, EffectCoisometry]
+isEffectAtMost EffectIsometry   upperBoundEffect = upperBoundEffect == EffectIsometry
+isEffectAtMost EffectCoisometry upperBoundEffect = upperBoundEffect == EffectCoisometry
+isEffectAtMost EffectGeneral    _                = False
+
+||| The greatest lower bound of two effects
+export
+meetEffects : (leftEffect : FunctionEffect) -> (rightEffect : FunctionEffect) -> FunctionEffect
+meetEffects leftEffect rightEffect =
+  if isEffectAtMost leftEffect rightEffect then leftEffect
+  else if isEffectAtMost rightEffect leftEffect then rightEffect
+  else EffectUnitary
+
+||| The least upper bound of two effects
+export
+joinEffects : (leftEffect : FunctionEffect) -> (rightEffect : FunctionEffect) -> FunctionEffect
+joinEffects leftEffect rightEffect =
+  if isEffectAtMost leftEffect rightEffect then rightEffect
+  else if isEffectAtMost rightEffect leftEffect then leftEffect
+  else EffectGeneral
