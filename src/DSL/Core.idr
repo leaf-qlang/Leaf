@@ -2,40 +2,49 @@ module DSL.Core
 
 import Data.So
 
+import public DSL.AngleConstants
 import DSL.Wrap2Pi
 
 %default total
 
 public export
 inBounds : Double -> Bool
-inBounds x = - 2 * Prelude.pi <= x && x < 2 * Prelude.pi
+inBounds angle = negate twoPi <= angle && angle < twoPi
 
 public export
 data Radians : Type where
-  MkRadians : (x : Double) -> {auto 0 prf : So (inBounds x)} -> Radians
+  MkRadians : (angle : Double) -> {auto 0 prf : So (inBounds angle)} -> Radians
 
--- Reduce, then turn the Boolean check into the proof
-mkWrapped : Double -> Radians
-mkWrapped x = let r = wrap x in
-  case choose (inBounds r) of
-    Left prf => MkRadians r {prf = prf}   -- prf : So (inBounds r), from choose
-    Right _  => MkRadians 0.0 {prf = Oh}  -- inBounds 0.0 reduces to True, so Oh : So True fits
+-- Reduce modulo 4π into [-2π, 2π), then turn the Boolean range check into the
+-- proof MkRadians needs.
+mkRadiansReducedModuloFourPi : Double -> Radians
+mkRadiansReducedModuloFourPi angle =
+  let reducedAngle = reduceModuloFourPiIntoSignedTwoPiRange angle in
+  case choose (inBounds reducedAngle) of
+    Left prf => MkRadians reducedAngle {prf = prf}  -- prf : So (inBounds reducedAngle), from choose
+    -- Reached only for NaN and ±Infinity: every finite angle reduces into range.
+    -- inBounds 0.0 reduces to True, so Oh : So True fits.
+    Right _  => MkRadians 0.0 {prf = Oh}
 
 public export
 (+) : Radians -> Radians -> Radians
-(MkRadians x) + (MkRadians y) = mkWrapped (x + y)
+(MkRadians x) + (MkRadians y) = mkRadiansReducedModuloFourPi (x + y)
 
 public export
 (-) : Radians -> Radians -> Radians
-(MkRadians x) - (MkRadians y) = mkWrapped (x - y)
+(MkRadians x) - (MkRadians y) = mkRadiansReducedModuloFourPi (x - y)
 
 public export
 negate : Radians -> Radians
-negate (MkRadians x) = mkWrapped (negate x)
+negate (MkRadians angle) = mkRadiansReducedModuloFourPi (negate angle)
+
+public export
+Eq Radians where
+  (MkRadians x) == (MkRadians y) = x == y
 
 public export
 Show Radians where
-  show (MkRadians x) = show x
+  show (MkRadians angle) = show angle
 
 public export
 data QState
@@ -47,7 +56,7 @@ data QState
   | MinusI
 
 public export
-data BState = ZERO | ONE
+data Bit = Bit0 | Bit1
 
 public export
 pi : Radians

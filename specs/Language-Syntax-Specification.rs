@@ -190,7 +190,7 @@ turns()
 bit, qbit, qstate
 
 // additional quantum types:
-// - angle type is similar to OpenQasm3's angle type,  represents values modulo 2π using 32 or 64 bits
+// - angle type is similar to OpenQasm3's angle type, but represents values modulo 4π, in the range [-2π, 2π), using 32 or 64 bits
 // - symbolic compile-time parameters param type is similar to Qiskit's Parameter type
 angle32, angle64, param
 
@@ -602,7 +602,7 @@ I, X, Y, Z, H, S, SDG, T, TDG, SX, SXDG, RX, RY, RZ, U1, U2, U3, CNOT, CX, CY, C
 // (i) when the angle argument is a float32/ float64 number, it will be casted to an angle32/ angle64 value.
 let q: qbit = U1(0.25, q);
 
-// (ii) angle32 and angle64 represent floating point numbers radians modulo 2π using 32 or 64 bits
+// (ii) angle32 and angle64 represent radians modulo 4π as floating point numbers in the range [-2π, 2π), using 32 or 64 bits
 let angle: angle64 = 3.141592653589793;
 let q: qbit = U1(angle, q);
 
@@ -677,7 +677,7 @@ let (q0, q1) = ZZ(1.0, q0, q1);
 
 // Parameterized gates rotation angle arguments can be of type: param, angle32, angle64.
 
-// angle32 and angle64 represent floating point numbers radians modulo 2π using 32 or 64 bits
+// angle32 and angle64 represent radians modulo 4π as floating point numbers in the range [-2π, 2π), using 32 or 64 bits
 let angle: angle64 = 3.141592653589793;
 let q: qbit = U1(angle, q);
 

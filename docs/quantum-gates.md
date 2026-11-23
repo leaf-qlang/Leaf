@@ -54,7 +54,7 @@ TDG(&q);
 
 ### Parametric Single-Qubit Gates
 
-Rotation angles values get truncated to the [-2π, 2π) range.
+Rotation angles are reduced modulo 4π into the [-2π, 2π) range.
 
 ```leaf
 RX(1.0, &q);
@@ -67,7 +67,7 @@ U3(1.0, 2.0, 3.0, &q);
 
 ### Controlled Gates
 
-Rotation angles values get truncated to the [-2π, 2π) range.
+Rotation angles are reduced modulo 4π into the [-2π, 2π) range.
 
 ```leaf
 CX(&q1, &q2);
@@ -90,7 +90,7 @@ CU3(1.0, 2.0, 3.0, &q1, &q2);
 
 ### Two-Qubit Interaction Gates
 
-Rotation angles values get truncated to the [-2π, 2π) range.
+Rotation angles are reduced modulo 4π into the [-2π, 2π) range.
 
 ```leaf
 SWAP(&q1, &q2);
@@ -126,7 +126,7 @@ barrier(&q1, &q2);
 
 Parameterized gates rotation angle arguments can be of type: param, angle32, angle64.
 
-(i) angle32 and angle64 represent floating point numbers radians in the [-2π, 2π) range using 32 or 64 bits:
+(i) angle32 and angle64 represent radians modulo 4π as floating point numbers in the [-2π, 2π) range, using 32 or 64 bits:
 ```leaf
 let angle: angle64 = 3.141592653589793;
 let q: qbit = U1(angle, q);

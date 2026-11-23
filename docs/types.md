@@ -17,7 +17,7 @@ let plusAlias : qstate = 1/sqrt(2) * (zero + one);
 let oneAlias  : qstate = 1/sqrt(2) * (plus - minus);
 ```
 
-(2) Angle types: 32-bit or 64-bit floating-point values in the range [0, 2π)
+(2) Angle types: 32-bit or 64-bit floating-point values representing radians modulo 4π, in the range [-2π, 2π)
 ```leaf
 angle32, angle64
 ```

@@ -26,7 +26,6 @@ mutual
   adjointUnitary (SX q)    = SXDG q
   adjointUnitary (SXDG q)  = SX q
 
-  -- Parametric rotations (assuming Radians is a Num)
   adjointUnitary (RX theta q) = RX (-theta) q
   adjointUnitary (RY theta q) = RY (-theta) q
   adjointUnitary (RZ theta q) = RZ (-theta) q
@@ -38,8 +37,8 @@ mutual
   adjointUnitary (U1 lambda q) =
     U1 (-lambda) q
 
-  -- For U2, we use the standard OpenQASM / Qiskit adjoint:
-  -- U2(φ, λ)† = U2(-λ - π, -φ + π), up to global phase
+  -- U2(φ, λ)† = U2(-λ - π, -φ + π) holds exactly, with no global phase, so
+  -- the same formula is also correct for CU2 below.
   adjointUnitary (U2 phi lambda q) =
     U2 (-lambda - pi) ( -phi + pi ) q
 
