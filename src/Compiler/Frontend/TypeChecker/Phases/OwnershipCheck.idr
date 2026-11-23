@@ -26,4 +26,4 @@ import Compiler.Frontend.Syntax.Type
 
 export
 checkOwnership : TypeTables -> TypedSourceFile -> Either TypeError OwnershipTables
-checkOwnership typedModule = ?checkOwnershipHole
+checkOwnership typeTables typedAst = ?checkOwnershipHole

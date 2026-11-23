@@ -9,28 +9,28 @@ import TypeChecker.Helper
 %default total
 
 --------------------------------------------------------------------------------
--- Pass E: effects, capabilities and attributes, stage 2
+-- Pass E: effects, capabilities and attributes, constructs not yet supported
 --------------------------------------------------------------------------------
--- The EffectsCheckTest tests of the constructs that stage 2 adds (plan part
--- A.6): `affine` and `weaken`, `adjoint`, control blocks, `scratch`, `:=`,
--- `uncompute` and clean ancilla disposal. No runner includes these groups
--- yet; each stage 2 step (plan steps 18 to 21) adds its group to
--- runEffectsCheckTests.
+-- The EffectsCheckTest tests of constructs that the type checker does not
+-- support yet: `affine` and `weaken`, `adjoint`, control blocks, `scratch`,
+-- `:=`, `uncompute` and clean ancilla disposal. No runner includes these
+-- groups yet; each group is added to runEffectsCheckTests once the type checker
+-- supports its constructs.
 --------------------------------------------------------------------------------
 
--- Stage 2, plan step 18: `affine` qualifiers and `weaken`. Left out of
--- runEffectsCheckTests until step 18 re-enables this group.
+-- `affine` qualifiers and `weaken`. Left out of
+-- runEffectsCheckTests until the type checker supports these constructs.
 export
-affineStageTwoTests : List TestResult
-affineStageTwoTests = Test.do
+affineBetaReleaseTests : List TestResult
+affineBetaReleaseTests = Test.do
   test "weaken and barrier are classical operations" $
     typeCheckOutcome "uncompsafe fn f(q: qbit) -> affine qbit { barrier(&q); weaken(q) }" `shouldBe` accepted
 
--- Stage 2, plan step 19: `adjoint(f)` and `adjoint { … }`. Left out of
--- runEffectsCheckTests until step 19 re-enables this group.
+-- `adjoint(f)` and `adjoint { … }`. Left out of
+-- runEffectsCheckTests until the type checker supports these constructs.
 export
-adjointStageTwoTests : List TestResult
-adjointStageTwoTests = Test.do
+adjointBetaReleaseTests : List TestResult
+adjointBetaReleaseTests = Test.do
   test "the adjoint of a gate is permitted in unitary code" $
     typeCheckOutcome "unitary fn f(q: &qbit) { adjoint(H)(q); adjoint(S)(q); }" `shouldBe` accepted
 
@@ -82,11 +82,11 @@ adjointStageTwoTests = Test.do
     typeCheckOutcome "fn f(q: &qbit) { adjoint { H(q); return; } }"
       `shouldBe` rejectedWith (JumpOutOfQuantumBlock "return" (spanAt 1 34))
 
--- Stage 2, plan step 20: control blocks `ctrl(…) { … }`. Left out of
--- runEffectsCheckTests until step 20 re-enables this group.
+-- Control blocks `ctrl(…) { … }`. Left out of
+-- runEffectsCheckTests until the type checker supports these constructs.
 export
-controlBlockStageTwoTests : List TestResult
-controlBlockStageTwoTests = Test.do
+controlBlockBetaReleaseTests : List TestResult
+controlBlockBetaReleaseTests = Test.do
   test "a control block may call a unitary user function" $
     typeCheckOutcome "unitary fn g(q: &qbit) { H(q); } unitary fn f(c: &qbit, q: &qbit) { ctrl(c) { g(q); } }"
       `shouldBe` accepted
@@ -120,11 +120,11 @@ controlBlockStageTwoTests = Test.do
   test "a break targeting a loop inside a control block is allowed" $
     typeCheckOutcome "fn f(c: &qbit, q: &qbit) { ctrl(c) { loop { X(q); break; } } }" `shouldBe` accepted
 
--- Stage 2, plan step 21: `scratch`, `:=`, `uncompute` and clean ancilla disposal. Left out of
--- runEffectsCheckTests until step 21 re-enables this group.
+-- `scratch`, `:=`, `uncompute` and clean ancilla disposal. Left out of
+-- runEffectsCheckTests until the type checker supports these constructs.
 export
-uncomputationStageTwoTests : List TestResult
-uncomputationStageTwoTests = Test.do
+uncomputationBetaReleaseTests : List TestResult
+uncomputationBetaReleaseTests = Test.do
   test "qalloc is permitted in a unitary function" $
     typeCheckOutcome "unitary fn f(q: &qbit) { let scratch a = qalloc(); CX(q, &a); }" `shouldBe` accepted
 

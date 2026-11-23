@@ -34,7 +34,7 @@ checkedFunctionEffect  : Maybe (ResolvedAstNode FunctionConstness)
 checkedFunctionEffect  _ Nothing = unreachable __FILE__ {function = "checkedFunctionEffect"} {reason = "desugaring did not supply a function effect"}
 checkedFunctionEffect  Nothing (Just (MkAstNode _ _ writtenEffect)) = pure writtenEffect
 checkedFunctionEffect  (Just _) (Just (MkAstNode _ _ EffectClassical)) = pure EffectClassical
-checkedFunctionEffect  (Just _) (Just (MkAstNode info _ writtenEffect)) = typeError (EffectViolation EffectClassical writtenEffect info.span)
+checkedFunctionEffect  (Just _) (Just (MkAstNode info _ writtenEffect)) = liftTypeError (EffectViolation EffectClassical writtenEffect info.span)
 
 checkFunctionDeclaration : FunctionDeclarationNode ResolvedAstPhase -> StateT TypeCheckerState (Either CheckFailure) ()
 checkFunctionDeclaration
@@ -52,8 +52,10 @@ checkFunctionDeclaration
       functionBody
     ) = do
       functionEffect <- checkedFunctionEffect functionConstness functionEffect
-      -- First pass: syntactic errors in every written type.
-      -- They must be reported before any array length is evaluated.
+      -- First pass: written-type errors (unsized slices, `affine`) in every
+      -- parameter and the result, before any of their types is recorded.
+      -- Rendering an `UnsizedValue` evaluates array lengths and may block;
+      -- retrying is sound because a blocked check leaves no state behind.
       traverse_
         (\parameter =>
           case parameter.nodeValue of
@@ -68,7 +70,7 @@ checkFunctionDeclaration
             NormalParameter _ _ (MkAstNode _ _ (MkResolvedNameNode nameNodeText nameNodeSymbolId)) parameterType => do
               paramLeafType <- writtenLeafTypeM evalConstExprNat parameterType
               typeCheckerState <- get
-              case lookup nameNodeSymbolId typeCheckerState.tables.symbols of
+              case lookup nameNodeSymbolId typeCheckerState.typeTables.symbols of
                 Nothing => unreachable __FILE__ {function = "checkFunctionDeclaration"} {reason = "parameter symbol cannot be found in checker state"}
                 Just symbolInfo =>
                   case symbolInfo.symbolKind of
@@ -96,12 +98,12 @@ export
 checkSignature : ResolvedItem -> StateT TypeCheckerState (Either CheckFailure) ()
 checkSignature (MkAstNode itemInfo metadata item) = do
   case item of
-      ItemModule declaration => notImplemented __FILE__ {function = "checkItem"} {feature = "ItemModule"}
-      ItemUse declaration => notImplemented __FILE__ {function = "checkItem"} {feature = "ItemUse"}
+      ItemModule declaration => notImplemented __FILE__ {function = "checkSignature"} {feature = "ItemModule"}
+      ItemUse declaration => notImplemented __FILE__ {function = "checkSignature"} {feature = "ItemUse"}
       ItemConst declaration => checkConstDeclaration declaration
-      ItemEnum declaration => notImplemented __FILE__ {function = "checkItem"} {feature = "ItemEnum"}
-      ItemQEnum declaration => notImplemented __FILE__ {function = "checkItem"} {feature = "ItemQEnum"}
-      ItemStruct declaration => notImplemented __FILE__ {function = "checkItem"} {feature = "ItemStruct"}
-      ItemImpl declaration => notImplemented __FILE__ {function = "checkItem"} {feature = "ItemImpl"}
+      ItemEnum declaration => notImplemented __FILE__ {function = "checkSignature"} {feature = "ItemEnum"}
+      ItemQEnum declaration => notImplemented __FILE__ {function = "checkSignature"} {feature = "ItemQEnum"}
+      ItemStruct declaration => notImplemented __FILE__ {function = "checkSignature"} {feature = "ItemStruct"}
+      ItemImpl declaration => notImplemented __FILE__ {function = "checkSignature"} {feature = "ItemImpl"}
       ItemFunction declaration => checkFunctionDeclaration declaration
 

@@ -40,15 +40,15 @@ evalConstExprNat (MkAstNode astInfo metadata expressionNode) =
             Nothing => unreachable __FILE__ {function = "evalConstExprNat"} {reason = "the lexer accepted a malformed integer literal: " ++ raw}
             Just _ =>
               case arrayLengthProblem raw of
-                Just (NonUsizeLengthSuffix suffixType) => typeError (IncorrectArrayLengthType (LeafPrimitiveType suffixType) astInfo.span)
+                Just (NonUsizeLengthSuffix suffixType) => liftTypeError (IncorrectArrayLengthType (LeafPrimitiveType suffixType) astInfo.span)
                 _ =>
                   case inferIntegerLiteral (Just TypPrimUsize) raw astInfo.span of
-                    Left err => typeError err
+                    Left typeError => liftTypeError typeError
                     Right (primitive, value) =>
                       case checkArrayLength (LeafPrimitiveType primitive) value astInfo.span of
-                        Left err => typeError err
+                        Left typeError => liftTypeError typeError
                         Right count => pure count
-        _ => typeError ?hh
+        _ => liftTypeError ?hh
     ExprName name => notImplemented __FILE__ {function = "evalConstExprNat"} {feature = "names in constant expressions"}
     ExprPath path => notImplemented __FILE__ {function = "evalConstExprNat"} {feature = "paths in constant expressions"}
     ExprBuiltin builtin =>
@@ -123,11 +123,11 @@ checkWrittenTypeIsSizedAndSupported = walk False
             then walk False (assert_smaller typeNode elementType)
             else do
               leafType <- writtenLeafTypeM evalConstExprNat typeAstNode
-              typeError (UnsizedValue leafType astInfo.span)
+              liftTypeError (UnsizedValue leafType astInfo.span)
         TyReference borrowKind referencedType => walk True (assert_smaller typeNode referencedType)
         TyQualified (MkAstNode qualifierInfo _ quantumUsageQualifier) qualifiedType =>
           case quantumUsageQualifier of
-            QuantumUsageAffine => typeError (UnsupportedFeature "affine" qualifierInfo.span)
+            QuantumUsageAffine => liftTypeError (UnsupportedFeature "affine" qualifierInfo.span)
             QuantumUsageLinear => walk unsizedAllowed (assert_smaller typeNode qualifiedType)
         TyFunction functionEffect functionParameters returnType => do
           traverse_ (\parameter => walk False (assert_smaller typeNode parameter.nodeValue.parameterType)) functionParameters
@@ -138,7 +138,7 @@ checkWrittenTypeIsSizedAndSupported = walk False
 isPreludeParamFunction : ResolvedExpr -> StateT TypeCheckerState (Either CheckFailure) Bool
 isPreludeParamFunction (MkAstNode calleeInfo calleeMetadata (ExprName (MkAstNode nameInfo nameMetadata calleeName))) = do
   checkerState <- get
-  case lookup calleeName.nameNodeSymbolId checkerState.tables.symbols of
+  case lookup calleeName.nameNodeSymbolId checkerState.typeTables.symbols of
     Just symbolInfo =>
       case symbolInfo.origin of
         PreludeSymbol => pure (symbolInfo.declaredName == "Param")
@@ -260,12 +260,12 @@ export
 checkBody : ResolvedItem -> StateT TypeCheckerState (Either CheckFailure) ()
 checkBody (MkAstNode itemInfo metadata item) = do
   case item of
-      ItemModule declaration => notImplemented __FILE__ {function = "checkItem"} {feature = "ItemModule"}
-      ItemUse declaration => notImplemented __FILE__ {function = "checkItem"} {feature = "ItemUse"}
+      ItemModule declaration => notImplemented __FILE__ {function = "checkBody"} {feature = "ItemModule"}
+      ItemUse declaration => notImplemented __FILE__ {function = "checkBody"} {feature = "ItemUse"}
       ItemConst declaration => checkConstDeclaration declaration
-      ItemEnum declaration => notImplemented __FILE__ {function = "checkItem"} {feature = "ItemEnum"}
-      ItemQEnum declaration => notImplemented __FILE__ {function = "checkItem"} {feature = "ItemQEnum"}
-      ItemStruct declaration => notImplemented __FILE__ {function = "checkItem"} {feature = "ItemStruct"}
-      ItemImpl declaration => notImplemented __FILE__ {function = "checkItem"} {feature = "ItemImpl"}
+      ItemEnum declaration => notImplemented __FILE__ {function = "checkBody"} {feature = "ItemEnum"}
+      ItemQEnum declaration => notImplemented __FILE__ {function = "checkBody"} {feature = "ItemQEnum"}
+      ItemStruct declaration => notImplemented __FILE__ {function = "checkBody"} {feature = "ItemStruct"}
+      ItemImpl declaration => notImplemented __FILE__ {function = "checkBody"} {feature = "ItemImpl"}
       ItemFunction declaration => checkFunctionDeclaration declaration
 

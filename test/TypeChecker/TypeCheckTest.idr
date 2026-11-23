@@ -11,7 +11,7 @@ import TypeChecker.Helper
 --------------------------------------------------------------------------------
 -- Type checker integration tests
 --------------------------------------------------------------------------------
--- Whole programs through every phase (plan step 17): the examples in
+-- Whole programs through every phase: the examples in
 -- `examples/`, read at run time, and the in-scope sections of the language
 -- specification, each placed in the smallest context that declares what it
 -- uses. Example 08 is excluded: the parser rejects its qmatch. Spec snippets
@@ -571,7 +571,7 @@ recursionProgram = """
   }
   """
 
--- Language specification sections (plan part A.6, step 17)
+-- Language specification sections
 specificationTests : List TestResult
 specificationTests = Test.do
   test "spec §5 every primitive type except qstate type-checks" $

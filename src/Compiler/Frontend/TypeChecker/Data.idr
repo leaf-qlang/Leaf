@@ -172,11 +172,11 @@ record OwnershipTables where
 public export
 record TypedModule where
   constructor MkTypedModule
-  rootSymbolId   : SymbolId
-  rootScopeId    : ScopeId
-  ast            : TypedSourceFile
-  tables         : TypeTables
-  ownership      : OwnershipTables
+  rootSymbolId    : SymbolId
+  rootScopeId     : ScopeId
+  ast             : TypedSourceFile
+  typeTables      : TypeTables
+  ownershipTables : OwnershipTables
 
 public export
 data TypeError

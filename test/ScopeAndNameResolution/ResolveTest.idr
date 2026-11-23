@@ -56,8 +56,8 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
       readsY <- useMatches resolvedModule yName assignment.assignmentValue
       finalX <- useMatches resolvedModule xName finalRead
       scope <- scopeFor resolvedModule functionDeclaration.functionBody
-      xRefs <- lookup (symbolId xName) resolvedModule.tables.references
-      yRefs <- lookup (symbolId yName) resolvedModule.tables.references
+      xRefs <- lookup (symbolId xName) resolvedModule.scopeTables.references
+      yRefs <- lookup (symbolId yName) resolvedModule.scopeTables.references
       pure (symbolId xName /= symbolId yName && symbolId target == symbolId xName &&
             readsX && readsY && finalX &&
             referenceMatches resolvedModule DeclarationReference xBinding.letPattern.astInfo.nodeId xName &&
@@ -65,7 +65,7 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
             referenceMatches resolvedModule AssignmentTarget assignment.assignmentTarget.astInfo.nodeId target &&
             length (xRefs <>> []) == 4 && length (yRefs <>> []) == 2 &&
             bindingMatches scope xName && bindingMatches scope yName &&
-            all (\statement => lookup statement.astInfo.nodeId resolvedModule.tables.nodeScopes == Just scope.id)
+            all (\statement => lookup statement.astInfo.nodeId resolvedModule.scopeTables.nodeScopes == Just scope.id)
               functionDeclaration.functionBody.nodeValue.blockStatements &&
             (scope.declaredSymbolsInOrder <>> []) == [symbolId xName, symbolId yName] &&
             symbolMatches resolvedModule xName scope.id "local" xName.astInfo &&
@@ -91,7 +91,7 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
             bindingMatches scope xName && localMatches resolvedModule xName True &&
             symbolMatches resolvedModule xName scope.id "local" xName.astInfo &&
             (scope.declaredSymbolsInOrder <>> []) == [symbolId xName] &&
-            map fst (SortedMap.toList resolvedModule.tables.localVarsMeta) == [symbolId xName] &&
+            map fst (SortedMap.toList resolvedModule.scopeTables.localVarsMeta) == [symbolId xName] &&
             referenceInventory resolvedModule
               [(DeclarationReference, fnInfo.nodeId, functionDeclaration.functionName),
                (DeclarationReference, binding.letPattern.astInfo.nodeId, xName),
@@ -114,7 +114,7 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
       pure (symbolId first /= symbolId second && usesFirst && usesSecond &&
             bindingMatches scope second &&
             (scope.declaredSymbolsInOrder <>> []) == [symbolId first, symbolId second] &&
-            isJust (lookup (symbolId first) resolvedModule.tables.symbols))) `shouldBe` Right True
+            isJust (lookup (symbolId first) resolvedModule.scopeTables.symbols))) `shouldBe` Right True
 
   test "destructuring initializers use both old parameters before introducing shadowing locals" $
     checkSource "fn f(x: i32, y: i32) { let (x, y) = (y, x); x; y; }" (\resolvedModule => do
@@ -278,7 +278,7 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
             (case loopScope.origin of SourceScope originInfo => originInfo.nodeId == loopExpression.astInfo.nodeId; _ => False) &&
             (case bodyScope.origin of SourceScope originInfo => originInfo.nodeId == body.astInfo.nodeId; _ => False) &&
             bindingMatches outer outerName && bindingMatches loopScope loopName &&
-            lookup loopExpression.astInfo.nodeId resolvedModule.tables.nodeScopes == Just outer.id &&
+            lookup loopExpression.astInfo.nodeId resolvedModule.scopeTables.nodeScopes == Just outer.id &&
             referenceMatches resolvedModule DeclarationReference pattern.astInfo.nodeId loopName &&
             localMatches resolvedModule loopName False)) `shouldBe` Right True
 
@@ -359,7 +359,7 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
             length (nub (map (.id) scopes)) == 3 && length (nub (map symbolId names)) == 3 &&
             all (\scope => isBlock scope && scope.parent == Just outer.id) scopes &&
             all (\(scope, resolvedName) => bindingMatches scope resolvedName) (zip scopes names) &&
-            lookup chained.astInfo.nodeId resolvedModule.tables.nodeScopes == Just outer.id &&
+            lookup chained.astInfo.nodeId resolvedModule.scopeTables.nodeScopes == Just outer.id &&
             isNothing (lookup "x" outer.valueBindings))) `shouldBe` Right True
 
   test "plain blocks isolate declarations" $ blockIsolation "" `shouldBe` Right True
@@ -382,8 +382,8 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
       adjointOK <- useMatches resolvedModule functionG.functionName adjointCallable
       bodyScope <- scopeFor resolvedModule functionF.functionBody
       pure (controlOK && callableOK && adjointOK &&
-            lookup controlled.astInfo.nodeId resolvedModule.tables.nodeScopes == Just bodyScope.id &&
-            lookup adjointed.astInfo.nodeId resolvedModule.tables.nodeScopes == Just bodyScope.id)) `shouldBe` Right True
+            lookup controlled.astInfo.nodeId resolvedModule.scopeTables.nodeScopes == Just bodyScope.id &&
+            lookup adjointed.astInfo.nodeId resolvedModule.scopeTables.nodeScopes == Just bodyScope.id)) `shouldBe` Right True
 
   test "controlled blocks resolve every operand before entering the child scope" $
     checkSource "fn f(q: qbit, r: qbit) { ctrl(&q, &r) { let q = 1; q; r; } q; r; }" (\resolvedModule => do
@@ -471,9 +471,9 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
       (constInfo, constDeclaration) <- constantNamed "n" resolvedModule
       (fnInfo, functionDeclaration) <- functionNamed "f" resolvedModule
       (_, privateFn) <- functionNamed "g" resolvedModule
-      constantSymbol <- lookup (symbolId constDeclaration.constName) resolvedModule.tables.symbols
-      functionSymbol <- lookup (symbolId functionDeclaration.functionName) resolvedModule.tables.symbols
-      privateSymbol <- lookup (symbolId privateFn.functionName) resolvedModule.tables.symbols
+      constantSymbol <- lookup (symbolId constDeclaration.constName) resolvedModule.scopeTables.symbols
+      functionSymbol <- lookup (symbolId functionDeclaration.functionName) resolvedModule.scopeTables.symbols
+      privateSymbol <- lookup (symbolId privateFn.functionName) resolvedModule.scopeTables.symbols
       useExpression <- exprAt 0 functionDeclaration.functionBody
       useOK <- useMatches resolvedModule constDeclaration.constName useExpression
       pure (useOK && symbolMatches resolvedModule constDeclaration.constName resolvedModule.rootScopeId "constant" constInfo &&
@@ -481,11 +481,11 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
             (case constantSymbol.visibility of PublicVisibility => True; _ => False) &&
             (case functionSymbol.visibility of PublicVisibility => True; _ => False) &&
             (case privateSymbol.visibility of ModuleVisibility => True; _ => False) &&
-            all (\resolvedName => isNothing (lookup (symbolId resolvedName) resolvedModule.tables.localVarsMeta))
+            all (\resolvedName => isNothing (lookup (symbolId resolvedName) resolvedModule.scopeTables.localVarsMeta))
               [constDeclaration.constName, functionDeclaration.functionName, privateFn.functionName] &&
-            resolvedModule.tables.currentScopeId == resolvedModule.rootScopeId &&
-            resolvedModule.tables.currentModuleSymbolId == resolvedModule.rootSymbolId &&
-            (case resolvedModule.tables.currentScopeKind of ModuleScope => True; _ => False))) `shouldBe` Right True
+            resolvedModule.scopeTables.currentScopeId == resolvedModule.rootScopeId &&
+            resolvedModule.scopeTables.currentModuleSymbolId == resolvedModule.rootSymbolId &&
+            (case resolvedModule.scopeTables.currentScopeKind of ModuleScope => True; _ => False))) `shouldBe` Right True
 
   test "self-initialization without an outer binding is unresolved" $
     unresolved "fn f() { let x = x; }" "x" `shouldBe` Right True
@@ -696,13 +696,13 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
       indexScope <- scopeFor resolvedModule block
       pure (blockScopesMatchNodes resolvedModule && isBlock indexScope &&
             null (indexScope.declaredSymbolsInOrder <>> []) &&
-            length (filter (isBlock . snd) (SortedMap.toList resolvedModule.tables.scopes)) == 2))
+            length (filter (isBlock . snd) (SortedMap.toList resolvedModule.scopeTables.scopes)) == 2))
       `shouldBe` Right True
 
   test "nested compound targets retain consistent block scopes" $
     checkSource "fn f(mut a: [i32; 2]) { a[{ let i = 0; let mut b = [0]; b[{ i }] += 1; i }] += 1; }"
       (\resolvedModule => Just (blockScopesMatchNodes resolvedModule &&
-        length (filter (isBlock . snd) (SortedMap.toList resolvedModule.tables.scopes)) == 3))
+        length (filter (isBlock . snd) (SortedMap.toList resolvedModule.scopeTables.scopes)) == 3))
       `shouldBe` Right True
 
   test "nested signature and local types have scopes on every visited type node" $
@@ -760,7 +760,7 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
       pure (all (nodeHasScope resolvedModule scope.id) [binding.letPattern, aPattern, arrayPattern, wildcard, bPattern] &&
             all (nodeHasScope resolvedModule scope.id) [initializerExpression, oneLiteral, arrayExpression, twoLiteral, threeLiteral] &&
             (scope.declaredSymbolsInOrder <>> []) == [symbolId aName, symbolId bName] &&
-            sort (map fst (SortedMap.toList resolvedModule.tables.localVarsMeta)) == sort [symbolId aName, symbolId bName] &&
+            sort (map fst (SortedMap.toList resolvedModule.scopeTables.localVarsMeta)) == sort [symbolId aName, symbolId bName] &&
             sort (map (.declaredName) (sourceSymbols resolvedModule)) == ["", "a", "b", "f"] &&
             length (allReferences resolvedModule) == 3 &&
             all (\reference => not (elem reference.occurrence.nodeId
@@ -783,13 +783,13 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
       ExprName xUse <- pure xUseExpr.nodeValue | _ => Nothing
       ExprName y1Use <- pure y1UseExpr.nodeValue | _ => Nothing
       ExprName y2Use <- pure y2UseExpr.nodeValue | _ => Nothing
-      root <- lookup resolvedModule.rootScopeId resolvedModule.tables.scopes
+      root <- lookup resolvedModule.rootScopeId resolvedModule.scopeTables.scopes
       functionScope <- scopeFor resolvedModule parameter
       bodyScope <- scopeFor resolvedModule functionDeclaration.functionBody
-      orderedRoot <- traverse (\declaredSymbolId => lookup declaredSymbolId resolvedModule.tables.symbols) (root.declaredSymbolsInOrder <>> [])
+      orderedRoot <- traverse (\declaredSymbolId => lookup declaredSymbolId resolvedModule.scopeTables.symbols) (root.declaredSymbolsInOrder <>> [])
       pure (sort (map (.symbolId) (sourceSymbols resolvedModule)) ==
               sort [resolvedModule.rootSymbolId, symbolId constDeclaration.constName, symbolId functionDeclaration.functionName, symbolId xName, symbolId firstYName, symbolId secondYName] &&
-            sort (map fst (SortedMap.toList resolvedModule.tables.localVarsMeta)) == sort [symbolId xName, symbolId firstYName, symbolId secondYName] &&
+            sort (map fst (SortedMap.toList resolvedModule.scopeTables.localVarsMeta)) == sort [symbolId xName, symbolId firstYName, symbolId secondYName] &&
             map (.declaredName) orderedRoot == ["<prelude>", "n", "f"] &&
             map (\(resolvedName, binding) => (resolvedName, binding.target)) (SortedMap.toList root.valueBindings) ==
               [("f", symbolId functionDeclaration.functionName), ("n", symbolId constDeclaration.constName)] &&
@@ -838,7 +838,7 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
       final <- exprAt 1 functionDeclaration.functionBody
       useOK <- useMatches resolvedModule constDeclaration.constName final
       pure (constantPatternMatches resolvedModule constDeclaration.constName binding.letPattern && useOK &&
-            null (SortedMap.toList resolvedModule.tables.localVarsMeta))) `shouldBe` Right True
+            null (SortedMap.toList resolvedModule.scopeTables.localVarsMeta))) `shouldBe` Right True
 
   test "a mutable let binder cannot shadow a module constant" $
     constantShadowing "const N: i32 = 1;\nfn f() { let mut N = 2; }"
@@ -859,7 +859,7 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
             constantPatternMatches resolvedModule constDeclaration.constName second &&
             localMatches resolvedModule xName False && bindingMatches scope xName && useOK &&
             (scope.declaredSymbolsInOrder <>> []) == [symbolId xName] &&
-            length (SortedMap.toList resolvedModule.tables.localVarsMeta) == 1)) `shouldBe` Right True
+            length (SortedMap.toList resolvedModule.scopeTables.localVarsMeta) == 1)) `shouldBe` Right True
 
   test "an array can contain repeated constant patterns without introducing bindings" $
     checkSource "const U: () = (); fn f() { let [U, U] = [(), ()]; }" (\resolvedModule => do
@@ -869,7 +869,7 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
       PatternArray [first, second] <- pure binding.letPattern.nodeValue | _ => Nothing
       pure (constantPatternMatches resolvedModule constDeclaration.constName first &&
             constantPatternMatches resolvedModule constDeclaration.constName second &&
-            null (SortedMap.toList resolvedModule.tables.localVarsMeta))) `shouldBe` Right True
+            null (SortedMap.toList resolvedModule.scopeTables.localVarsMeta))) `shouldBe` Right True
 
   test "constant patterns remain references in nested blocks" $
     checkSource "const U: () = (); fn f() { { let U = (); } }" (\resolvedModule => do
@@ -878,7 +878,7 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
       inner <- returnedAt 0 functionDeclaration.functionBody >>= blockBody
       binding <- letAt 0 inner
       pure (constantPatternMatches resolvedModule constDeclaration.constName binding.letPattern &&
-            null (SortedMap.toList resolvedModule.tables.localVarsMeta))) `shouldBe` Right True
+            null (SortedMap.toList resolvedModule.scopeTables.localVarsMeta))) `shouldBe` Right True
 
   test "repeated constant parameters are pattern references and introduce no parameters" $
     checkSource "const U: () = (); fn f(U: (), U: ()) { U; }" (\resolvedModule => do
@@ -890,7 +890,7 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
       useOK <- useMatches resolvedModule constDeclaration.constName useExpression
       pure (constantOccurrenceMatches resolvedModule constDeclaration.constName first.astInfo.nodeId firstName &&
             constantOccurrenceMatches resolvedModule constDeclaration.constName second.astInfo.nodeId secondName && useOK &&
-            null (SortedMap.toList resolvedModule.tables.localVarsMeta))) `shouldBe` Right True
+            null (SortedMap.toList resolvedModule.scopeTables.localVarsMeta))) `shouldBe` Right True
 
   test "for constant patterns introduce no loop binding" $
     checkSource "const U: () = (); fn f() { for U in [()] { U; } }" (\resolvedModule => do
@@ -901,7 +901,7 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
       useExpression <- exprAt 0 body
       useOK <- useMatches resolvedModule constDeclaration.constName useExpression
       pure (constantPatternMatches resolvedModule constDeclaration.constName pattern && useOK &&
-            null (SortedMap.toList resolvedModule.tables.localVarsMeta))) `shouldBe` Right True
+            null (SortedMap.toList resolvedModule.scopeTables.localVarsMeta))) `shouldBe` Right True
 
   test "repeated constant tuple patterns introduce no for-loop bindings" $
     checkForPattern "const U: () = (); fn f() { let (U, U) = ((), ()); for unused in [((), ())] { U; } }" (\resolvedModule => do
@@ -918,7 +918,7 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
             constantPatternMatches resolvedModule constDeclaration.constName second && useOK &&
             (case loopScope.kind of ForScope => True; _ => False) &&
             null (SortedMap.toList loopScope.valueBindings) &&
-            null (SortedMap.toList resolvedModule.tables.localVarsMeta))) `shouldBe` Right True
+            null (SortedMap.toList resolvedModule.scopeTables.localVarsMeta))) `shouldBe` Right True
 
   test "a constant declared later in the module is still a constant pattern" $
     checkSource "fn f() { let U = (); } const U: () = ();" (\resolvedModule => do
@@ -926,7 +926,7 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
       (_, functionDeclaration) <- functionNamed "f" resolvedModule
       binding <- letAt 0 functionDeclaration.functionBody
       pure (constantPatternMatches resolvedModule constDeclaration.constName binding.letPattern &&
-            null (SortedMap.toList resolvedModule.tables.localVarsMeta))) `shouldBe` Right True
+            null (SortedMap.toList resolvedModule.scopeTables.localVarsMeta))) `shouldBe` Right True
 
   test "a constant shadowing a prelude function is interpreted as a pattern" $
     checkSource "const sin: () = (); fn f() { let sin = (); }" (\resolvedModule => do
@@ -934,7 +934,7 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
       (_, functionDeclaration) <- functionNamed "f" resolvedModule
       binding <- letAt 0 functionDeclaration.functionBody
       pure (constantPatternMatches resolvedModule constDeclaration.constName binding.letPattern &&
-            null (SortedMap.toList resolvedModule.tables.localVarsMeta))) `shouldBe` Right True
+            null (SortedMap.toList resolvedModule.scopeTables.localVarsMeta))) `shouldBe` Right True
 
   -- Resolving a constant pattern does not decide whether it is irrefutable.
   test "integer constant patterns defer refutability checking" $
@@ -1043,7 +1043,7 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
       mUseMatches <- usesInScope resolvedModule innerScope.id [(mName, mUse)]
       nUseMatches <- usesInScope resolvedModule outerScope.id [(nName, nUse)]
       xUseMatches <- usesInScope resolvedModule bodyScope.id [(xName, xUse)]
-      pure (mUseMatches && nUseMatches && xUseMatches && isNothing resolvedModule.tables.constContextBoundary &&
+      pure (mUseMatches && nUseMatches && xUseMatches && isNothing resolvedModule.scopeTables.constContextBoundary &&
             outerScope.parent == Just bodyScope.id && innerScope.parent == Just outerScope.id &&
             bindingMatches outerScope nName && bindingMatches innerScope mName &&
             (outerScope.declaredSymbolsInOrder <>> []) == [symbolId nName] &&
@@ -1185,7 +1185,7 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
       uses <- valueReferenceKinds resolvedModule
       pure (constantOccurrenceMatches resolvedModule constDeclaration.constName parameter.astInfo.nodeId resolvedName &&
             uses == [("N", "constant"), ("N", "constant"), ("N", "constant")] &&
-            length (SortedMap.toList resolvedModule.tables.localVarsMeta) == 1)) `shouldBe` Right True
+            length (SortedMap.toList resolvedModule.scopeTables.localVarsMeta) == 1)) `shouldBe` Right True
 
   test "signature array lengths may use module constants alongside parameters" $
     checkSource "const N: i32 = 2; fn f(n: i32, a: [i32; N]) -> [i32; N] {}" valueReferenceKinds
@@ -1209,7 +1209,7 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
       useExpression <- exprAt 0 functionDeclaration.functionBody
       useOK <- useMatches resolvedModule constDeclaration.constName useExpression
       pure (constantOccurrenceMatches resolvedModule constDeclaration.constName parameter.astInfo.nodeId resolvedName && useOK &&
-            null (SortedMap.toList resolvedModule.tables.localVarsMeta))) `shouldBe` Right True
+            null (SortedMap.toList resolvedModule.scopeTables.localVarsMeta))) `shouldBe` Right True
 
   test "a constant parameter pattern does not hide later duplicate parameters" $
     duplicateBinder "const U: () = (); fn f(U: (), x: i32, x: i32) {}"
@@ -1271,7 +1271,7 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
   test "leaving a qalloc count restores ordinary parameter access" $
     checkSource "fn g(qs: [qbit; 2], n: usize) {} fn f(n: usize) { g(qalloc(2), n); n; }" (\resolvedModule => do
       kinds <- valueReferenceKinds resolvedModule
-      pure (kinds, isNothing resolvedModule.tables.constContextBoundary))
+      pure (kinds, isNothing resolvedModule.scopeTables.constContextBoundary))
       `shouldBe` Right ([("g", "function"), ("n", "parameter"), ("n", "parameter")], True)
 
   -- Leaf has no type declarations yet, so every written type path is unresolved.
@@ -1322,4 +1322,4 @@ runSymbolAndScopeResolutionTests = runTests $ Test.do
             symbolId functionTarget == symbolId functionG.functionName &&
             referenceMatches resolvedModule AssignmentTarget constantAssignment.assignmentTarget.astInfo.nodeId constantTarget &&
             referenceMatches resolvedModule AssignmentTarget functionAssignment.assignmentTarget.astInfo.nodeId functionTarget &&
-            null (SortedMap.toList resolvedModule.tables.localVarsMeta))) `shouldBe` Right True
+            null (SortedMap.toList resolvedModule.scopeTables.localVarsMeta))) `shouldBe` Right True

@@ -59,8 +59,8 @@ isSameItem firstItem secondItem = firstItem.astInfo.nodeId == secondItem.astInfo
 -- Seeding
 --------------------------------------------------------------------------------
 
-getSourceCodeItems : ResolvedSourceFile -> List ResolvedItem
-getSourceCodeItems (MkAstNode _ _ (MkSourceFileNode _ sourceFileItems)) = sourceFileItems
+getResolvedCodeItems : ResolvedSourceFile -> List ResolvedItem
+getResolvedCodeItems (MkAstNode _ _ (MkSourceFileNode _ resolvedCodeItems)) = resolvedCodeItems
 
 seedTypeTables : ScopeTables -> TypeTables
 seedTypeTables scopeTables =
@@ -88,12 +88,12 @@ seedPresetSymbolTypes typeTables = { symbols := map seedPresetSymbolType typeTab
         _                               => symbolInfo
 
 seedTypeCheckerState : ResolvedModule -> List ResolvedItem -> TypeCheckerState
-seedTypeCheckerState resolvedModule sourceFileItems =
+seedTypeCheckerState resolvedModule resolvedCodeItems =
   MkTypeCheckerState
-    (seedPresetSymbolTypes (seedTypeTables resolvedModule.tables))
+    (seedPresetSymbolTypes (seedTypeTables resolvedModule.scopeTables))
     Nothing
     emptyInferenceState
-    (fromList (map (\sourceFileItem => (getItemSymbolId sourceFileItem, sourceFileItem)) sourceFileItems))
+    (fromList (map (\sourceFileItem => (getItemSymbolId sourceFileItem, sourceFileItem)) resolvedCodeItems))
     empty
     empty
 
@@ -101,29 +101,30 @@ seedTypeCheckerState resolvedModule sourceFileItems =
 -- Cycles
 --------------------------------------------------------------------------------
 
--- Every stuck item waits for a symbol another stuck item declares, so walking
--- the waits from the first stuck item must revisit a symbol; the symbols from
+-- Every blocked item waits for a symbol another blocked item declares (checked
+-- by runBodyAndSignatureChecks before calling this function), so walking
+-- the waits from the first blocked item must revisit a symbol; the symbols from
 -- that first visit onwards are the cycle. `const A: i32 = B; const B: i32 = A;`
 -- gives [B, A].
 resolutionCycleTypeError : TypeTables -> List (ResolvedItem, SymbolId) -> TypeError
-resolutionCycleTypeError typeTables stuckItems =
-  case stuckItems of
-    [] => unreachable __FILE__ {function = "resolutionCycleError"} {reason = "a round without progress has stuck items"}
-    (firstStuckItem, firstAwaitedSymbol) :: _ =>
+resolutionCycleTypeError typeTables blockedItems =
+  case blockedItems of
+    [] => unreachable __FILE__ {function = "resolutionCycleTypeError"} {reason = "a round without progress has blocked items"}
+    (firstBlockedItem, firstAwaitedSymbol) :: _ =>
       CyclicDeclaration
-        (map declaredSymbolName (collectCycleFrom (S (length stuckItems)) [] firstAwaitedSymbol))
-        (getItemNameSpan firstStuckItem)
+        (map declaredSymbolName (collectCycleFrom (S (length blockedItems)) [] firstAwaitedSymbol))
+        (getItemNameSpan firstBlockedItem)
   where
     declaredSymbolName : SymbolId -> String
     declaredSymbolName symbolId =
       case lookup symbolId typeTables.symbols of
         Just symbolInfo => symbolInfo.declaredName
-        Nothing => unreachable __FILE__ "resolutionCycleError" "a cycle references an unknown symbol"
+        Nothing => unreachable __FILE__ "resolutionCycleTypeError" "a cycle references an unknown symbol"
 
-    -- Each stuck item's own symbol, paired with the symbol it waits for.
+    -- Each blocked item's own symbol, paired with the symbol it waits for.
     awaitedSymbolByWaitingSymbol : List (SymbolId, SymbolId)
     awaitedSymbolByWaitingSymbol =
-      map (\(stuckItem, awaitedSymbol) => (getItemSymbolId stuckItem, awaitedSymbol)) stuckItems
+      map (\(blockedItem, awaitedSymbol) => (getItemSymbolId blockedItem, awaitedSymbol)) blockedItems
 
     -- `visitedSymbols` holds the symbols walked so far, most recent first.
     collectCycleFrom : (fuel : Nat) -> (visitedSymbols : List SymbolId) -> SymbolId -> List SymbolId
@@ -133,7 +134,7 @@ resolutionCycleTypeError typeTables stuckItems =
         then currentSymbol :: reverse (takeWhile (/= currentSymbol) visitedSymbols)
         else case lookup currentSymbol awaitedSymbolByWaitingSymbol of
                Just awaitedSymbol => collectCycleFrom fuel (currentSymbol :: visitedSymbols) awaitedSymbol
-               Nothing            => reverse (currentSymbol :: visitedSymbols)
+               Nothing            => unreachable __FILE__ {function = "resolutionCycleTypeError"} {reason = "every awaited symbol belongs to a blocked item"}
 
 --------------------------------------------------------------------------------
 -- Passes A and B
@@ -148,48 +149,63 @@ remainingTaskCount : RemainingWorkTodo -> Nat
 remainingTaskCount remainingWork = length remainingWork.pendingSignatureItems + length remainingWork.pendingBodyItems
 
 -- A blocked check leaves the state exactly as it was so retrying next round is safe.
-attemptCheck : StateT TypeCheckerState (Either CheckFailure) () -> StateT TypeCheckerState (Either CheckFailure) (Maybe SymbolId)
-attemptCheck itemCheck = do
+runCheckRollingBackIfBlocked : StateT TypeCheckerState (Either CheckFailure) () -> StateT TypeCheckerState (Either CheckFailure) (Maybe SymbolId)
+runCheckRollingBackIfBlocked itemCheck = do
   stateBeforeAttempt <- get
   case execStateT stateBeforeAttempt itemCheck of
     Right stateAfterAttempt      => put stateAfterAttempt >> pure Nothing
     Left (Blocked awaitedSymbol) => pure (Just awaitedSymbol)
-    Left (Failed diagnostic)     => typeError diagnostic
+    Left (Failed typeError)      => liftTypeError typeError
 
 -- The items whose check blocked, each with the symbol it is waiting for.
-attemptAllChecks : (ResolvedItem -> StateT TypeCheckerState (Either CheckFailure) ()) 
+runChecksAndCollectBlockedItems : (ResolvedItem -> StateT TypeCheckerState (Either CheckFailure) ()) 
     -> List ResolvedItem 
     -> StateT TypeCheckerState (Either CheckFailure) (List (ResolvedItem, SymbolId))
-attemptAllChecks checkItem [] = pure []
-attemptAllChecks checkItem (currentItem :: remainingItems) = do
-  maybeAwaitedSymbol <- attemptCheck (checkItem currentItem)
-  stuckRemainingItems <- attemptAllChecks checkItem remainingItems
-  pure (maybe stuckRemainingItems (\awaitedSymbol => (currentItem, awaitedSymbol) :: stuckRemainingItems) maybeAwaitedSymbol)
+runChecksAndCollectBlockedItems checkItem [] = pure []
+runChecksAndCollectBlockedItems checkItem (currentItem :: remainingItems) = do
+  maybeAwaitedSymbol <- runCheckRollingBackIfBlocked (checkItem currentItem)
+  blockedRemainingItems <- runChecksAndCollectBlockedItems checkItem remainingItems
+  pure (maybe blockedRemainingItems (\awaitedSymbol => (currentItem, awaitedSymbol) :: blockedRemainingItems) maybeAwaitedSymbol)
 
 -- One round: pass A on every pending signature, then pass B on every pending
 -- body whose signature is recorded. Each productive round completes at least
--- one of the 2n entries, so 2n + 1 runBodyAndSignatureCheck always suffice.
+-- one of the 2n entries, so 2n + 1 rounds always suffice.
 runBodyAndSignatureChecks : (remainingRounds : Nat) -> RemainingWorkTodo -> StateT TypeCheckerState (Either CheckFailure) ()
 runBodyAndSignatureChecks _ (MkRemainingWorkTodo [] []) = pure ()
-runBodyAndSignatureChecks Z _ = unreachable __FILE__ {function = "runBodyAndSignatureCheck"} {reason = "every productive round completes an entry"}
+runBodyAndSignatureChecks Z _ = unreachable __FILE__ {function = "runBodyAndSignatureChecks"} {reason = "every productive round completes an entry"}
 runBodyAndSignatureChecks (S remainingRounds) remainingWork = do
-  stuckSignatureItems <- attemptAllChecks checkSignature remainingWork.pendingSignatureItems
-  let isWaitingForSignature = \pendingItem => any (isSameItem pendingItem . fst) stuckSignatureItems
-  stuckBodyItems <- attemptAllChecks checkBody (filter (not . isWaitingForSignature) remainingWork.pendingBodyItems)
-  let isStillPending = \pendingItem => isWaitingForSignature pendingItem || any (isSameItem pendingItem . fst) stuckBodyItems
-      nextRemainingWork = MkRemainingWorkTodo (map fst stuckSignatureItems) (filter isStillPending remainingWork.pendingBodyItems)
+  blockedSignatureItems <- runChecksAndCollectBlockedItems checkSignature remainingWork.pendingSignatureItems
+  blockedBodyItems <- runChecksAndCollectBlockedItems checkBody (filter (not . signatureCheckIsBlocked blockedSignatureItems) remainingWork.pendingBodyItems)
+  let isStillPending = \pendingItem => signatureCheckIsBlocked blockedSignatureItems pendingItem || bodyCheckIsBlocked blockedBodyItems pendingItem
+      nextRemainingWork = MkRemainingWorkTodo (map fst blockedSignatureItems) (filter isStillPending remainingWork.pendingBodyItems)
   if remainingTaskCount nextRemainingWork < remainingTaskCount remainingWork
     then runBodyAndSignatureChecks remainingRounds nextRemainingWork
     else do
-      checkerState <- get
-      typeError (resolutionCycleTypeError checkerState.tables (stuckSignatureItems ++ stuckBodyItems))
+      let blockedItems = blockedSignatureItems ++ blockedBodyItems
+      if all (isDeclaredByItemInRemainingWork nextRemainingWork . snd) blockedItems
+        then do
+          checkerState <- get
+          liftTypeError (resolutionCycleTypeError checkerState.typeTables blockedItems)
+        else unreachable __FILE__ {function = "runBodyAndSignatureChecks"} {reason = "a blocked check awaits a symbol that no pending item declares"}
+  where
+    isDeclaredByItemInRemainingWork : RemainingWorkTodo -> SymbolId -> Bool
+    isDeclaredByItemInRemainingWork nextRemainingWork awaitedSymbol =
+      any ((== awaitedSymbol) . getItemSymbolId) (nextRemainingWork.pendingSignatureItems ++ nextRemainingWork.pendingBodyItems)
 
-resolveAndCheckTypes : TypeCheckerState -> List ResolvedItem -> Either TypeError TypeTables
-resolveAndCheckTypes seededTypeCheckerState sourceFileItems =
-  case execStateT seededTypeCheckerState (runBodyAndSignatureChecks (2 * length sourceFileItems + 1) (MkRemainingWorkTodo sourceFileItems sourceFileItems)) of
-    Right finalTypeCheckerState => Right finalTypeCheckerState.tables
-    Left (Failed diagnostic)    => Left diagnostic
-    Left (Blocked _)            => unreachable __FILE__ {function = "resolveAndCheckTypes"} {reason = "attemptCheck catches every block"}
+    signatureCheckIsBlocked : List (ResolvedItem, SymbolId) -> ResolvedItem -> Bool
+    signatureCheckIsBlocked blockedSignatureItems pendingItem = any (isSameItem pendingItem . fst) blockedSignatureItems
+
+    bodyCheckIsBlocked : List (ResolvedItem, SymbolId) -> ResolvedItem -> Bool
+    bodyCheckIsBlocked blockedBodyItems pendingItem = any (isSameItem pendingItem . fst) blockedBodyItems
+
+inferAndCheckTypes : TypeCheckerState -> List ResolvedItem -> Either TypeError TypeTables
+inferAndCheckTypes seededTypeCheckerState resolvedCodeItems =
+  let remainingWorkTodo = MkRemainingWorkTodo resolvedCodeItems resolvedCodeItems
+      remainingRounds = 2 * length resolvedCodeItems + 1
+  in case execStateT seededTypeCheckerState (runBodyAndSignatureChecks remainingRounds remainingWorkTodo) of
+    Right finalTypeCheckerState => Right finalTypeCheckerState.typeTables
+    Left (Failed typeError)     => Left typeError
+    Left (Blocked _)            => unreachable __FILE__ {function = "inferAndCheckTypes"} {reason = "runCheckRollingBackIfBlocked catches every block"}
 
 --------------------------------------------------------------------------------
 -- The pipeline
@@ -199,9 +215,9 @@ resolveAndCheckTypes seededTypeCheckerState sourceFileItems =
 export
 typeCheckSignaturesAndBodies : ResolvedModule -> Either TypeError TypeTables
 typeCheckSignaturesAndBodies resolvedModule = do
-  let sourceFileItems = getSourceCodeItems resolvedModule.ast
-  let seededTypeCheckerState = seedTypeCheckerState resolvedModule sourceFileItems
-  resolveAndCheckTypes seededTypeCheckerState sourceFileItems                            -- A ⇄ B
+  let resolvedCodeItems = getResolvedCodeItems resolvedModule.ast
+  let seededTypeCheckerState = seedTypeCheckerState resolvedModule resolvedCodeItems
+  inferAndCheckTypes seededTypeCheckerState resolvedCodeItems                           -- A ⇄ B
 
 ||| Passes A and B run in rounds until every signature and body is checked;
 ||| then the typed AST is built, and effects and ownership are checked once each.

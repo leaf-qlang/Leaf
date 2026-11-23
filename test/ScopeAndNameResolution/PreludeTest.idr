@@ -57,10 +57,10 @@ runPreludeFunctionsResolutionTests = runTests $ Test.do
 
   test "prelude registration creates no source occurrences or locals" $
     (do resolvedModule <- resolvedSource ""
-        rootScope <- lookup resolvedModule.rootScopeId resolvedModule.tables.scopes
-        pure (length (SortedMap.toList resolvedModule.tables.references),
-              length (SortedMap.toList resolvedModule.tables.nodeScopes),
-              length (SortedMap.toList resolvedModule.tables.localVarsMeta),
+        rootScope <- lookup resolvedModule.rootScopeId resolvedModule.scopeTables.scopes
+        pure (length (SortedMap.toList resolvedModule.scopeTables.references),
+              length (SortedMap.toList resolvedModule.scopeTables.nodeScopes),
+              length (SortedMap.toList resolvedModule.scopeTables.localVarsMeta),
               length (SortedMap.toList rootScope.valueBindings),
               length (SortedMap.toList rootScope.typeBindings)))
       `shouldBe` Just (0, 1, 0, 0, 0)
@@ -71,8 +71,8 @@ runPreludeFunctionsResolutionTests = runTests $ Test.do
           | _ => Nothing
         pure (outerSinReference.target == innerSinReference.target &&
               outerSinReference.enclosingScope /= innerSinReference.enclosingScope &&
-              lookup outerSinReference.occurrence.nodeId resolvedModule.tables.nodeScopes == Just outerSinReference.enclosingScope &&
-              lookup innerSinReference.occurrence.nodeId resolvedModule.tables.nodeScopes == Just innerSinReference.enclosingScope))
+              lookup outerSinReference.occurrence.nodeId resolvedModule.scopeTables.nodeScopes == Just outerSinReference.enclosingScope &&
+              lookup innerSinReference.occurrence.nodeId resolvedModule.scopeTables.nodeScopes == Just innerSinReference.enclosingScope))
       `shouldBe` Just True
 
   test "resolved prelude and shadowing tables pass invariant validation" $

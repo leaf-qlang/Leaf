@@ -9,20 +9,20 @@ import TypeChecker.Helper
 %default total
 
 --------------------------------------------------------------------------------
--- Pass C, part 2: ownership, initialization and cleanup, stage 2
+-- Pass C, part 2: ownership, initialization and cleanup, constructs not yet supported
 --------------------------------------------------------------------------------
--- The OwnershipCheckTest tests of the constructs that stage 2 adds (plan part
--- A.6): `affine` and `weaken`, `adjoint`, control blocks, `scratch`, `:=`,
--- `uncompute` and clean ancilla disposal. No runner includes these groups
--- yet; each stage 2 step (plan steps 18 to 21) adds its group to
--- runOwnershipCheckTests.
+-- The OwnershipCheckTest tests of constructs that the type checker does not
+-- support yet: `affine` and `weaken`, `adjoint`, control blocks, `scratch`,
+-- `:=`, `uncompute` and clean ancilla disposal. No runner includes these
+-- groups yet; each group is added to runOwnershipCheckTests once the type checker
+-- supports its constructs.
 --------------------------------------------------------------------------------
 
--- Stage 2, plan step 18: `affine` qualifiers and `weaken`. Left out of
--- runOwnershipCheckTests until step 18 re-enables this group.
+-- `affine` qualifiers and `weaken`. Left out of
+-- runOwnershipCheckTests until the type checker supports these constructs.
 export
-affineStageTwoTests : List TestResult
-affineStageTwoTests = Test.do
+affineBetaReleaseTests : List TestResult
+affineBetaReleaseTests = Test.do
   test "an affine qubit may be dropped" $
     typeCheckOutcome "fn f() { let affine q = qalloc(); H(&q); }" `shouldBe` accepted
 
@@ -33,11 +33,11 @@ affineStageTwoTests = Test.do
     typeCheckOutcome "unitary fn f(q: &qbit) { let affine a = qalloc(); CX(q, &a); }"
       `shouldBe` rejectedWith (EffectViolation EffectUnitary EffectGeneral (spanAt 1 37))
 
--- Stage 2, plan step 19: `adjoint(f)` and `adjoint { … }`. Left out of
--- runOwnershipCheckTests until step 19 re-enables this group.
+-- `adjoint(f)` and `adjoint { … }`. Left out of
+-- runOwnershipCheckTests until the type checker supports these constructs.
 export
-adjointStageTwoTests : List TestResult
-adjointStageTwoTests = Test.do
+adjointBetaReleaseTests : List TestResult
+adjointBetaReleaseTests = Test.do
   test "an adjoint block of gates can be transformed" $
     typeCheckOutcome "fn f(q1: &qbit, q2: &qbit) { adjoint { H(q1); CT(q1, q2); } }" `shouldBe` accepted
 
@@ -60,11 +60,11 @@ adjointStageTwoTests = Test.do
   test "a known gate alias supplies transformation evidence inside an adjoint block" $
     typeCheckOutcome "fn f(q: &qbit) { let gate = H; adjoint { gate(q); } }" `shouldBe` accepted
 
--- Stage 2, plan step 20: control blocks `ctrl(…) { … }`. Left out of
--- runOwnershipCheckTests until step 20 re-enables this group.
+-- Control blocks `ctrl(…) { … }`. Left out of
+-- runOwnershipCheckTests until the type checker supports these constructs.
 export
-controlBlockStageTwoTests : List TestResult
-controlBlockStageTwoTests = Test.do
+controlBlockBetaReleaseTests : List TestResult
+controlBlockBetaReleaseTests = Test.do
   test "a control block cannot overwrite classical state" $
     typeCheckOutcome "fn f(c: &qbit, t: &qbit) { let mut n = 0; ctrl(c) { n = 1; X(t); } }"
       `shouldBe` rejectedWith (UnprovableTransformation "ctrl" (spanAt 1 43))
@@ -79,11 +79,11 @@ controlBlockStageTwoTests = Test.do
   test "a known gate alias supplies transformation evidence inside a control block" $
     typeCheckOutcome "fn f(c: &qbit, q: &qbit) { let gate = X; ctrl(c) { gate(q); } }" `shouldBe` accepted
 
--- Stage 2, plan step 21: `scratch`, `:=`, `uncompute` and clean ancilla disposal. Left out of
--- runOwnershipCheckTests until step 21 re-enables this group.
+-- `scratch`, `:=`, `uncompute` and clean ancilla disposal. Left out of
+-- runOwnershipCheckTests until the type checker supports these constructs.
 export
-uncomputationStageTwoTests : List TestResult
-uncomputationStageTwoTests = Test.do
+uncomputationBetaReleaseTests : List TestResult
+uncomputationBetaReleaseTests = Test.do
   test "a scratch qubit computed reversibly is reclaimed at scope exit" $
     typeCheckOutcome "fn f(q: &qbit) { let scratch a = qalloc(); CX(q, &a); }" `shouldBe` accepted
 

@@ -8,13 +8,13 @@ import TypeChecker.Helper
 %default total
 
 --------------------------------------------------------------------------------
--- Type checker integration tests, stage 2
+-- Type checker integration tests, constructs not yet supported
 --------------------------------------------------------------------------------
--- The TypeCheckTest tests of the constructs that stage 2 adds (plan part
--- A.6): `affine` and `weaken`, `adjoint`, control blocks, `scratch`, `:=`,
--- `uncompute` and clean ancilla disposal. No runner includes these groups
--- yet; each stage 2 step (plan steps 18 to 21) adds its group to
--- runTypeCheckTests.
+-- The TypeCheckTest tests of constructs that the type checker does not
+-- support yet: `affine` and `weaken`, `adjoint`, control blocks, `scratch`,
+-- `:=`, `uncompute` and clean ancilla disposal. No runner includes these
+-- groups yet; each group is added to runTypeCheckTests once the type checker
+-- supports its constructs.
 --------------------------------------------------------------------------------
 
 ||| Spec §7 and §8: arrays, lengths and len.
@@ -266,7 +266,7 @@ builtinsProgram = """
   """
 
 ||| Spec §61, with the `prepare_minus` it calls. The scratch ancilla's history
-||| includes H and an opaque oracle, so its cleanup cannot be proved (plan step 21);
+||| includes H and an opaque oracle, so its cleanup cannot be proved;
 ||| which check reports it first is not fixed.
 phaseKickbackProgram : String
 phaseKickbackProgram = """
@@ -285,19 +285,19 @@ phaseKickbackProgram = """
   }
   """
 
--- Stage 2, plan step 18: `affine` qualifiers and `weaken`. Left out of
--- runTypeCheckTests until step 18 re-enables this group.
+-- `affine` qualifiers and `weaken`. Left out of
+-- runTypeCheckTests until the type checker supports these constructs.
 export
-affineStageTwoTests : List TestResult
-affineStageTwoTests = Test.do
+affineBetaReleaseTests : List TestResult
+affineBetaReleaseTests = Test.do
   test "spec §7 and §8 arrays and len type-check" $
     typeCheckOutcome arraysProgram `shouldBe` accepted
 
--- Stage 2, plan step 19: `adjoint(f)` and `adjoint { … }`. Left out of
--- runTypeCheckTests until step 19 re-enables this group.
+-- `adjoint(f)` and `adjoint { … }`. Left out of
+-- runTypeCheckTests until the type checker supports these constructs.
 export
-adjointStageTwoTests : List TestResult
-adjointStageTwoTests = Test.do
+adjointBetaReleaseTests : List TestResult
+adjointBetaReleaseTests = Test.do
   test "spec §16 adjoints of gates and adjoint blocks type-check" $
     typeCheckOutcome adjointsProgram `shouldBe` accepted
 
@@ -305,22 +305,22 @@ adjointStageTwoTests = Test.do
     typeCheckOutcome adjointCallableProgram
       `shouldBe` rejectedWith (MissingCapability "adjoint" (spanAt 5 29))
 
--- Stage 2, plan step 20: control blocks `ctrl(…) { … }`. Left out of
--- runTypeCheckTests until step 20 re-enables this group.
+-- Control blocks `ctrl(…) { … }`. Left out of
+-- runTypeCheckTests until the type checker supports these constructs.
 export
-controlBlockStageTwoTests : List TestResult
-controlBlockStageTwoTests = Test.do
+controlBlockBetaReleaseTests : List TestResult
+controlBlockBetaReleaseTests = Test.do
   test "spec §15 controlled gates type-check" $
     typeCheckOutcome controlledGatesProgram `shouldBe` accepted
 
   test "spec §15 control blocks over a user function type-check" $
     typeCheckOutcome controlledBlocksProgram `shouldBe` accepted
 
--- Stage 2, plan step 21: `scratch`, `:=`, `uncompute` and clean ancilla disposal. Left out of
--- runTypeCheckTests until step 21 re-enables this group.
+-- `scratch`, `:=`, `uncompute` and clean ancilla disposal. Left out of
+-- runTypeCheckTests until the type checker supports these constructs.
 export
-uncomputationStageTwoTests : List TestResult
-uncomputationStageTwoTests = Test.do
+uncomputationBetaReleaseTests : List TestResult
+uncomputationBetaReleaseTests = Test.do
   test "spec §10 and §12 qubit allocation, measurement and qualifiers type-check" $
     typeCheckOutcome qubitsProgram `shouldBe` accepted
 

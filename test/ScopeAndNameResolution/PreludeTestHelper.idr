@@ -38,7 +38,7 @@ isPreludeModule symbolInfo = case symbolInfo.symbolKind of
 export
 preludeLayout : ResolvedModule -> Maybe Bool
 preludeLayout resolvedModule = do
-  let scopeTables = resolvedModule.tables
+  let scopeTables = resolvedModule.scopeTables
   rootScope <- lookup resolvedModule.rootScopeId scopeTables.scopes
   preludeScopeId <- rootScope.parent
   preludeScope <- lookup preludeScopeId scopeTables.scopes
@@ -78,7 +78,7 @@ export
 useOrigins : String -> Maybe (List (String, String))
 useOrigins sourceText = do
   resolvedModule <- resolvedSource sourceText
-  traverse (describeReferenceOrigin resolvedModule.tables) (valueReferences resolvedModule)
+  traverse (describeReferenceOrigin resolvedModule.scopeTables) (valueReferences resolvedModule)
   where
     describeReferenceOrigin : ScopeTables -> SymbolReference -> Maybe (String, String)
     describeReferenceOrigin scopeTables reference = do
@@ -103,14 +103,14 @@ constantShadowsPrelude resolvedModule = do
   MkAstNode _ _ (StatementSemiExpression sinExpression) :: _ <- pure functionDeclaration.functionBody.nodeValue.blockStatements
     | _ => Nothing
   ExprName sinName <- pure sinExpression.nodeValue | _ => Nothing
-  rootScope <- lookup resolvedModule.rootScopeId resolvedModule.tables.scopes
+  rootScope <- lookup resolvedModule.rootScopeId resolvedModule.scopeTables.scopes
   preludeScopeId <- rootScope.parent
-  preludeScope <- lookup preludeScopeId resolvedModule.tables.scopes
+  preludeScope <- lookup preludeScopeId resolvedModule.scopeTables.scopes
   sourceBinding <- lookup "sin" rootScope.valueBindings
   preludeBinding <- lookup "sin" preludeScope.valueBindings
-  sourceSymbol <- lookup sourceBinding.target resolvedModule.tables.symbols
-  preludeSymbol <- lookup preludeBinding.target resolvedModule.tables.symbols
-  bodyScope <- lookup functionDeclaration.functionBody.astInfo.nodeId resolvedModule.tables.nodeScopes
+  sourceSymbol <- lookup sourceBinding.target resolvedModule.scopeTables.symbols
+  preludeSymbol <- lookup preludeBinding.target resolvedModule.scopeTables.symbols
+  bodyScope <- lookup functionDeclaration.functionBody.astInfo.nodeId resolvedModule.scopeTables.nodeScopes
   [sinReference] <- pure (valueReferences resolvedModule) | _ => Nothing
   preludeLayoutIsValid <- preludeLayout resolvedModule
   pure (preludeLayoutIsValid && sourceBinding.target /= preludeBinding.target &&
@@ -128,7 +128,7 @@ constantShadowsPrelude resolvedModule = do
         sinReference.occurrence.nodeId == sinName.astInfo.nodeId &&
         spanKey sinReference.occurrence.span == spanKey sinName.astInfo.span &&
         sinReference.contextNode == sinExpression.astInfo.nodeId && sinReference.enclosingScope == bodyScope &&
-        lookup sinExpression.astInfo.nodeId resolvedModule.tables.nodeScopes == Just bodyScope &&
-        lookup sinName.astInfo.nodeId resolvedModule.tables.nodeScopes == Just bodyScope &&
-        isNothing (lookup preludeBinding.target resolvedModule.tables.references) &&
+        lookup sinExpression.astInfo.nodeId resolvedModule.scopeTables.nodeScopes == Just bodyScope &&
+        lookup sinName.astInfo.nodeId resolvedModule.scopeTables.nodeScopes == Just bodyScope &&
+        isNothing (lookup preludeBinding.target resolvedModule.scopeTables.references) &&
         length (allReferences resolvedModule) == 3)

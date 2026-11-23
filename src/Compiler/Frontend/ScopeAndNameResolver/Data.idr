@@ -67,10 +67,10 @@ public export
 public export
 record ResolvedModule where
   constructor MkResolvedModule
-  rootSymbolId   : SymbolId
-  rootScopeId    : ScopeId
-  ast            : ResolvedSourceFile
-  tables         : ScopeTables
+  rootSymbolId : SymbolId
+  rootScopeId  : ScopeId
+  ast          : ResolvedSourceFile
+  scopeTables  : ScopeTables
 
 public export
 data ResolutionError

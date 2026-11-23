@@ -10,8 +10,8 @@ import TypeChecker.Helper
 --------------------------------------------------------------------------------
 -- Pass C, part 2: ownership, initialization and cleanup
 --------------------------------------------------------------------------------
--- OwnershipCheck interprets the recorded events over control flow (plan steps 15
--- and 21): definite initialization and mutability, linearity and affine drops,
+-- OwnershipCheck interprets the recorded events over control flow: definite
+-- initialization and mutability, linearity and affine drops,
 -- partial moves, exclusive loans with non-lexical lifetimes, reference
 -- lifetimes, and the proofs behind scratch, `:=`, uncompute and transformed
 -- blocks. An initialization or mutability error points at the offending read
@@ -19,7 +19,7 @@ import TypeChecker.Helper
 -- unreclaimable qubit at the binding that introduced it.
 --------------------------------------------------------------------------------
 
--- Initialization and mutability (plan step 15 rule 1)
+-- Initialization and mutability
 initializationTests : List TestResult
 initializationTests = Test.do
   test "a local may be initialized once after its declaration" $
@@ -98,7 +98,7 @@ initializationTests = Test.do
     typeCheckOutcome "const N: i32 = 1; fn f() { N = 2; }"
       `shouldBe` rejectedWith (ImmutableAssignment "N" (spanAt 1 28))
 
--- Linearity (plan step 15 rule 2)
+-- Linearity
 linearityTests : List TestResult
 linearityTests = Test.do
   test "a linear qubit must be consumed" $
@@ -124,7 +124,7 @@ linearityTests = Test.do
     typeCheckOutcome "fn f(n: u32) { let q = qalloc(); for i in 0..n { discard(q); break; } }"
       `shouldBe` rejectedWith (LinearQbitNotConsumed (spanAt 1 20))
 
--- Partial moves (plan step 15 rule 3)
+-- Partial moves
 partialMoveTests : List TestResult
 partialMoveTests = Test.do
   test "tuple components can be moved separately" $
@@ -162,7 +162,7 @@ partialMoveTests = Test.do
     typeCheckOutcome "fn f() { let mut qs = qalloc(2); discard(qs[0]); qs[0] = qalloc(); discard(qs); }"
       `shouldBe` accepted
 
--- Exclusive loans and non-lexical lifetimes (plan step 15 rule 4)
+-- Exclusive loans and non-lexical lifetimes
 loanTests : List TestResult
 loanTests = Test.do
   test "a qubit cannot be borrowed twice in one call" $
@@ -231,7 +231,7 @@ loanTests = Test.do
   test "a place can be shared-borrowed twice in one call" $
     typeCheckOutcome "fn g(a: &[i32], b: &[i32]) {} fn f() { let x = [1]; g(&x, &x); }" `shouldBe` accepted
 
--- Reference lifetimes (plan step 15 rule 5)
+-- Reference lifetimes
 referenceLifetimeTests : List TestResult
 referenceLifetimeTests = Test.do
   test "a reference into a parameter may be returned" $
@@ -256,7 +256,7 @@ referenceLifetimeTests = Test.do
   test "a reference to a constant may be returned without reference parameters" $
     typeCheckOutcome "const A: [i32; 2] = [1, 2]; fn f() -> &[i32] { &A }" `shouldBe` accepted
 
--- Joins and reference provenance (plan steps 14 and 15; spec §9).
+-- Joins and reference provenance (spec §9).
 provenanceAndFlowTests : List TestResult
 provenanceAndFlowTests = Test.do
   test "a divergent branch does not invalidate initialization on the continuing branch" $
@@ -312,9 +312,8 @@ provenanceAndFlowTests = Test.do
     typeCheckOutcome "fn f(x: &i32) -> [&i32; 1] { [x] }" `shouldBe` accepted
 
 -- A returned loan keeps its origin and lifetime across the call boundary
--- (plan steps 14 and 15; spec §9, §51). The plan requires ambiguous lifetime
--- elision to fail (plan steps 9 and 15), but does not prescribe a diagnostic
--- constructor. Require a reported type error for that boundary without
+-- (spec §9, §51). Ambiguous lifetime elision must fail, but no diagnostic
+-- constructor is defined for it. Require a reported type error for that boundary without
 -- classifying it as a dangling-reference error.
 returnedReferenceTests : List TestResult
 returnedReferenceTests = Test.do

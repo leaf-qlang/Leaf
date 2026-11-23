@@ -10,20 +10,20 @@ import TypeChecker.Helper
 %default total
 
 --------------------------------------------------------------------------------
--- Pass B: bodies and inference, stage 2
+-- Pass B: bodies and inference, constructs not yet supported
 --------------------------------------------------------------------------------
--- The BodyCheckTest tests of the constructs that stage 2 adds (plan part
--- A.6): `affine` and `weaken`, `adjoint`, control blocks, `scratch`, `:=`,
--- `uncompute` and clean ancilla disposal. No runner includes these groups
--- yet; each stage 2 step (plan steps 18 to 21) adds its group to
--- runBodyCheckTests.
+-- The BodyCheckTest tests of constructs that the type checker does not
+-- support yet: `affine` and `weaken`, `adjoint`, control blocks, `scratch`,
+-- `:=`, `uncompute` and clean ancilla disposal. No runner includes these
+-- groups yet; each group is added to runBodyCheckTests once the type checker
+-- supports its constructs.
 --------------------------------------------------------------------------------
 
--- Stage 2, plan step 18: `affine` qualifiers and `weaken`. Left out of
--- runBodyCheckTests until step 18 re-enables this group.
+-- `affine` qualifiers and `weaken`. Left out of
+-- runBodyCheckTests until the type checker supports these constructs.
 export
-affineStageTwoTests : List TestResult
-affineStageTwoTests = Test.do
+affineBetaReleaseTests : List TestResult
+affineBetaReleaseTests = Test.do
   test "function parameter quantum usage qualifiers must match exactly" $
     signaturesAndBodiesOutcome "fn keep(q: affine qbit) -> affine qbit { q } fn run(g: fn(q: qbit) -> qbit, q: qbit) -> qbit { g(q) } fn f() -> qbit { run(keep, qalloc()) }"
       `shouldBe` rejectedWith (TypeMismatch (fnType EffectGeneral [linearQbit] linearQbit) (fnType EffectGeneral [affineQbit] affineQbit) (spanAt 1 124))
@@ -85,11 +85,11 @@ affineStageTwoTests = Test.do
   test "reset preserves an affine argument's quantum usage" $
     signaturesAndBodiesOutcome "fn f(q: affine qbit) -> affine qbit { reset(q) }" `shouldBe` accepted
 
--- Stage 2, plan step 19: `adjoint(f)` and `adjoint { … }`. Left out of
--- runBodyCheckTests until step 19 re-enables this group.
+-- `adjoint(f)` and `adjoint { … }`. Left out of
+-- runBodyCheckTests until the type checker supports these constructs.
 export
-adjointStageTwoTests : List TestResult
-adjointStageTwoTests = Test.do
+adjointBetaReleaseTests : List TestResult
+adjointBetaReleaseTests = Test.do
   test "a controlled adjoint gate type-checks" $
     signaturesAndBodiesOutcome "fn f(c: &qbit, q: &qbit) { ctrl(c).apply(adjoint(S))(q); }" `shouldBe` accepted
 
@@ -118,11 +118,11 @@ adjointStageTwoTests = Test.do
     signaturesAndBodiesOutcome "fn f(q: &qbit) { let rotate = adjoint(RX); rotate(0.5f32, q); rotate(0.5f64, q); }"
       `shouldBe` accepted
 
--- Stage 2, plan step 20: control blocks `ctrl(…) { … }`. Left out of
--- runBodyCheckTests until step 20 re-enables this group.
+-- Control blocks `ctrl(…) { … }`. Left out of
+-- runBodyCheckTests until the type checker supports these constructs.
 export
-controlBlockStageTwoTests : List TestResult
-controlBlockStageTwoTests = Test.do
+controlBlockBetaReleaseTests : List TestResult
+controlBlockBetaReleaseTests = Test.do
   test "a control block over borrowed controls has unit type" $
     signaturesAndBodiesOutcome "fn f(q0: &qbit, q1: &qbit, q2: &qbit) { ctrl(q0, q1) { H(q2); } let u: () = ctrl(q0, q1).on(bs\"10\") { H(q2); }; }"
       `shouldBe` accepted
@@ -131,11 +131,11 @@ controlBlockStageTwoTests = Test.do
     signaturesAndBodiesOutcome "fn f(q0: qbit, q2: &qbit) -> qbit { ctrl(q0) { H(q2); } q0 }"
       `shouldBe` rejectedWith (TypeMismatch qbitRef linearQbit (spanAt 1 42))
 
--- Stage 2, plan step 21: `scratch`, `:=`, `uncompute` and clean ancilla disposal. Left out of
--- runBodyCheckTests until step 21 re-enables this group.
+-- `scratch`, `:=`, `uncompute` and clean ancilla disposal. Left out of
+-- runBodyCheckTests until the type checker supports these constructs.
 export
-uncomputationStageTwoTests : List TestResult
-uncomputationStageTwoTests = Test.do
+uncomputationBetaReleaseTests : List TestResult
+uncomputationBetaReleaseTests = Test.do
   test "scratch qualifiers apply to qubit bindings" $
     signaturesAndBodiesOutcome "fn f() { let scratch q: qbit = qalloc(); let scratch qs: [qbit; 2] = qalloc(2); let scratch affine r: qbit = qalloc(); }"
       `shouldBe` accepted

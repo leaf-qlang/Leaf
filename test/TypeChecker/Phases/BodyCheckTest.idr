@@ -12,7 +12,7 @@ import TypeChecker.Helper
 --------------------------------------------------------------------------------
 -- Pass B: bodies and inference
 --------------------------------------------------------------------------------
--- Pass B gives every expression, pattern and local a type (plan steps 5–11). Every
+-- Pass B gives every expression, pattern and local a type. Every
 -- test runs only phases A and B, without translation, effect or ownership
 -- checking; a rejected program reports its first signature or body error,
 -- compared through `show`. A type error points at the expression with the
@@ -22,7 +22,7 @@ import TypeChecker.Helper
 -- reported is shown with its default type (i32 or f64).
 --------------------------------------------------------------------------------
 
--- Literals (plan step 5)
+-- Literals
 literalTests : List TestResult
 literalTests = Test.do
   test "an unsuffixed integer literal takes the annotated type" $
@@ -105,7 +105,7 @@ literalTests = Test.do
     signaturesAndBodiesOutcome "fn f() { let x: f64 = 1; }"
       `shouldBe` rejectedWith (TypeMismatch f64 i32 (spanAt 1 23))
 
--- Param and string literals (plan step 5, part A.6)
+-- Param and string literals
 paramAndStringTests : List TestResult
 paramAndStringTests = Test.do
   test "Param takes a string literal and returns a param" $
@@ -138,7 +138,7 @@ paramAndStringTests = Test.do
     signaturesAndBodiesOutcome "fn Param(x: i32) -> i32 { x } fn f() -> i32 { Param(\"theta\") }"
       `shouldBe` rejectedWith (UnsupportedFeature "string literal" (spanAt 1 53))
 
--- Excluded constructs and misplaced builtins (plan part A.6, step 9)
+-- Excluded constructs and misplaced builtins
 excludedConstructTests : List TestResult
 excludedConstructTests = Test.do
   test "a basis-string value is unsupported" $
@@ -196,7 +196,7 @@ excludedConstructTests = Test.do
   test "a user function named phase shadows the excluded prelude helper" $
     signaturesAndBodiesOutcome "fn phase(x: f64) -> f64 { x } fn f() -> f64 { phase(1.5) }" `shouldBe` accepted
 
--- Names (plan step 5)
+-- Names
 nameTests : List TestResult
 nameTests = Test.do
   test "a local has the type of its initializer" $
@@ -215,7 +215,7 @@ nameTests = Test.do
   test "a local may shadow a user function" $
     signaturesAndBodiesOutcome "fn g() -> bool { true } fn f() -> i32 { let g = 1; g + 1 }" `shouldBe` accepted
 
--- Operators (plan step 6)
+-- Operators
 operatorTests : List TestResult
 operatorTests = Test.do
   test "arithmetic operators on integers" $
@@ -305,7 +305,7 @@ operatorTests = Test.do
     signaturesAndBodiesOutcome "fn f(a: i32, b: i64) -> bool { a < b }"
       `shouldBe` rejectedWith (InvalidBinaryOperands "<" i32 i64 (spanAt 1 32))
 
--- Compound assignment (plan step 8)
+-- Compound assignment
 compoundAssignmentTests : List TestResult
 compoundAssignmentTests = Test.do
   test "every compound assignment operator applies its operator's rule" $
@@ -331,7 +331,7 @@ compoundAssignmentTests = Test.do
     signaturesAndBodiesOutcome "fn f(xs: &[i32]) { xs[0] += 1; }"
       `shouldBe` rejectedWith (AssignmentThroughSharedReference (spanAt 1 20))
 
--- Casts (plan step 6)
+-- Casts
 castTests : List TestResult
 castTests = Test.do
   test "integers cast to integers, floats and angles" $
@@ -369,7 +369,7 @@ castTests = Test.do
     signaturesAndBodiesOutcome "fn f(b: bool) { let x = b as f64; }"
       `shouldBe` rejectedWith (InvalidCast bool f64 (spanAt 1 25))
 
--- Tuples (plan step 7)
+-- Tuples
 tupleTests : List TestResult
 tupleTests = Test.do
   test "tuple types and positional indexing" $
@@ -395,7 +395,7 @@ tupleTests = Test.do
     signaturesAndBodiesOutcome "fn f() { let (a, b) = (1, 2, 3); }"
       `shouldBe` rejectedWith (WrongPatternArity 3 2 (spanAt 1 14))
 
--- Arrays, repetition and indexing (plan step 7)
+-- Arrays, repetition and indexing
 arrayTests : List TestResult
 arrayTests = Test.do
   test "array literals with annotated and inferred types" $
@@ -476,7 +476,7 @@ arrayTests = Test.do
     signaturesAndBodiesOutcome "fn f() { let a: [bool; 18446744073709551616]; }"
       `shouldBe` rejectedWith (IntegerLiteralOutOfRange 18446744073709551616 usize (spanAt 1 24))
 
--- Slices (plan steps 7 and 8, spec §9)
+-- Slices (spec §9)
 sliceTests : List TestResult
 sliceTests = Test.do
   test "an array can be sliced with every range form" $
@@ -523,7 +523,7 @@ sliceTests = Test.do
     signaturesAndBodiesOutcome "classical fn first(xs: &[i32]) -> i32 { xs[0] } fn f() -> i32 { let a = [1, 2, 3]; first(a) }"
       `shouldBe` rejectedWith (TypeMismatch (ref (slice i32)) (array i32 3) (spanAt 1 90))
 
--- References (plan step 8)
+-- References
 referenceTests : List TestResult
 referenceTests = Test.do
   test "shared and mutable references to classical values" $
@@ -546,7 +546,7 @@ referenceTests = Test.do
     signaturesAndBodiesOutcome "classical fn bump(x: &mut [i32]) { x[0] = 1; } fn f() { let a = [1, 2]; bump(&a); }"
       `shouldBe` rejectedWith (TypeMismatch (refMut (slice i32)) (ref (array i32 2)) (spanAt 1 78))
 
--- Named members (plan part A.6, step 9)
+-- Named members
 memberTests : List TestResult
 memberTests = Test.do
   test "a named field read is an unknown member" $
@@ -569,7 +569,7 @@ memberTests = Test.do
     signaturesAndBodiesOutcome "fn f(b: bool) { let a = [1, 2]; let n = a.size(b + b); }"
       `shouldBe` rejectedWith (InvalidBinaryOperands "+" bool bool (spanAt 1 48))
 
--- Calls (plan step 9)
+-- Calls
 callTests : List TestResult
 callTests = Test.do
   test "a call must supply every parameter and no more" $
@@ -595,7 +595,7 @@ callTests = Test.do
     signaturesAndBodiesOutcome "fn g(x: i32, y: i32) -> i32 { x } fn f() -> i32 { g(1) }"
       `shouldBe` rejectedWith (WrongArgumentCount 2 1 (spanAt 1 51))
 
--- Function values: directional assignability (plan step 5)
+-- Function values: directional assignability
 functionValueTests : List TestResult
 functionValueTests = Test.do
   test "an uncompsafe function satisfies a unitary function type" $
@@ -618,7 +618,7 @@ functionValueTests = Test.do
     signaturesAndBodiesOutcome "classical fn inc(x: i32) -> i32 { x + 1 } fn run(g: classical fn(x: i32) -> bool) -> bool { g(1) } fn f() -> bool { run(inc) }"
       `shouldBe` rejectedWith (TypeMismatch (fnType EffectClassical [i32] bool) (fnType EffectClassical [i32] i32) (spanAt 1 121))
 
--- Conditionals (plan step 6)
+-- Conditionals
 conditionalTests : List TestResult
 conditionalTests = Test.do
   test "an if condition may be a bool" $
@@ -658,7 +658,7 @@ conditionalTests = Test.do
     signaturesAndBodiesOutcome "fn f(c: bool, a: &[i32; 2], s: &[i32]) { let r: &[i32] = if c { a } else { s }; }"
       `shouldBe` accepted
 
--- Loops (plan step 6)
+-- Loops
 loopTests : List TestResult
 loopTests = Test.do
   test "a while condition may be a bool or a bit" $
@@ -696,7 +696,7 @@ loopTests = Test.do
     signaturesAndBodiesOutcome "fn f() { for i in 0..3 { break 1; } }"
       `shouldBe` rejectedWith (BreakValueInUnitLoop (spanAt 1 26))
 
--- for loops (plan steps 7 and 8, spec §32)
+-- for loops (spec §32)
 forLoopTests : List TestResult
 forLoopTests = Test.do
   test "a for loop over a range binds integers" $
@@ -750,7 +750,7 @@ forLoopTests = Test.do
   test "a unit constant-named for variable is an irrefutable pattern" $
     signaturesAndBodiesOutcome "const UNIT: () = (); fn f() { for UNIT in [(), ()] { } }" `shouldBe` accepted
 
--- Ranges (plan step 7, spec §31)
+-- Ranges (spec §31)
 rangeTests : List TestResult
 rangeTests = Test.do
   test "ranges are values" $
@@ -768,7 +768,7 @@ rangeTests = Test.do
     signaturesAndBodiesOutcome "fn f() { let r = rev(1..); }"
       `shouldBe` rejectedWith (MissingRangeEndpoint "rev" (spanAt 1 22))
 
--- Blocks, returns and divergence (plan part B.2, step 6)
+-- Blocks, returns and divergence
 blockTests : List TestResult
 blockTests = Test.do
   test "a function tail must match its declared result type" $
@@ -811,7 +811,7 @@ blockTests = Test.do
     signaturesAndBodiesOutcome "fn f() -> i32 { while true { return 1; } }"
       `shouldBe` rejectedWith (TypeMismatch i32 unit (spanAt 1 17))
 
--- Bindings and patterns (plan step 7)
+-- Bindings and patterns
 patternTests : List TestResult
 patternTests = Test.do
   test "unit and wildcard patterns" $
@@ -849,7 +849,7 @@ patternTests = Test.do
   test "nested tuple and array patterns split their components" $
     signaturesAndBodiesOutcome "fn f() -> i32 { let (a, [b, c]) = (1, [2, 3]); a + b + c }" `shouldBe` accepted
 
--- Constant initializers (plan steps 5 and 10)
+-- Constant initializers
 constantInitializerTests : List TestResult
 constantInitializerTests = Test.do
   test "a constant initializer is checked against its type" $
@@ -864,7 +864,7 @@ constantInitializerTests = Test.do
     signaturesAndBodiesOutcome "const A: [i32; 3] = [1, 2];"
       `shouldBe` rejectedWith (TypeMismatch (array i32 3) (array i32 2) (spanAt 1 21))
 
--- Allocation and measurement (plan step 11, spec §10, §43)
+-- Allocation and measurement (spec §10, §43)
 qubitAllocationTests : List TestResult
 qubitAllocationTests = Test.do
   test "qalloc returns a qubit and qalloc(n) an array of qubits" $
@@ -907,7 +907,7 @@ qubitAllocationTests = Test.do
     signaturesAndBodiesOutcome "fn f(a: qbit, b: &qbit) { let (x, y) = measr(a, b); }"
       `shouldBe` rejectedWith (TypeMismatch linearQbit qbitRef (spanAt 1 49))
 
--- Qubit quantum usage qualifiers (plan step 11, spec §12)
+-- Qubit quantum usage qualifiers (spec §12)
 quantumUsageTests : List TestResult
 quantumUsageTests = Test.do
   test "a linear qualifier needs a qubit" $
@@ -918,7 +918,7 @@ quantumUsageTests = Test.do
     signaturesAndBodiesOutcome "fn f(q: &qbit) { discard(q); }"
       `shouldBe` rejectedWith (TypeMismatch linearQbit qbitRef (spanAt 1 26))
 
--- Gates (plan step 11, spec §13, §14)
+-- Gates (spec §13, §14)
 gateTests : List TestResult
 gateTests = Test.do
   test "an owned gate call returns its qubit" $
@@ -987,7 +987,7 @@ gateTests = Test.do
     signaturesAndBodiesOutcome "fn f(a: &qbit, b: &qbit) { CRX(1.0, a, b); CRY(1.0, a, b); CRZ(1.0, a, b); CU1(1.0, a, b); CU2(1.0, 2.0, a, b); CU3(1.0, 2.0, 3.0, a, b); RXX(1.0, a, b); RYY(1.0, a, b); RZZ(1.0, a, b); MS(1.0, 2.0, a, b); ZZ(1.0, a, b); }"
       `shouldBe` accepted
 
--- Builtins (plan step 11, spec §38 to §44)
+-- Builtins (spec §38 to §44)
 builtinTests : List TestResult
 builtinTests = Test.do
   test "reset consumes and returns or borrows its qubits" $
@@ -1032,7 +1032,7 @@ builtinTests = Test.do
     signaturesAndBodiesOutcome "fn f() -> usize { let a = [1, 2]; len(a, a) }"
       `shouldBe` rejectedWith (WrongArgumentCount 1 2 (spanAt 1 35))
 
--- ctrl (plan step 11, spec §15)
+-- ctrl (spec §15)
 controlTests : List TestResult
 controlTests = Test.do
   test "owned controls are returned before the target's results" $
@@ -1067,7 +1067,7 @@ controlTests = Test.do
     signaturesAndBodiesOutcome "fn f(c: qbit, q: qbit) -> (qbit, qbit) { ctrl(c).apply(RX)(0.5, q) }"
       `shouldBe` accepted
 
--- Gate aliases (plan step 11)
+-- Gate aliases
 gateAliasTests : List TestResult
 gateAliasTests = Test.do
   test "a gate alias keeps both forms" $
@@ -1076,7 +1076,7 @@ gateAliasTests = Test.do
   test "a mutable gate alias can be reassigned" $
     signaturesAndBodiesOutcome "fn f(q: &qbit) { let mut h = H; h = X; h(q); }" `shouldBe` accepted
 
--- Context propagation and delayed writeback (plan steps 5 and 11; spec §6, §7, §48)
+-- Context propagation and delayed writeback (spec §6, §7, §48)
 contextualInferenceTests : List TestResult
 contextualInferenceTests = Test.do
   test "a return context fixes an unsuffixed integer before range checking" $
@@ -1120,7 +1120,7 @@ contextualInferenceTests = Test.do
       `shouldBe` accepted
 
 
--- Joined callable types and schemes (plan steps 5 and 11; spec §53, §61)
+-- Joined callable types and schemes (spec §53, §61)
 functionJoinTests : List TestResult
 functionJoinTests = Test.do
   test "a branch join retains the weaker function effect" $
@@ -1152,7 +1152,7 @@ functionJoinTests = Test.do
       `shouldBe` accepted
 
 
--- Directional coercions at checked boundaries (plan step 8; spec §9, §51, §61)
+-- Directional coercions at checked boundaries (spec §9, §51, §61)
 coercionBoundaryTests : List TestResult
 coercionBoundaryTests = Test.do
   test "a returned array reference coerces to a slice reference" $
@@ -1179,7 +1179,7 @@ coercionBoundaryTests = Test.do
     signaturesAndBodiesOutcome "fn f(a: &[i32; 2]) -> i32 { let t: (&[i32], i32) = (a, 1); t.1 }" `shouldBe` accepted
 
 
--- Runtime prelude overloads (plan step 11; spec §6, §14, §65)
+-- Runtime prelude overloads (spec §6, §14, §65)
 mathPreludeTests : List TestResult
 mathPreludeTests = Test.do
   test "abs, min and max preserve the selected integer type" $
@@ -1214,10 +1214,10 @@ mathPreludeTests = Test.do
     signaturesAndBodiesOutcome "fn f() -> f64 { turns(0.25) }"
       `shouldBe` rejectedWith (TypeMismatch f64 angle64 (spanAt 1 17))
 
--- Function values and the effect order (plan steps 3 and 5): a provided effect
+-- Function values and the effect order: a provided effect
 -- satisfies a required one when classical ≤ uncompsafe ≤ unitary ≤
 -- {isometry, coisometry} ≤ general, and a join takes the least common effect.
--- Only declared functions make width claims (plan step 13), so written i32 -> i32
+-- Only declared functions make width claims, so written i32 -> i32
 -- function types can carry every effect.
 effectOrderTests : List TestResult
 effectOrderTests = Test.do
@@ -1322,8 +1322,8 @@ effectOrderTests = Test.do
       `shouldBe` rejectedWith (TypeMismatch (fnType EffectUncompsafe [i32] i32) (fnType EffectUnitary [i32] i32) (spanAt 1 148))
 
 -- These two invalid forms have no specified diagnostic constructor yet:
--- recursive inference constraints (plan step 5) and a reversed range used as an index
--- (plan step 11). Require a returned TypeError rather than acceptance or a crash;
+-- recursive inference constraints and a reversed range used as an index.
+-- Require a returned TypeError rather than acceptance or a crash;
 -- frontend fixture failures still propagate from signaturesAndBodiesOutcome.
 inferenceOccursCheckTests : List TestResult
 inferenceOccursCheckTests = Test.do
@@ -1332,7 +1332,7 @@ inferenceOccursCheckTests = Test.do
       `shouldBe` True
 
 -- Function components are invariant even where an ordinary call or return
--- permits a coercion (plan step 8; spec §9, §51, §53).
+-- permits a coercion (spec §9, §51, §53).
 callableComponentTests : List TestResult
 callableComponentTests = Test.do
   test "array-to-slice argument coercion does not change a function parameter type" $
@@ -1352,7 +1352,7 @@ callableComponentTests = Test.do
       `shouldBe` rejectedWith (TypeMismatch (ref (fnType EffectClassical [i32] i32)) (ref (fnType EffectGeneral [i32] i32)) (spanAt 1 98))
 
 -- Gate aliases preserve schemes; angle arguments specialize independently at
--- each call and at each parameter position (plan step 11; spec §14, §16).
+-- each call and at each parameter position (spec §14, §16).
 aliasedAngleTests : List TestResult
 aliasedAngleTests = Test.do
   test "a rotation alias independently accepts f32 and f64 calls" $
@@ -1368,7 +1368,7 @@ aliasedAngleTests = Test.do
       `shouldBe` accepted
 
 -- Only reachable breaks contribute to a loop's result, but all source
--- expressions must still be checked (plan step 6).
+-- expressions must still be checked.
 unreachableBreakTests : List TestResult
 unreachableBreakTests = Test.do
   test "a break after return does not determine the loop result" $
@@ -1388,7 +1388,7 @@ unreachableBreakTests = Test.do
       `shouldBe` rejectedWith (InvalidBinaryOperands "+" bool bool (spanAt 1 40))
 
 -- Indexing uses a range value, not only the range expression's syntax, and
--- an exclusive slice endpoint may equal the array length (plan step 7; spec §9).
+-- an exclusive slice endpoint may equal the array length (spec §9).
 storedRangeIndexTests : List TestResult
 storedRangeIndexTests = Test.do
   test "indexing constrains a stored range's open integer endpoints to usize" $
@@ -1411,9 +1411,9 @@ storedRangeIndexTests = Test.do
     signaturesAndBodiesOutcome "fn f(a: [i32; 0]) { let s: &[i32] = &a[0..0]; let t: &[i32] = &a[..]; }"
       `shouldBe` accepted
 
--- Invalid forms the plan rejects without naming a diagnostic: a prelude name
--- with no value type used as a value (plan step 5), a for loop over a value
--- that is not iterable and rev of something that is not a range (plan steps 7 and 11).
+-- Invalid forms that must be rejected but have no defined diagnostic: a prelude name
+-- with no value type used as a value, a for loop over a value
+-- that is not iterable and rev of something that is not a range.
 unspecifiedDiagnosticTests : List TestResult
 unspecifiedDiagnosticTests = Test.do
   test "Param is not a value" $

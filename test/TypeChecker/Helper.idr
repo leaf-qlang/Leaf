@@ -71,8 +71,9 @@ typeCheckAndPrettyPrint inputProgram =
 -- A test compares `typeCheckOutcome program` with `accepted` or with
 -- `rejectedWith expectedError`. Errors are compared through `show`, which renders a
 -- span by its start only, so `spanAt line column` is all an expected error
--- needs to say where it is. Where the plan rejects a form without naming its
--- diagnostic, `rejected (typeCheckOutcome program)` is compared with `True`.
+-- needs to say where it is. Where a form must be rejected but no specific
+-- diagnostic is defined for it, `rejected (typeCheckOutcome program)` is
+-- compared with `True`.
 --------------------------------------------------------------------------------
 
 ||| `Right ()` when the program type-checks, otherwise the error it reports, shown.

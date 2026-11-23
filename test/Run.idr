@@ -41,7 +41,7 @@ suites =
   , ("ScopeAndNameResolution.ValidationTest", runResolutionValidationTests)
   , ("TypeChecker.NumericTest", runNumericTests)
   , ("TypeChecker.TypeTranslationTest", runTypeTranslationTests)
---  , ("TypeChecker.Phases.SignatureCheckTest", runSignatureCheckTests)
+  , ("TypeChecker.Phases.SignatureCheckTest", runSignatureCheckTests)
 --  , ("TypeChecker.Phases.BodyCheckTest", runBodyCheckTests)
   , ("Examples.CompileCodeExamplesTest", runCompileCodeExamplesTests)
   ]

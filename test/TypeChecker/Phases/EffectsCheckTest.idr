@@ -13,7 +13,7 @@ import TypeChecker.Helper
 --------------------------------------------------------------------------------
 -- Pass E checks each function's declared effect against its signature and
 -- against every operation in its body, carrying an effect ceiling into
--- adjoint blocks, control blocks and `:=` initializers (plan step 13). Widths count
+-- adjoint blocks, control blocks and `:=` initializers. Widths count
 -- owned qubits; a width error reports the parameters' width, then the
 -- result's, at the function name. Quantum data in a classical signature, and
 -- a quantum operation under a classical ceiling, report `uncompsafe`, the
@@ -22,7 +22,7 @@ import TypeChecker.Helper
 -- attribute's name.
 --------------------------------------------------------------------------------
 
--- Signature claims (plan step 13)
+-- Signature claims
 signatureClaimTests : List TestResult
 signatureClaimTests = Test.do
   test "a unitary function returns as many owned qubits as it takes" $
@@ -85,7 +85,7 @@ signatureClaimTests = Test.do
     typeCheckOutcome "const N: u32 = 2; unitary fn f(qs: [qbit; N as usize]) -> [qbit; (N + 1) as usize] { [qs[0], qs[1], qalloc()] }"
       `shouldBe` rejectedWith (QuantumWidthMismatch "unitary" 2 3 (spanAt 1 30))
 
--- Operation effects under the declared ceiling (plan step 13)
+-- Operation effects under the declared ceiling
 operationEffectTests : List TestResult
 operationEffectTests = Test.do
   test "a classical function cannot allocate qubits" $
@@ -144,7 +144,7 @@ operationEffectTests = Test.do
     typeCheckOutcome "coisometry fn f(q: qbit, a: qbit) -> qbit { discard(a); q }"
       `shouldBe` rejectedWith (EffectViolation EffectCoisometry EffectGeneral (spanAt 1 45))
 
--- Callable modifiers (plan step 13)
+-- Callable modifiers
 modifierTests : List TestResult
 modifierTests = Test.do
   test "controlling a user function needs ctrl support" $
@@ -173,7 +173,7 @@ modifierTests = Test.do
   test "a control without a selector keeps a controlled X uncompsafe" $
     typeCheckOutcome "uncompsafe fn f(c: &qbit, t: &qbit) { ctrl(c).apply(X)(t); }" `shouldBe` accepted
 
--- Attributes (plan step 13): only cases on which both documented rules agree
+-- Attributes: only cases on which both documented rules agree
 attributeTests : List TestResult
 attributeTests = Test.do
   test "qasm_gate is allowed on a unitary function" $
@@ -203,7 +203,7 @@ attributeTests = Test.do
   test "qasm_def does not restrict a unitary function" $
     typeCheckOutcome "#[qasm_def] unitary fn f(q: qbit) -> qbit { H(q) }" `shouldBe` accepted
 
--- Recursive signature checks and nested ceilings (plan step 13; spec §53, §64).
+-- Recursive signature checks and nested ceilings (spec §53, §64).
 nestedEffectTests : List TestResult
 nestedEffectTests = Test.do
   test "owned width traverses nested tuples and arrays" $

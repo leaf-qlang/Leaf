@@ -11,7 +11,7 @@ import TypeChecker.Helper
 -- Pass C, part 1: ownership events
 --------------------------------------------------------------------------------
 -- OwnershipEvents records what each operation does to each place: a read, a
--- copy, a move, a borrow, a write or a consumption (plan step 14). Recording
+-- copy, a move, a borrow, a write or a consumption. Recording
 -- alone accepts or rejects nothing, so each test observes a classification
 -- through the flow analysis that reads it: a copied value can be used again,
 -- a moved one cannot, a borrow keeps its place usable, and a temporary that
@@ -19,7 +19,7 @@ import TypeChecker.Helper
 -- the use; an unconsumed qubit at the binding or temporary holding it.
 --------------------------------------------------------------------------------
 
--- Copies, moves and borrows (plan step 14)
+-- Copies, moves and borrows
 copyAndMoveTests : List TestResult
 copyAndMoveTests = Test.do
   test "a classical value is copied, so it can be used again" $
@@ -62,7 +62,7 @@ copyAndMoveTests = Test.do
     typeCheckOutcome "fn f() { let q = qalloc(); let (a, b) = CX(q, q); discard(a, b); }"
       `shouldBe` rejectedWith (UseAfterMove "q" (spanAt 1 47))
 
--- Temporaries (plan step 14, step 15 rule 2)
+-- Temporaries
 temporaryTests : List TestResult
 temporaryTests = Test.do
   test "an unused owned gate result is a live linear temporary" $
@@ -81,7 +81,7 @@ temporaryTests = Test.do
     typeCheckOutcome "fn f() { let _ = qalloc(); }"
       `shouldBe` rejectedWith (LinearQbitNotConsumed (spanAt 1 14))
 
--- Controls, repetition and iteration (plan steps 7, 11 and 14)
+-- Controls, repetition and iteration
 controlAndRepetitionTests : List TestResult
 controlAndRepetitionTests = Test.do
   test "owned controls are moved into the call and returned" $
@@ -111,7 +111,7 @@ controlAndRepetitionTests = Test.do
     typeCheckOutcome "fn f() { let qs = qalloc(2); for q in qs { discard(q); } discard(qs); }"
       `shouldBe` rejectedWith (UseAfterMove "qs" (spanAt 1 66))
 
--- Moves along control flow (plan step 15)
+-- Moves along control flow
 moveFlowTests : List TestResult
 moveFlowTests = Test.do
   test "a move inside a loop body happens again on the next iteration" $
@@ -137,7 +137,7 @@ moveFlowTests = Test.do
   test "a loop can break with an owned qubit" $
     typeCheckOutcome "fn f() { let q = loop { break qalloc(); }; discard(q); }" `shouldBe` accepted
 
--- Aggregate copies, exclusive references and conditional transfers (plan steps 14–15).
+-- Aggregate copies, exclusive references and conditional transfers.
 additionalEventTests : List TestResult
 additionalEventTests = Test.do
   test "an array of classical values is copied as a whole" $
@@ -169,8 +169,8 @@ additionalEventTests = Test.do
   test "a branch that returns does not make the continuing branch use a moved qubit" $
     typeCheckOutcome "fn f(c: bool) -> bit { let q = qalloc(); if c { return measr(q); } measr(q) }" `shouldBe` accepted
 
--- Early exits retain obligations for elements still owned by the iterator
--- (plan steps 14 and 15). Temporary arrays have no local binding to report instead.
+-- Early exits retain obligations for elements still owned by the iterator.
+-- Temporary arrays have no local binding to report instead.
 iterationExitTests : List TestResult
 iterationExitTests = Test.do
   test "breaking from owned iteration leaves the remaining linear elements live" $
@@ -194,9 +194,9 @@ iterationExitTests = Test.do
     typeCheckOutcome "fn f() { let qs = qalloc(2); for q in &qs { H(q); break; } discard(qs); }" `shouldBe` accepted
 
 
--- Repetition evaluates its operand once and copies it (plan steps 7 and 15). Owned
--- qubits and exclusive references are not Copy, and the plan names no
--- diagnostic for duplicating them, so those tests require only a reported error.
+-- Repetition evaluates its operand once and copies it. Owned
+-- qubits and exclusive references are not Copy, and no diagnostic is
+-- defined for duplicating them, so those tests require only a reported error.
 repetitionCopyTests : List TestResult
 repetitionCopyTests = Test.do
   test "repeating a linear qubit more than once is rejected" $

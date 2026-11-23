@@ -105,7 +105,7 @@ export
 allReferences : ResolvedModule -> List SymbolReference
 allReferences resolvedModule =
   sortBy (\firstReference, secondReference => compare (spanKey firstReference.occurrence.span) (spanKey secondReference.occurrence.span)) $
-    concatMap (\(_, bucketReferences) => bucketReferences <>> []) (SortedMap.toList resolvedModule.tables.references)
+    concatMap (\(_, bucketReferences) => bucketReferences <>> []) (SortedMap.toList resolvedModule.scopeTables.references)
 
 export
 valueReferences : ResolvedModule -> List SymbolReference

@@ -8,20 +8,20 @@ import TypeChecker.Helper
 %default total
 
 --------------------------------------------------------------------------------
--- Pass C, part 1: ownership events, stage 2
+-- Pass C, part 1: ownership events, constructs not yet supported
 --------------------------------------------------------------------------------
--- The OwnershipEventsTest tests of the constructs that stage 2 adds (plan part
--- A.6): `affine` and `weaken`, `adjoint`, control blocks, `scratch`, `:=`,
--- `uncompute` and clean ancilla disposal. No runner includes these groups
--- yet; each stage 2 step (plan steps 18 to 21) adds its group to
--- runOwnershipEventsTests.
+-- The OwnershipEventsTest tests of constructs that the type checker does not
+-- support yet: `affine` and `weaken`, `adjoint`, control blocks, `scratch`,
+-- `:=`, `uncompute` and clean ancilla disposal. No runner includes these
+-- groups yet; each group is added to runOwnershipEventsTests once the type checker
+-- supports its constructs.
 --------------------------------------------------------------------------------
 
--- Stage 2, plan step 18: `affine` qualifiers and `weaken`. Left out of
--- runOwnershipEventsTests until step 18 re-enables this group.
+-- `affine` qualifiers and `weaken`. Left out of
+-- runOwnershipEventsTests until the type checker supports these constructs.
 export
-affineStageTwoTests : List TestResult
-affineStageTwoTests = Test.do
+affineBetaReleaseTests : List TestResult
+affineBetaReleaseTests = Test.do
   test "an affine temporary may be dropped" $
     typeCheckOutcome "fn f(q: affine qbit) { H(q); }" `shouldBe` accepted
 
@@ -42,11 +42,11 @@ affineStageTwoTests = Test.do
     rejected (typeCheckOutcome "fn f() { let qs = [weaken(qalloc()); 2]; }")
       `shouldBe` True
 
--- Stage 2, plan step 20: control blocks `ctrl(…) { … }`. Left out of
--- runOwnershipEventsTests until step 20 re-enables this group.
+-- Control blocks `ctrl(…) { … }`. Left out of
+-- runOwnershipEventsTests until the type checker supports these constructs.
 export
-controlBlockStageTwoTests : List TestResult
-controlBlockStageTwoTests = Test.do
+controlBlockBetaReleaseTests : List TestResult
+controlBlockBetaReleaseTests = Test.do
   test "a borrowed control conflicts with a write to it inside its block" $
     typeCheckOutcome "fn f(c: &qbit) { ctrl(c) { X(c); } }"
       `shouldBe` rejectedWith (OverlappingBorrow (spanAt 1 30))

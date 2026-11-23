@@ -10,7 +10,7 @@ import TypeChecker.Helper
 -- Phase T: the typed AST
 --------------------------------------------------------------------------------
 -- Translation rebuilds the checked resolved AST node for node in the typed
--- phase (plan step 12). Each test pretty-prints the typed AST of a program that
+-- phase. Each test pretty-prints the typed AST of a program that
 -- type-checks and expects exactly the printed desugared and resolved AST,
 -- including the nodes desugaring generated: default effects and result
 -- types, returns, unit else blocks, ctrl selectors, moved and default
@@ -18,7 +18,7 @@ import TypeChecker.Helper
 -- pass B rejects them first, and `BodyCheckTest` checks those diagnostics.
 --------------------------------------------------------------------------------
 
--- Items and generated nodes (plan step 12)
+-- Items and generated nodes
 itemTranslationTests : List TestResult
 itemTranslationTests = Test.do
   test "an empty function keeps its generated effect, result type and return" $
@@ -57,7 +57,7 @@ itemTranslationTests = Test.do
     printedTypedAst "const N: usize = 2; fn f(a: [i32; N + 1]) -> [i32; N + 1] { a }"
       `shouldBe` Right "const N: usize = 2;\ngeneral fn f(a: [i32; (N + 1)]) -> [i32; (N + 1)] { return a; }"
 
--- Statements and patterns (plan step 12)
+-- Statements and patterns
 statementTranslationTests : List TestResult
 statementTranslationTests = Test.do
   test "let bindings, assignments and compound assignments are translated" $
@@ -80,7 +80,7 @@ statementTranslationTests = Test.do
     printedTypedAst "const UNIT: () = (); fn f() { for UNIT in [(), ()] { } }"
       `shouldBe` Right "const UNIT: () = ();\ngeneral fn f() -> () { return for UNIT in [(), ()] { }; }"
 
--- Expressions (plan step 12)
+-- Expressions
 expressionTranslationTests : List TestResult
 expressionTranslationTests = Test.do
   test "blocks, if and else-if chains are translated" $

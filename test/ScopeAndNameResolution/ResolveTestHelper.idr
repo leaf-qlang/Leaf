@@ -96,8 +96,8 @@ symbolId resolvedName = resolvedName.nodeValue.nameNodeSymbolId
 export
 scopeFor : ResolvedModule -> AstNode ResolvedAstPhase a -> Maybe ScopeInfo
 scopeFor resolvedModule astNode = do
-  scopeId <- lookup astNode.astInfo.nodeId resolvedModule.tables.nodeScopes
-  lookup scopeId resolvedModule.tables.scopes
+  scopeId <- lookup astNode.astInfo.nodeId resolvedModule.scopeTables.nodeScopes
+  lookup scopeId resolvedModule.scopeTables.scopes
 
 sameRole : ReferenceRole -> ReferenceRole -> Bool
 sameRole DeclarationReference DeclarationReference = True
@@ -118,8 +118,8 @@ referenceMatches resolvedModule expectedRole contextNode occurrenceName =
     [reference] => reference.target == symbolId occurrenceName && sameRole reference.role expectedRole &&
              reference.contextNode == contextNode && reference.writtenName == occurrenceName.nodeValue.nameNodeText &&
              spanKey reference.occurrence.span == spanKey occurrenceName.astInfo.span &&
-             lookup occurrenceName.astInfo.nodeId resolvedModule.tables.nodeScopes == Just reference.enclosingScope &&
-             lookup contextNode resolvedModule.tables.nodeScopes == Just reference.enclosingScope
+             lookup occurrenceName.astInfo.nodeId resolvedModule.scopeTables.nodeScopes == Just reference.enclosingScope &&
+             lookup contextNode resolvedModule.scopeTables.nodeScopes == Just reference.enclosingScope
     _ => False
 
 -- Constants in patterns reference an existing symbol and introduce neither a
@@ -132,7 +132,7 @@ constantOccurrenceMatches resolvedModule constantName contextNode occurrenceName
     Just occurrenceScope =>
       symbolId occurrenceName == symbolId constantName &&
       referenceMatches resolvedModule PatternReference contextNode occurrenceName &&
-      isNothing (lookup (symbolId occurrenceName) resolvedModule.tables.localVarsMeta) &&
+      isNothing (lookup (symbolId occurrenceName) resolvedModule.scopeTables.localVarsMeta) &&
       isNothing (lookup occurrenceName.nodeValue.nameNodeText occurrenceScope.valueBindings) &&
       not (elem (symbolId occurrenceName) (occurrenceScope.declaredSymbolsInOrder <>> []))
 
@@ -166,7 +166,7 @@ bindingMatches scopeInfo declaredName = case lookup declaredName.nodeValue.nameN
 
 export
 localMatches : ResolvedModule -> ResolvedName -> Bool -> Bool
-localMatches resolvedModule localName expectedMutable = case lookup (symbolId localName) resolvedModule.tables.localVarsMeta of
+localMatches resolvedModule localName expectedMutable = case lookup (symbolId localName) resolvedModule.scopeTables.localVarsMeta of
   Just (MkLocalVarQualifiers actualMutability ()) =>
     case actualMutability of
       MutableVariable => expectedMutable
@@ -176,7 +176,7 @@ localMatches resolvedModule localName expectedMutable = case lookup (symbolId lo
 export
 symbolMatches : ResolvedModule -> ResolvedName -> ScopeId -> String -> AstInfo -> Bool
 symbolMatches resolvedModule declaredName expectedScope expectedKindText expectedOrigin =
-  case lookup (symbolId declaredName) resolvedModule.tables.symbols of
+  case lookup (symbolId declaredName) resolvedModule.scopeTables.symbols of
     Nothing => False
     Just symbolInfo => symbolInfo.symbolId == symbolId declaredName &&
       symbolInfo.declaredName == declaredName.nodeValue.nameNodeText &&
@@ -194,12 +194,12 @@ isBlock scopeInfo = case scopeInfo.kind of BlockScope => True; _ => False
 -- also detects duplicated scope creation for blocks that contain no names.
 export
 blockScopesMatchNodes : ResolvedModule -> Bool
-blockScopesMatchNodes resolvedModule = all blockScopeMatchesNode (SortedMap.toList resolvedModule.tables.scopes)
+blockScopesMatchNodes resolvedModule = all blockScopeMatchesNode (SortedMap.toList resolvedModule.scopeTables.scopes)
   where
     blockScopeMatchesNode : (ScopeId, ScopeInfo) -> Bool
     blockScopeMatchesNode (scopeId, scopeInfo) = case (scopeInfo.kind, scopeInfo.origin) of
       (BlockScope, SourceScope originInfo) =>
-        lookup originInfo.nodeId resolvedModule.tables.nodeScopes == Just scopeId
+        lookup originInfo.nodeId resolvedModule.scopeTables.nodeScopes == Just scopeId
       _ => True
 
 export
@@ -259,7 +259,7 @@ unresolved sourceText expectedName = map (== expectedName) (expectUnresolvedName
 
 export
 nodeHasScope : ResolvedModule -> ScopeId -> AstNode ResolvedAstPhase a -> Bool
-nodeHasScope resolvedModule expectedScope astNode = lookup astNode.astInfo.nodeId resolvedModule.tables.nodeScopes == Just expectedScope
+nodeHasScope resolvedModule expectedScope astNode = lookup astNode.astInfo.nodeId resolvedModule.scopeTables.nodeScopes == Just expectedScope
 
 export
 parameterNames : FunctionDeclarationNode ResolvedAstPhase -> Maybe (List ResolvedName)
@@ -310,7 +310,7 @@ expressionUses expressionText expectedNameTexts selectUses = checkSource
 export
 referenceInventory : ResolvedModule -> List (ReferenceRole, NodeId, ResolvedName) -> Bool
 referenceInventory resolvedModule expectedReferences =
-  let buckets = SortedMap.toList resolvedModule.tables.references
+  let buckets = SortedMap.toList resolvedModule.scopeTables.references
       actualOccurrences = concatMap (\(bucketKey, bucketReferences) => map (\reference => (bucketKey, reference.occurrence.nodeId)) (bucketReferences <>> [])) buckets
   in map fst buckets == sort (nub (map (\(_, _, occurrenceName) => symbolId occurrenceName) expectedReferences)) &&
      sort actualOccurrences == sort (map (\(_, _, occurrenceName) => (symbolId occurrenceName, occurrenceName.astInfo.nodeId)) expectedReferences) &&
@@ -324,7 +324,7 @@ valueReferenceOccurrence nameExpression = do
 
 export
 sourceSymbols : ResolvedModule -> List ResolvedSymbolInfo
-sourceSymbols resolvedModule = filter fromSource (map snd (SortedMap.toList resolvedModule.tables.symbols))
+sourceSymbols resolvedModule = filter fromSource (map snd (SortedMap.toList resolvedModule.scopeTables.symbols))
   where
     fromSource : ResolvedSymbolInfo -> Bool
     fromSource symbolInfo = case symbolInfo.origin of SourceSymbol _ => True; _ => False
@@ -395,7 +395,7 @@ export
 duplicateDeclaration : String -> String -> String -> (Nat, Nat, Nat, Nat) -> Either String Bool
 duplicateDeclaration firstSource secondSource declaredName expectedSpan = do
   expectedConflict <- checkSource firstSource $ \resolvedModule => do
-    rootScope <- lookup resolvedModule.rootScopeId resolvedModule.tables.scopes
+    rootScope <- lookup resolvedModule.rootScopeId resolvedModule.scopeTables.scopes
     rootBinding <- lookup declaredName rootScope.valueBindings
     previousSpan <- rootBinding.introducedAt
     pure (rootBinding.target, spanKey previousSpan)
@@ -469,5 +469,5 @@ valueReferenceKinds resolvedModule = traverse describeReferenceTarget (valueRefe
   where
     describeReferenceTarget : SymbolReference -> Maybe (String, String)
     describeReferenceTarget reference = do
-      targetSymbol <- lookup reference.target resolvedModule.tables.symbols
+      targetSymbol <- lookup reference.target resolvedModule.scopeTables.symbols
       pure (reference.writtenName, kindText targetSymbol.symbolKind)

@@ -206,10 +206,10 @@ memberScopeMatches _ _ = False
 
 validateRoots : ResolvedModule -> List ResolutionInvariantError
 validateRoots resolvedModule =
-  let symbolErrors = case lookup resolvedModule.rootSymbolId resolvedModule.tables.symbols of
+  let symbolErrors = case lookup resolvedModule.rootSymbolId resolvedModule.scopeTables.symbols of
         Nothing => [MissingRootModule resolvedModule.rootSymbolId]
         Just rootSymbolInfo => check (isModule rootSymbolInfo.symbolKind) (InvalidRootModule resolvedModule.rootSymbolId)
-      scopeErrors = case lookup resolvedModule.rootScopeId resolvedModule.tables.scopes of
+      scopeErrors = case lookup resolvedModule.rootScopeId resolvedModule.scopeTables.scopes of
         Nothing => [MissingRootScope resolvedModule.rootScopeId]
         Just rootScopeInfo => case rootScopeInfo.kind of
           ModuleScope => []
@@ -219,23 +219,23 @@ validateRoots resolvedModule =
 -- Check the final StateT cursor, without cascading when a root is already invalid.
 validateFinalState : ResolvedModule -> List ResolutionInvariantError
 validateFinalState resolvedModule =
-  let scopeErrors = case lookup resolvedModule.rootScopeId resolvedModule.tables.scopes of
+  let scopeErrors = case lookup resolvedModule.rootScopeId resolvedModule.scopeTables.scopes of
         Just rootScopeInfo => case rootScopeInfo.kind of
           ModuleScope =>
-            check (resolvedModule.tables.currentScopeId == resolvedModule.rootScopeId)
-                  (UnrestoredCurrentScope resolvedModule.rootScopeId resolvedModule.tables.currentScopeId) ++
-            (case resolvedModule.tables.currentScopeKind of
+            check (resolvedModule.scopeTables.currentScopeId == resolvedModule.rootScopeId)
+                  (UnrestoredCurrentScope resolvedModule.rootScopeId resolvedModule.scopeTables.currentScopeId) ++
+            (case resolvedModule.scopeTables.currentScopeKind of
                ModuleScope => []
                _ => [InvalidCurrentScopeKind resolvedModule.rootScopeId])
           _ => []
         Nothing => []
-      moduleErrors = case lookup resolvedModule.rootSymbolId resolvedModule.tables.symbols of
+      moduleErrors = case lookup resolvedModule.rootSymbolId resolvedModule.scopeTables.symbols of
         Just rootSymbolInfo => if isModule rootSymbolInfo.symbolKind
-          then check (resolvedModule.tables.currentModuleSymbolId == resolvedModule.rootSymbolId)
-                     (UnrestoredCurrentModule resolvedModule.rootSymbolId resolvedModule.tables.currentModuleSymbolId)
+          then check (resolvedModule.scopeTables.currentModuleSymbolId == resolvedModule.rootSymbolId)
+                     (UnrestoredCurrentModule resolvedModule.rootSymbolId resolvedModule.scopeTables.currentModuleSymbolId)
           else []
         Nothing => []
-      constContextErrors = case resolvedModule.tables.constContextBoundary of
+      constContextErrors = case resolvedModule.scopeTables.constContextBoundary of
         Nothing => []
         Just constContextBoundary => [UnrestoredConstContext constContextBoundary]
   in scopeErrors ++ moduleErrors ++ constContextErrors
@@ -245,27 +245,27 @@ validateFinalState resolvedModule =
 declarationIndex : ResolvedModule -> SortedMap (ScopeId, SymbolId) ()
 declarationIndex resolvedModule = fromList $
   concatMap (\(scopeId, scopeInfo) => map (\declaredSymbolId => ((scopeId, declaredSymbolId), ())) (scopeInfo.declaredSymbolsInOrder <>> []))
-            (SortedMap.toList resolvedModule.tables.scopes)
+            (SortedMap.toList resolvedModule.scopeTables.scopes)
 
 validateSymbol : ResolvedModule -> SortedMap (ScopeId, SymbolId) () ->
                  (SymbolId, ResolvedSymbolInfo) -> List ResolutionInvariantError
 validateSymbol resolvedModule declarationOrderIndex (symbolKey, symbolInfo) =
   check (symbolKey == symbolInfo.symbolId) (SymbolKeyMismatch symbolKey symbolInfo.symbolId) ++
-  check (hasKey symbolInfo.declaringScope resolvedModule.tables.scopes) (MissingDeclaringScope symbolKey symbolInfo.declaringScope) ++
+  check (hasKey symbolInfo.declaringScope resolvedModule.scopeTables.scopes) (MissingDeclaringScope symbolKey symbolInfo.declaringScope) ++
   -- Only the root module may be its own declaring module; see SymbolInfo.
   check (symbolInfo.declaringModule /= symbolKey || symbolKey == resolvedModule.rootSymbolId) (SelfDeclaringModule symbolKey) ++
   -- The root is implicit. Invalid self-declarations and missing scopes already
   -- have diagnostics above. Every other symbol, including shadowed and Prelude
   -- declarations, must occur in its lexical declaring scope's order list.
   (if symbolKey == resolvedModule.rootSymbolId || symbolInfo.declaringModule == symbolKey ||
-      not (hasKey symbolInfo.declaringScope resolvedModule.tables.scopes)
+      not (hasKey symbolInfo.declaringScope resolvedModule.scopeTables.scopes)
      then []
      else check (hasKey (symbolInfo.declaringScope, symbolKey) declarationOrderIndex)
                 (MissingDeclarationOrderEntry symbolInfo.declaringScope symbolKey)) ++
   (if isLocal symbolInfo.symbolKind
-     then check (hasKey symbolKey resolvedModule.tables.localVarsMeta) (MissingLocalVarQualifiers symbolKey)
+     then check (hasKey symbolKey resolvedModule.scopeTables.localVarsMeta) (MissingLocalVarQualifiers symbolKey)
      else []) ++
-  case lookup symbolInfo.declaringModule resolvedModule.tables.symbols of
+  case lookup symbolInfo.declaringModule resolvedModule.scopeTables.symbols of
     Nothing => [MissingDeclaringModule symbolKey symbolInfo.declaringModule]
     Just declaringModuleInfo =>
       check (isModule declaringModuleInfo.symbolKind) (InvalidDeclaringModule symbolKey symbolInfo.declaringModule)
@@ -274,7 +274,7 @@ validateBinding : ResolvedModule -> ScopeId -> BindingNamespace ->
                   (String, ScopeBinding) -> List ResolutionInvariantError
 validateBinding resolvedModule scopeId bindingNamespace (bindingKey, scopeBinding) =
   check (bindingKey == scopeBinding.writtenName) (BindingNameMismatch scopeId bindingNamespace bindingKey scopeBinding.writtenName) ++
-  case lookup scopeBinding.target resolvedModule.tables.symbols of
+  case lookup scopeBinding.target resolvedModule.scopeTables.symbols of
     Nothing => [MissingBindingTarget scopeId bindingNamespace bindingKey scopeBinding.target]
     Just targetSymbolInfo => case scopeBinding.bindingKind of
       DeclaredBinding =>
@@ -288,7 +288,7 @@ validateDeclarationOrder : ResolvedModule -> ScopeId -> (alreadyListedSymbols : 
 validateDeclarationOrder _ _ _ [] = []
 validateDeclarationOrder resolvedModule scopeId alreadyListedSymbols (symbolId :: remainingSymbolIds) =
   let duplicateErrors = check (not (hasKey symbolId alreadyListedSymbols)) (DuplicateDeclaredSymbol scopeId symbolId)
-      symbolErrors = case lookup symbolId resolvedModule.tables.symbols of
+      symbolErrors = case lookup symbolId resolvedModule.scopeTables.symbols of
         Nothing => [MissingDeclaredSymbol scopeId symbolId]
         Just symbolInfo => check (symbolInfo.declaringScope == scopeId)
                                  (WrongDeclarationScope scopeId symbolId symbolInfo.declaringScope)
@@ -300,7 +300,7 @@ validateScope resolvedModule (scopeKey, scopeInfo) =
   let declaredSymbolIds = scopeInfo.declaredSymbolsInOrder <>> []
       parentErrors = case scopeInfo.parent of
         Nothing => []
-        Just parentScopeId => check (hasKey parentScopeId resolvedModule.tables.scopes) (MissingParentScope scopeKey parentScopeId)
+        Just parentScopeId => check (hasKey parentScopeId resolvedModule.scopeTables.scopes) (MissingParentScope scopeKey parentScopeId)
   in check (scopeKey == scopeInfo.id) (ScopeKeyMismatch scopeKey scopeInfo.id) ++ parentErrors ++
      concatMap (validateBinding resolvedModule scopeKey TypeNamespace) (SortedMap.toList scopeInfo.typeBindings) ++
      concatMap (validateBinding resolvedModule scopeKey ValueNamespace) (SortedMap.toList scopeInfo.valueBindings) ++
@@ -344,31 +344,31 @@ validateParentCycles scopes =
 -- any mapping retained for them must still agree with the reference scope.
 validateReferenceNodes : ResolvedModule -> SymbolReference -> List ResolutionInvariantError
 validateReferenceNodes resolvedModule symbolReference =
-  if not (hasKey symbolReference.enclosingScope resolvedModule.tables.scopes) then []
+  if not (hasKey symbolReference.enclosingScope resolvedModule.scopeTables.scopes) then []
   else concatMap checkNodeScope (nub [symbolReference.occurrence.nodeId, symbolReference.contextNode])
   where
     checkNodeScope : NodeId -> List ResolutionInvariantError
-    checkNodeScope nodeId = case lookup nodeId resolvedModule.tables.nodeScopes of
+    checkNodeScope nodeId = case lookup nodeId resolvedModule.scopeTables.nodeScopes of
       Nothing => case symbolReference.role of
         QualifierReference =>
           if nodeId == symbolReference.contextNode then [MissingReferenceNodeScope nodeId symbolReference.enclosingScope] else []
         _ => [MissingReferenceNodeScope nodeId symbolReference.enclosingScope]
       Just mappedScopeId =>
-        if hasKey mappedScopeId resolvedModule.tables.scopes
+        if hasKey mappedScopeId resolvedModule.scopeTables.scopes
           then check (mappedScopeId == symbolReference.enclosingScope)
                      (ReferenceNodeScopeMismatch nodeId symbolReference.enclosingScope mappedScopeId)
           else [] -- validateResolvedModule reports the dangling nodeScopes entry.
 
 validateDeclarationReference : ResolvedModule -> SymbolReference -> List ResolutionInvariantError
 validateDeclarationReference resolvedModule symbolReference = case symbolReference.role of
-  DeclarationReference => case lookup symbolReference.target resolvedModule.tables.symbols of
+  DeclarationReference => case lookup symbolReference.target resolvedModule.scopeTables.symbols of
     Nothing => []
     Just targetSymbolInfo =>
       check (symbolReference.writtenName == targetSymbolInfo.declaredName)
             (DeclarationReferenceNameMismatch symbolReference.target symbolReference.occurrence.nodeId
                                               symbolReference.writtenName targetSymbolInfo.declaredName) ++
-      (if hasKey targetSymbolInfo.declaringScope resolvedModule.tables.scopes &&
-          hasKey symbolReference.enclosingScope resolvedModule.tables.scopes
+      (if hasKey targetSymbolInfo.declaringScope resolvedModule.scopeTables.scopes &&
+          hasKey symbolReference.enclosingScope resolvedModule.scopeTables.scopes
          then check (symbolReference.enclosingScope == targetSymbolInfo.declaringScope)
                     (DeclarationReferenceScopeMismatch symbolReference.target symbolReference.occurrence.nodeId
                                                        targetSymbolInfo.declaringScope symbolReference.enclosingScope)
@@ -379,14 +379,14 @@ validateReference : ResolvedModule -> SymbolId -> SymbolReference -> List Resolu
 validateReference resolvedModule bucketKey symbolReference =
   let targetErrors = if symbolReference.target == bucketKey then [] else
         ReferenceKeyMismatch bucketKey symbolReference.target symbolReference.occurrence.nodeId ::
-          check (hasKey symbolReference.target resolvedModule.tables.symbols) (MissingReferenceSymbol symbolReference.target)
-  in targetErrors ++ check (hasKey symbolReference.enclosingScope resolvedModule.tables.scopes)
+          check (hasKey symbolReference.target resolvedModule.scopeTables.symbols) (MissingReferenceSymbol symbolReference.target)
+  in targetErrors ++ check (hasKey symbolReference.enclosingScope resolvedModule.scopeTables.scopes)
                           (MissingReferenceScope symbolReference.occurrence.nodeId symbolReference.enclosingScope) ++
      validateReferenceNodes resolvedModule symbolReference ++ validateDeclarationReference resolvedModule symbolReference
 
 validateReferences : ResolvedModule -> (SymbolId, SnocList SymbolReference) -> List ResolutionInvariantError
 validateReferences resolvedModule (bucketKey, bucketReferences) =
-  check (hasKey bucketKey resolvedModule.tables.symbols) (MissingReferenceSymbol bucketKey) ++
+  check (hasKey bucketKey resolvedModule.scopeTables.symbols) (MissingReferenceSymbol bucketKey) ++
   concatMap (validateReference resolvedModule bucketKey) (bucketReferences <>> [])
 
 sameReferenceData : SymbolReference -> SymbolReference -> Bool
@@ -403,7 +403,7 @@ sameReferenceData firstReference secondReference =
 -- expected. Different roles or contexts are also valid; conflicting copies are not.
 validateReferenceConsistency : ResolvedModule -> List ResolutionInvariantError
 validateReferenceConsistency resolvedModule =
-  let allReferences = concatMap (\(_, bucketReferences) => bucketReferences <>> []) (SortedMap.toList resolvedModule.tables.references)
+  let allReferences = concatMap (\(_, bucketReferences) => bucketReferences <>> []) (SortedMap.toList resolvedModule.scopeTables.references)
       (_, conflictErrors) = foldl recordReference (empty, []) allReferences
   in reverse conflictErrors
   where
@@ -420,18 +420,18 @@ validateReferenceConsistency resolvedModule =
 
 validateLocal : ResolvedModule -> (SymbolId, ResolvedLocalVarQualifiers) -> List ResolutionInvariantError
 validateLocal resolvedModule (localSymbolId, _) =
-  case lookup localSymbolId resolvedModule.tables.symbols of
+  case lookup localSymbolId resolvedModule.scopeTables.symbols of
     Nothing => [MissingLocalSymbol localSymbolId]
     Just localSymbolInfo => check (isLocal localSymbolInfo.symbolKind) (InvalidLocalSymbolKind localSymbolId)
 
 validateMembers : ResolvedModule -> (SymbolId, ScopeId) -> List ResolutionInvariantError
 validateMembers resolvedModule (ownerSymbolId, memberScopeId) =
-  let ownerErrors = case lookup ownerSymbolId resolvedModule.tables.symbols of
+  let ownerErrors = case lookup ownerSymbolId resolvedModule.scopeTables.symbols of
         Nothing => [MissingMemberOwner ownerSymbolId]
         Just ownerSymbolInfo => check (canOwnMembers ownerSymbolInfo.symbolKind) (InvalidMemberOwner ownerSymbolId)
-      scopeErrors = case lookup memberScopeId resolvedModule.tables.scopes of
+      scopeErrors = case lookup memberScopeId resolvedModule.scopeTables.scopes of
         Nothing => [MissingMemberScope ownerSymbolId memberScopeId]
-        Just memberScopeInfo => case lookup ownerSymbolId resolvedModule.tables.symbols of
+        Just memberScopeInfo => case lookup ownerSymbolId resolvedModule.scopeTables.symbols of
           Nothing => []
           Just ownerSymbolInfo =>
             check (memberScopeMatches ownerSymbolInfo.symbolKind memberScopeInfo.kind) (InvalidMemberScopeKind ownerSymbolId memberScopeId)
@@ -452,12 +452,12 @@ public export
 validateResolvedModule : ResolvedModule -> List ResolutionInvariantError
 validateResolvedModule resolvedModule =
   validateRoots resolvedModule ++ validateFinalState resolvedModule ++
-  concatMap (validateSymbol resolvedModule (declarationIndex resolvedModule)) (SortedMap.toList resolvedModule.tables.symbols) ++
-  concatMap (validateScope resolvedModule) (SortedMap.toList resolvedModule.tables.scopes) ++
-  validateParentCycles resolvedModule.tables.scopes ++
-  concatMap (validateReferences resolvedModule) (SortedMap.toList resolvedModule.tables.references) ++
+  concatMap (validateSymbol resolvedModule (declarationIndex resolvedModule)) (SortedMap.toList resolvedModule.scopeTables.symbols) ++
+  concatMap (validateScope resolvedModule) (SortedMap.toList resolvedModule.scopeTables.scopes) ++
+  validateParentCycles resolvedModule.scopeTables.scopes ++
+  concatMap (validateReferences resolvedModule) (SortedMap.toList resolvedModule.scopeTables.references) ++
   validateReferenceConsistency resolvedModule ++
-  concatMap (\(nodeId, scopeId) => check (hasKey scopeId resolvedModule.tables.scopes) (MissingNodeScope nodeId scopeId))
-            (SortedMap.toList resolvedModule.tables.nodeScopes) ++
-  concatMap (validateLocal resolvedModule) (SortedMap.toList resolvedModule.tables.localVarsMeta) ++
-  concatMap (validateMembers resolvedModule) (SortedMap.toList resolvedModule.tables.memberScopes)
+  concatMap (\(nodeId, scopeId) => check (hasKey scopeId resolvedModule.scopeTables.scopes) (MissingNodeScope nodeId scopeId))
+            (SortedMap.toList resolvedModule.scopeTables.nodeScopes) ++
+  concatMap (validateLocal resolvedModule) (SortedMap.toList resolvedModule.scopeTables.localVarsMeta) ++
+  concatMap (validateMembers resolvedModule) (SortedMap.toList resolvedModule.scopeTables.memberScopes)

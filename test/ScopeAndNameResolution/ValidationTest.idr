@@ -68,19 +68,19 @@ validModule = MkResolvedModule
     Nothing)
 
 withSymbol : Nat -> ResolvedSymbolInfo -> ResolvedModule -> ResolvedModule
-withSymbol symbolNumber symbolInfo resolvedModule = { tables.symbols := insert (MkSymbolId symbolNumber) symbolInfo resolvedModule.tables.symbols } resolvedModule
+withSymbol symbolNumber symbolInfo resolvedModule = { scopeTables.symbols := insert (MkSymbolId symbolNumber) symbolInfo resolvedModule.scopeTables.symbols } resolvedModule
 
 withScope : Nat -> ScopeInfo -> ResolvedModule -> ResolvedModule
-withScope scopeNumber scopeInfo resolvedModule = { tables.scopes := insert (MkScopeId scopeNumber) scopeInfo resolvedModule.tables.scopes } resolvedModule
+withScope scopeNumber scopeInfo resolvedModule = { scopeTables.scopes := insert (MkScopeId scopeNumber) scopeInfo resolvedModule.scopeTables.scopes } resolvedModule
 
 withUpdatedScope : Nat -> (ScopeInfo -> ScopeInfo) -> ResolvedModule -> ResolvedModule
 withUpdatedScope scopeNumber updateScope resolvedModule =
-  { tables.scopes := updateExisting updateScope (MkScopeId scopeNumber) resolvedModule.tables.scopes } resolvedModule
+  { scopeTables.scopes := updateExisting updateScope (MkScopeId scopeNumber) resolvedModule.scopeTables.scopes } resolvedModule
 
 withScopeOrder : Nat -> SnocList SymbolId -> ResolvedModule -> ResolvedModule
 withScopeOrder scopeNumber declarationOrder resolvedModule =
-  { tables.scopes := updateExisting (\scopeInfo => { declaredSymbolsInOrder := declarationOrder } scopeInfo)
-                                    (MkScopeId scopeNumber) resolvedModule.tables.scopes } resolvedModule
+  { scopeTables.scopes := updateExisting (\scopeInfo => { declaredSymbolsInOrder := declarationOrder } scopeInfo)
+                                    (MkScopeId scopeNumber) resolvedModule.scopeTables.scopes } resolvedModule
 
 -- Compound assignments retain their operator, so each written value occurrence
 -- should be visited once, including occurrences inside scoped target expressions.
@@ -92,7 +92,7 @@ repeatedReads resolvedModule =
 
 localNames : ResolvedModule -> List String
 localNames resolvedModule =
-  sort (map (.declaredName) (filter isLocal (map snd (SortedMap.toList resolvedModule.tables.symbols))))
+  sort (map (.declaredName) (filter isLocal (map snd (SortedMap.toList resolvedModule.scopeTables.symbols))))
   where
     isLocal : ResolvedSymbolInfo -> Bool
     isLocal symbol = case symbol.symbolKind of
@@ -101,7 +101,7 @@ localNames resolvedModule =
 
 uniqueBlockScopeOrigins : ResolvedModule -> Bool
 uniqueBlockScopeOrigins resolvedModule =
-  let blockScopeOrigins = mapMaybe sourceOrigin (map snd (SortedMap.toList resolvedModule.tables.scopes)) in
+  let blockScopeOrigins = mapMaybe sourceOrigin (map snd (SortedMap.toList resolvedModule.scopeTables.scopes)) in
     length blockScopeOrigins == length (nub blockScopeOrigins)
   where
     sourceOrigin : ScopeInfo -> Maybe NodeId
@@ -127,8 +127,8 @@ aliasedModule =
                        blockScope
       aliasReference = { target := MkSymbolId 2, writtenName := "calc", occurrence := fixtureNodeInfo 12 } localReadReference
       resolvedModule = withSymbol 2 function $ withScope 0 declaringScope $ withScope 1 importingScope validModule
-  in { tables.references := insert (MkSymbolId 2) [< aliasReference] resolvedModule.tables.references,
-       tables.nodeScopes := insert (MkNodeId 12 0) (MkScopeId 1) resolvedModule.tables.nodeScopes } resolvedModule
+  in { scopeTables.references := insert (MkSymbolId 2) [< aliasReference] resolvedModule.scopeTables.references,
+       scopeTables.nodeScopes := insert (MkNodeId 12 0) (MkScopeId 1) resolvedModule.scopeTables.nodeScopes } resolvedModule
 
 shadowedModule : ResolvedModule
 shadowedModule =
@@ -137,8 +137,8 @@ shadowedModule =
                      declaredSymbolsInOrder := [< MkSymbolId 1, MkSymbolId 2] } blockScope
   -- The earlier reference to symbol 1 remains valid after symbol 2 shadows it.
   in withSymbol 2 laterSymbol $ withScope 1 laterScope $
-       { tables.localVarsMeta := insert (MkSymbolId 2) (MkLocalVarQualifiers ImmutableVariable ())
-                                         validModule.tables.localVarsMeta } validModule
+       { scopeTables.localVarsMeta := insert (MkSymbolId 2) (MkLocalVarQualifiers ImmutableVariable ())
+                                         validModule.scopeTables.localVarsMeta } validModule
 
 memberModule : ResolvedModule
 memberModule =
@@ -160,7 +160,7 @@ memberModule =
                   (newScope 3 ImplScope (Just (MkScopeId 0)))
       resolvedModule = withSymbol 2 struct $ withSymbol 3 field $ withSymbol 4 method $
                  withScope 0 declaringScope $ withScope 2 members $ withScope 3 implScope validModule
-  in { tables.memberScopes := insert (MkSymbolId 2) (MkScopeId 2) resolvedModule.tables.memberScopes } resolvedModule
+  in { scopeTables.memberScopes := insert (MkSymbolId 2) (MkScopeId 2) resolvedModule.scopeTables.memberScopes } resolvedModule
 
 -- Isolate Point's type binding so its declaration-order test cannot rely on
 -- another binding to the same symbol in the value namespace.
@@ -177,12 +177,12 @@ childModule =
                          declaredSymbolsInOrder := [< MkSymbolId 2] } rootScope
       resolvedModule = withSymbol 2 childModuleSymbol $ withScope 0 declaringScope $
                  withScope 2 (newScope 2 ModuleScope (Just (MkScopeId 0))) validModule
-  in { tables.memberScopes := insert (MkSymbolId 2) (MkScopeId 2) resolvedModule.tables.memberScopes } resolvedModule
+  in { scopeTables.memberScopes := insert (MkSymbolId 2) (MkScopeId 2) resolvedModule.scopeTables.memberScopes } resolvedModule
 
 withMemberOwnerKind : SymbolKind -> ResolvedModule
 withMemberOwnerKind kind =
-  { tables.symbols := updateExisting (\symbol => { symbolKind := kind } symbol)
-                                    (MkSymbolId 2) memberModule.tables.symbols } memberModule
+  { scopeTables.symbols := updateExisting (\symbol => { symbolKind := kind } symbol)
+                                    (MkSymbolId 2) memberModule.scopeTables.symbols } memberModule
 
 export
 runResolutionValidationTests : IO Bool
@@ -217,7 +217,7 @@ runResolutionValidationTests = runTests $ Test.do
       ([], [show (MissingDeclarationOrderEntry (MkScopeId 3) (MkSymbolId 4))], True)
 
   test "a module may also have a separate MemberScope" $
-    diagnostics ({ tables.memberScopes := fromList [(MkSymbolId 0, MkScopeId 2)] }
+    diagnostics ({ scopeTables.memberScopes := fromList [(MkSymbolId 0, MkScopeId 2)] }
                  (withScope 2 (newScope 2 MemberScope Nothing) validModule)) `shouldBe` []
 
   test "ordinary parameters may have local-variable metadata" $
@@ -319,36 +319,36 @@ runResolutionValidationTests = runTests $ Test.do
       [show (MissingDeclarationOrderEntry (MkScopeId 1) (MkSymbolId 1))]
 
   test "even empty reference buckets must target existing symbols" $
-    diagnostics ({ tables.references := insert (MkSymbolId 99) [<] validModule.tables.references } validModule) `shouldBe`
+    diagnostics ({ scopeTables.references := insert (MkSymbolId 99) [<] validModule.scopeTables.references } validModule) `shouldBe`
       [show (MissingReferenceSymbol (MkSymbolId 99))]
 
   test "reference targets must agree with their bucket keys" $
-    diagnostics ({ tables.references := fromList [(MkSymbolId 1, [< { target := MkSymbolId 0 } localReadReference])] }
+    diagnostics ({ scopeTables.references := fromList [(MkSymbolId 1, [< { target := MkSymbolId 0 } localReadReference])] }
                  validModule) `shouldBe`
       [show (ReferenceKeyMismatch (MkSymbolId 1) (MkSymbolId 0) (MkNodeId 10 0))]
 
   test "a mismatched reference target is also checked for existence" $
-    diagnostics ({ tables.references := fromList [(MkSymbolId 1, [< { target := MkSymbolId 99 } localReadReference])] }
+    diagnostics ({ scopeTables.references := fromList [(MkSymbolId 1, [< { target := MkSymbolId 99 } localReadReference])] }
                  validModule) `shouldBe`
       map show [ReferenceKeyMismatch (MkSymbolId 1) (MkSymbolId 99) (MkNodeId 10 0),
                 MissingReferenceSymbol (MkSymbolId 99)]
 
   test "reference enclosing scopes must exist" $
-    diagnostics ({ tables.references := fromList [(MkSymbolId 1, [< { enclosingScope := MkScopeId 99 } localReadReference])] }
+    diagnostics ({ scopeTables.references := fromList [(MkSymbolId 1, [< { enclosingScope := MkScopeId 99 } localReadReference])] }
                  validModule) `shouldBe`
       [show (MissingReferenceScope (MkNodeId 10 0) (MkScopeId 99))]
 
   test "node-scope mappings must target existing scopes" $
-    diagnostics ({ tables.nodeScopes := insert (MkNodeId 10 0) (MkScopeId 99) validModule.tables.nodeScopes } validModule) `shouldBe`
+    diagnostics ({ scopeTables.nodeScopes := insert (MkNodeId 10 0) (MkScopeId 99) validModule.scopeTables.nodeScopes } validModule) `shouldBe`
       [show (MissingNodeScope (MkNodeId 10 0) (MkScopeId 99))]
 
   test "local-variable metadata must target existing symbols" $
-    diagnostics ({ tables.localVarsMeta := insert (MkSymbolId 99) (MkLocalVarQualifiers ImmutableVariable ()) validModule.tables.localVarsMeta }
+    diagnostics ({ scopeTables.localVarsMeta := insert (MkSymbolId 99) (MkLocalVarQualifiers ImmutableVariable ()) validModule.scopeTables.localVarsMeta }
                  validModule) `shouldBe`
       [show (MissingLocalSymbol (MkSymbolId 99))]
 
   test "local-variable metadata cannot describe modules" $
-    diagnostics ({ tables.localVarsMeta := insert (MkSymbolId 0) (MkLocalVarQualifiers ImmutableVariable ()) validModule.tables.localVarsMeta }
+    diagnostics ({ scopeTables.localVarsMeta := insert (MkSymbolId 0) (MkLocalVarQualifiers ImmutableVariable ()) validModule.scopeTables.localVarsMeta }
                  validModule) `shouldBe`
       [show (InvalidLocalSymbolKind (MkSymbolId 0))]
 
@@ -357,29 +357,29 @@ runResolutionValidationTests = runTests $ Test.do
       [show (InvalidLocalSymbolKind (MkSymbolId 1))]
 
   test "member-scope owners must exist" $
-    diagnostics ({ tables.memberScopes := fromList [(MkSymbolId 99, MkScopeId 0)] } validModule) `shouldBe`
+    diagnostics ({ scopeTables.memberScopes := fromList [(MkSymbolId 99, MkScopeId 0)] } validModule) `shouldBe`
       [show (MissingMemberOwner (MkSymbolId 99))]
 
   test "local variables cannot own member namespaces" $
     reports (InvalidMemberOwner (MkSymbolId 1))
-      ({ tables.memberScopes := fromList [(MkSymbolId 1, MkScopeId 0)] } validModule) `shouldBe` True
+      ({ scopeTables.memberScopes := fromList [(MkSymbolId 1, MkScopeId 0)] } validModule) `shouldBe` True
 
   test "member-scope targets must exist" $
-    diagnostics ({ tables.memberScopes := fromList [(MkSymbolId 0, MkScopeId 99)] } validModule) `shouldBe`
+    diagnostics ({ scopeTables.memberScopes := fromList [(MkSymbolId 0, MkScopeId 99)] } validModule) `shouldBe`
       [show (MissingMemberScope (MkSymbolId 0) (MkScopeId 99))]
 
   test "member lookup cannot use a block scope" $
-    diagnostics ({ tables.memberScopes := fromList [(MkSymbolId 0, MkScopeId 1)] } validModule) `shouldBe`
+    diagnostics ({ scopeTables.memberScopes := fromList [(MkSymbolId 0, MkScopeId 1)] } validModule) `shouldBe`
       [show (InvalidMemberScopeKind (MkSymbolId 0) (MkScopeId 1))]
 
   test "a struct's members cannot use a module scope" $
-    diagnostics ({ tables.memberScopes := insert (MkSymbolId 2) (MkScopeId 0) memberModule.tables.memberScopes }
+    diagnostics ({ scopeTables.memberScopes := insert (MkSymbolId 2) (MkScopeId 0) memberModule.scopeTables.memberScopes }
                  memberModule) `shouldBe`
       [show (InvalidMemberScopeKind (MkSymbolId 2) (MkScopeId 0))]
 
   test "independent invariant failures are accumulated" $
     diagnostics ({ rootScopeId := MkScopeId 99,
-                   tables.nodeScopes := insert (MkNodeId 10 0) (MkScopeId 99) validModule.tables.nodeScopes } validModule) `shouldBe`
+                   scopeTables.nodeScopes := insert (MkNodeId 10 0) (MkScopeId 99) validModule.scopeTables.nodeScopes } validModule) `shouldBe`
       map show [MissingRootScope (MkScopeId 99), MissingNodeScope (MkNodeId 10 0) (MkScopeId 99)]
 
   test "enums may own member scopes" $
@@ -437,45 +437,45 @@ runResolutionValidationTests = runTests $ Test.do
       ([], sort (map show [ScopeParentCycle (MkScopeId 3), ScopeParentCycle (MkScopeId 5)]))
 
   test "resolution must restore the root scope cursor" $
-    diagnostics ({ tables.currentScopeId := MkScopeId 1 } validModule) `shouldBe`
+    diagnostics ({ scopeTables.currentScopeId := MkScopeId 1 } validModule) `shouldBe`
       [show (UnrestoredCurrentScope (MkScopeId 0) (MkScopeId 1))]
 
   test "resolution must restore the root module cursor" $
-    diagnostics ({ tables.currentModuleSymbolId := MkSymbolId 1 } validModule) `shouldBe`
+    diagnostics ({ scopeTables.currentModuleSymbolId := MkSymbolId 1 } validModule) `shouldBe`
       [show (UnrestoredCurrentModule (MkSymbolId 0) (MkSymbolId 1))]
 
   test "resolution must restore the ModuleScope cursor kind" $
-    diagnostics ({ tables.currentScopeKind := BlockScope } validModule) `shouldBe`
+    diagnostics ({ scopeTables.currentScopeKind := BlockScope } validModule) `shouldBe`
       [show (InvalidCurrentScopeKind (MkScopeId 0))]
 
   test "resolution must leave every constant context" $
-    diagnostics ({ tables.constContextBoundary := Just (MkScopeId 1) } validModule) `shouldBe`
+    diagnostics ({ scopeTables.constContextBoundary := Just (MkScopeId 1) } validModule) `shouldBe`
       [show (UnrestoredConstContext (MkScopeId 1))]
 
   test "all unrestored cursor fields are reported together" $
-    diagnostics ({ tables.currentScopeId := MkScopeId 1,
-                   tables.currentScopeKind := BlockScope,
-                   tables.currentModuleSymbolId := MkSymbolId 1 } validModule) `shouldBe`
+    diagnostics ({ scopeTables.currentScopeId := MkScopeId 1,
+                   scopeTables.currentScopeKind := BlockScope,
+                   scopeTables.currentModuleSymbolId := MkSymbolId 1 } validModule) `shouldBe`
       map show [UnrestoredCurrentScope (MkScopeId 0) (MkScopeId 1),
                 InvalidCurrentScopeKind (MkScopeId 0),
                 UnrestoredCurrentModule (MkSymbolId 0) (MkSymbolId 1)]
 
   test "local symbols require local-variable metadata" $
-    diagnostics ({ tables.localVarsMeta := empty } validModule) `shouldBe`
+    diagnostics ({ scopeTables.localVarsMeta := empty } validModule) `shouldBe`
       [show (MissingLocalVarQualifiers (MkSymbolId 1))]
 
   test "ordinary parameters require local-variable metadata" $
     diagnostics (withSymbol 1 ({ symbolKind := SymbolFunctionParameter } localSymbol)
-      ({ tables.localVarsMeta := empty } validModule)) `shouldBe`
+      ({ scopeTables.localVarsMeta := empty } validModule)) `shouldBe`
       [show (MissingLocalVarQualifiers (MkSymbolId 1))]
 
   test "self receiver parameters require local-variable metadata" $
     diagnostics (withSymbol 1 ({ symbolKind := SymbolSelfReceiverParameter } localSymbol)
-      ({ tables.localVarsMeta := empty } validModule)) `shouldBe`
+      ({ scopeTables.localVarsMeta := empty } validModule)) `shouldBe`
       [show (MissingLocalVarQualifiers (MkSymbolId 1))]
 
   test "historical shadowed symbols still require local-variable metadata" $
-    diagnostics ({ tables.localVarsMeta := fromList
+    diagnostics ({ scopeTables.localVarsMeta := fromList
                     [(MkSymbolId 2, MkLocalVarQualifiers ImmutableVariable ())] } shadowedModule) `shouldBe`
       [show (MissingLocalVarQualifiers (MkSymbolId 1))]
 
@@ -514,65 +514,65 @@ runResolutionValidationTests = runTests $ Test.do
       [show (DeclaredBindingNameMismatch (MkScopeId 2) FieldNamespace "renamed" (MkSymbolId 3) "x")]
 
   test "reference occurrences require a node-scope mapping" $
-    diagnostics ({ tables.nodeScopes := fromList [(MkNodeId 0 0, MkScopeId 0), (MkNodeId 11 0, MkScopeId 1)] }
+    diagnostics ({ scopeTables.nodeScopes := fromList [(MkNodeId 0 0, MkScopeId 0), (MkNodeId 11 0, MkScopeId 1)] }
                  validModule) `shouldBe`
       [show (MissingReferenceNodeScope (MkNodeId 10 0) (MkScopeId 1))]
 
   test "reference contexts require a node-scope mapping" $
-    diagnostics ({ tables.nodeScopes := fromList [(MkNodeId 0 0, MkScopeId 0), (MkNodeId 10 0, MkScopeId 1)] }
+    diagnostics ({ scopeTables.nodeScopes := fromList [(MkNodeId 0 0, MkScopeId 0), (MkNodeId 10 0, MkScopeId 1)] }
                  validModule) `shouldBe`
       [show (MissingReferenceNodeScope (MkNodeId 11 0) (MkScopeId 1))]
 
   test "a missing mapping shared by occurrence and context is reported once" $
-    diagnostics ({ tables.references := fromList [(MkSymbolId 1, [< { contextNode := MkNodeId 10 0 } localReadReference])],
-                   tables.nodeScopes := empty } validModule) `shouldBe`
+    diagnostics ({ scopeTables.references := fromList [(MkSymbolId 1, [< { contextNode := MkNodeId 10 0 } localReadReference])],
+                   scopeTables.nodeScopes := empty } validModule) `shouldBe`
       [show (MissingReferenceNodeScope (MkNodeId 10 0) (MkScopeId 1))]
 
   test "reference occurrences must map to their enclosing scope even when both scopes exist" $
-    diagnostics ({ tables.nodeScopes := insert (MkNodeId 10 0) (MkScopeId 0) validModule.tables.nodeScopes }
+    diagnostics ({ scopeTables.nodeScopes := insert (MkNodeId 10 0) (MkScopeId 0) validModule.scopeTables.nodeScopes }
                  validModule) `shouldBe`
       [show (ReferenceNodeScopeMismatch (MkNodeId 10 0) (MkScopeId 1) (MkScopeId 0))]
 
   test "reference contexts must map to their enclosing scope even when both scopes exist" $
-    diagnostics ({ tables.nodeScopes := insert (MkNodeId 11 0) (MkScopeId 0) validModule.tables.nodeScopes }
+    diagnostics ({ scopeTables.nodeScopes := insert (MkNodeId 11 0) (MkScopeId 0) validModule.scopeTables.nodeScopes }
                  validModule) `shouldBe`
       [show (ReferenceNodeScopeMismatch (MkNodeId 11 0) (MkScopeId 1) (MkScopeId 0))]
 
   test "identical reference records are accepted by table consistency validation" $
-    diagnostics ({ tables.references := fromList [(MkSymbolId 1, [< localReadReference, localReadReference])] }
+    diagnostics ({ scopeTables.references := fromList [(MkSymbolId 1, [< localReadReference, localReadReference])] }
                  validModule) `shouldBe` []
 
   test "conflicting references in different symbol buckets are rejected" $
-    diagnostics ({ tables.references := fromList [(MkSymbolId 1, [< localReadReference]),
+    diagnostics ({ scopeTables.references := fromList [(MkSymbolId 1, [< localReadReference]),
                      (MkSymbolId 0, [< { target := MkSymbolId 0 } localReadReference])] } validModule) `shouldBe`
       [show (ConflictingReference (MkNodeId 10 0) (MkNodeId 11 0) ValueReference)]
 
   test "a source occurrence may have distinct reference roles" $
-    diagnostics ({ tables.references := fromList
+    diagnostics ({ scopeTables.references := fromList
                     [(MkSymbolId 1, [< localReadReference, { role := AssignmentTarget } localReadReference])] }
                  validModule) `shouldBe` []
 
   test "a source occurrence may be reused in different desugared contexts" $
-    diagnostics ({ tables.references := fromList
+    diagnostics ({ scopeTables.references := fromList
                     [(MkSymbolId 1, [< localReadReference, { contextNode := MkNodeId 12 0 } localReadReference])],
-                   tables.nodeScopes := insert (MkNodeId 12 0) (MkScopeId 1) validModule.tables.nodeScopes }
+                   scopeTables.nodeScopes := insert (MkNodeId 12 0) (MkScopeId 1) validModule.scopeTables.nodeScopes }
                  validModule) `shouldBe` []
 
   test "declaration references use the symbol's name" $
-    diagnostics ({ tables.references := fromList [(MkSymbolId 1,
+    diagnostics ({ scopeTables.references := fromList [(MkSymbolId 1,
                      [< { role := DeclarationReference, writtenName := "renamed" } localReadReference])] }
                  validModule) `shouldBe`
       [show (DeclarationReferenceNameMismatch (MkSymbolId 1) (MkNodeId 10 0) "renamed" "x")]
 
   test "declaration references use the symbol's declaring scope" $
-    diagnostics ({ tables.references := fromList [(MkSymbolId 1,
+    diagnostics ({ scopeTables.references := fromList [(MkSymbolId 1,
                      [< { role := DeclarationReference, enclosingScope := MkScopeId 0 } localReadReference])],
-                   tables.nodeScopes := fromList [(MkNodeId 0 0, MkScopeId 0),
+                   scopeTables.nodeScopes := fromList [(MkNodeId 0 0, MkScopeId 0),
                      (MkNodeId 10 0, MkScopeId 0), (MkNodeId 11 0, MkScopeId 0)] } validModule) `shouldBe`
       [show (DeclarationReferenceScopeMismatch (MkSymbolId 1) (MkNodeId 10 0) (MkScopeId 1) (MkScopeId 0))]
 
   test "consistent declaration references are accepted" $
-    diagnostics ({ tables.references := fromList
+    diagnostics ({ scopeTables.references := fromList
                     [(MkSymbolId 1, [< { role := DeclarationReference } localReadReference])] }
                  validModule) `shouldBe` []
 
@@ -590,7 +590,7 @@ runResolutionValidationTests = runTests $ Test.do
     checkSource "fn f(mut value: i32, x: i32) { value.field += x; }" (\resolvedModule =>
       Just (map (.writtenName) (valueReferences resolvedModule), repeatedReads resolvedModule,
             filter (== "field") (map (.writtenName) (allReferences resolvedModule)),
-            filter (== "field") (map (.declaredName) (map snd (SortedMap.toList resolvedModule.tables.symbols)))))
+            filter (== "field") (map (.declaredName) (map snd (SortedMap.toList resolvedModule.scopeTables.symbols)))))
       `shouldBe` Right (["value", "x"], [], [], [])
 
   test "a compound-assignment block index resolves an outer variable in one scope" $
@@ -611,34 +611,34 @@ runResolutionValidationTests = runTests $ Test.do
       `shouldBe` Right (["a", "choose", "i", "i"], [], ["i", "i"], True)
 
   test "collapsed path qualifier occurrences may lack their own scope mapping" $
-    diagnostics ({ tables.references := fromList [(MkSymbolId 0,
+    diagnostics ({ scopeTables.references := fromList [(MkSymbolId 0,
                      [< { target := MkSymbolId 0, occurrence := fixtureNodeInfo 12,
                           role := QualifierReference, writtenName := "fixture" } localReadReference])] }
                  validModule) `shouldBe` []
 
   test "references with the same identity must agree on their written name" $
-    diagnostics ({ tables.references := fromList [(MkSymbolId 1,
+    diagnostics ({ scopeTables.references := fromList [(MkSymbolId 1,
                      [< localReadReference, { writtenName := "alias" } localReadReference])] } validModule) `shouldBe`
       [show (ConflictingReference (MkNodeId 10 0) (MkNodeId 11 0) ValueReference)]
 
   test "references with the same identity must preserve the same source span" $
-    diagnostics ({ tables.references := fromList [(MkSymbolId 1,
+    diagnostics ({ scopeTables.references := fromList [(MkSymbolId 1,
                      [< localReadReference, { occurrence := MkAstInfo (MkNodeId 10 0)
                        (MkSourceSpan "different.lf" (MkSourcePos 1 1) (MkSourcePos 1 2)) } localReadReference])] }
                  validModule) `shouldBe`
       [show (ConflictingReference (MkNodeId 10 0) (MkNodeId 11 0) ValueReference)]
 
   test "retained qualifier scope mappings must agree with their reference scope" $
-    diagnostics ({ tables.references := fromList [(MkSymbolId 0,
+    diagnostics ({ scopeTables.references := fromList [(MkSymbolId 0,
                      [< { target := MkSymbolId 0, occurrence := fixtureNodeInfo 12,
                           role := QualifierReference, writtenName := "fixture" } localReadReference])],
-                   tables.nodeScopes := insert (MkNodeId 12 0) (MkScopeId 0) validModule.tables.nodeScopes }
+                   scopeTables.nodeScopes := insert (MkNodeId 12 0) (MkScopeId 0) validModule.scopeTables.nodeScopes }
                  validModule) `shouldBe`
       [show (ReferenceNodeScopeMismatch (MkNodeId 12 0) (MkScopeId 1) (MkScopeId 0))]
 
   test "qualifier reference contexts still require scope mappings" $
-    diagnostics ({ tables.references := fromList [(MkSymbolId 0,
+    diagnostics ({ scopeTables.references := fromList [(MkSymbolId 0,
                      [< { target := MkSymbolId 0, occurrence := fixtureNodeInfo 12,
                           role := QualifierReference, writtenName := "fixture" } localReadReference])],
-                   tables.nodeScopes := empty } validModule) `shouldBe`
+                   scopeTables.nodeScopes := empty } validModule) `shouldBe`
       [show (MissingReferenceNodeScope (MkNodeId 11 0) (MkScopeId 1))]

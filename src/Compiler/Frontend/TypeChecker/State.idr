@@ -54,7 +54,7 @@ emptyInferenceState = MkInferenceState 0 empty empty empty empty [] [] [] []
 public export
 record TypeCheckerState where
   constructor MkTypeCheckerState
-  tables          : TypeTables
+  typeTables      : TypeTables
   functionContext : Maybe FunctionContext            -- tells pass B (BodyCheck) which function it is operating inside, if any.
   inferenceState  : InferenceState                   -- pass B's (BodyCheck) scratch space for the one body it is checking right now
   declarations    : SortedMap SymbolId ResolvedItem  -- maps each top-level item's symbol to that item's resolved AST node
@@ -63,12 +63,12 @@ record TypeCheckerState where
 
 public export
 data CheckFailure
-  = Blocked SymbolId                               -- needs this symbol's signature, value or checked body first
+  = Blocked SymbolId                                 -- needs this symbol's signature, value or checked body first
   | Failed TypeError
 
 export
-typeError : TypeError -> StateT TypeCheckerState (Either CheckFailure) a
-typeError diagnostic = lift (Left (Failed diagnostic))
+liftTypeError : TypeError -> StateT TypeCheckerState (Either CheckFailure) a
+liftTypeError typeError = lift (Left (Failed typeError))
 
 export
 blocked : SymbolId -> StateT TypeCheckerState (Either CheckFailure) a
@@ -89,11 +89,11 @@ export
 recordSymbolType : SymbolId -> LeafType -> StateT TypeCheckerState (Either CheckFailure) ()
 recordSymbolType symbolId leafType = do
   checkerState <- get
-  case lookup symbolId checkerState.tables.symbols of
+  case lookup symbolId checkerState.typeTables.symbols of
     Nothing => unreachable __FILE__ {function = "recordSymbolType"} {reason = "symbol cannot be found in the symbol table"}
     Just symbolInfo => do
       let updatedSymbolInfo = updatedTypedSymbolInfo symbolInfo (ResolvedType leafType)
-      modify $ \currentState => { tables.symbols := insert symbolId updatedSymbolInfo currentState.tables.symbols } currentState
+      modify $ \currentState => { typeTables.symbols := insert symbolId updatedSymbolInfo currentState.typeTables.symbols } currentState
 
 typedLocalVarQualifiers : TypedLocalVarQualifiers -> LeafType -> TypedLocalVarQualifiers
 typedLocalVarQualifiers localVarQualifiers leafType =
@@ -105,13 +105,13 @@ export
 recordParameterStorage : SymbolId -> LeafType -> StateT TypeCheckerState (Either CheckFailure) ()
 recordParameterStorage symbolId leafType = do
   checkerState <- get
-  case lookup symbolId checkerState.tables.localVarsMeta of
+  case lookup symbolId checkerState.typeTables.localVarsMeta of
     Nothing => unreachable __FILE__ {function = "recordParameterStorage"} {reason = "symbol cannot be found in the local variable metadata"}
     Just localVariableQualifiers => do
       let classifiedQualifiers = typedLocalVarQualifiers localVariableQualifiers leafType
-      modify $ \currentState => { tables.localVarsMeta := insert symbolId classifiedQualifiers currentState.tables.localVarsMeta } currentState
+      modify $ \currentState => { typeTables.localVarsMeta := insert symbolId classifiedQualifiers currentState.typeTables.localVarsMeta } currentState
 
 export
 recordConstValue : SymbolId -> ConstValue -> StateT TypeCheckerState (Either CheckFailure) ()
 recordConstValue symbolId constValue =
-  modify $ \currentState => { tables.constValues := insert symbolId constValue currentState.tables.constValues } currentState
+  modify $ \currentState => { typeTables.constValues := insert symbolId constValue currentState.typeTables.constValues } currentState
