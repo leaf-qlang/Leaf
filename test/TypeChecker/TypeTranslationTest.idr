@@ -72,14 +72,11 @@ runTypeTranslationTests = runTests $ Test.do
   test "a lowercase hexadecimal array length is evaluated" $
     firstParameterArrayLength "fn f(qs: [qbit; 0x1f]) {}" `shouldBe` Just 31
 
-  test "an uppercase hexadecimal prefix is accepted in an array length" $
-    firstParameterArrayLength "fn f(qs: [qbit; 0X1F]) {}" `shouldBe` Just 31
+  test "an octal array length is evaluated" $
+    firstParameterArrayLength "fn f(qs: [qbit; 0o17]) {}" `shouldBe` Just 15
 
-  test "an uppercase octal prefix is accepted in an array length" $
-    firstParameterArrayLength "fn f(qs: [qbit; 0O17]) {}" `shouldBe` Just 15
-
-  test "an uppercase binary prefix is accepted in an array length" $
-    firstParameterArrayLength "fn f(qs: [qbit; 0B101]) {}" `shouldBe` Just 5
+  test "a binary array length is evaluated" $
+    firstParameterArrayLength "fn f(qs: [qbit; 0b101]) {}" `shouldBe` Just 5
 
   test "a decimal usize suffix is accepted in an array length" $
     firstParameterArrayLength "fn f(qs: [qbit; 31usize]) {}" `shouldBe` Just 31

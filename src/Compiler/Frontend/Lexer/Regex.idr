@@ -149,7 +149,10 @@ identifierFollowedByNonAsciiCharacter = identifierLike >> nonAsciiCodePoint
 --     and `_` (`1_000`, `1_`, `1__2`);
 --   * the digits after a radix prefix (`0b`/`0o`/`0x`) and the digits of an
 --     exponent may start and end with `_` but must contain at least one digit
---     (`0x_FF_`, `1e_3`, but not `0x_` or `1e_`).
+--     (`0x_FF_`, `1e_3`, but not `0x_` or `1e_`);
+--   * radix prefixes are lowercase only. An uppercase prefix such as the one in
+--     `0X1F` is consumed whole by `suffixedDecimalNumberCandidate` and rejected
+--     as a single malformed literal, rather than split into `0` and `X1F`.
 --
 -- `decimalDigits` is used both by the broad candidates below and by the
 -- strict literal regexes, since every match of it is a valid decimal digit
@@ -217,15 +220,15 @@ exponentPart =
 --------------------------------------------------------------------------------
 binaryIntegerLiteral : RExp True
 binaryIntegerLiteral =
-  ("0b" <|> "0B") >> strictBinaryDigits >> opt integerTypeSuffix
+  "0b" >> strictBinaryDigits >> opt integerTypeSuffix
 
 octalIntegerLiteral : RExp True
 octalIntegerLiteral =
-  ("0o" <|> "0O") >> strictOctalDigits >> opt integerTypeSuffix
+  "0o" >> strictOctalDigits >> opt integerTypeSuffix
 
 hexIntegerLiteral : RExp True
 hexIntegerLiteral =
-  ("0x" <|> "0X") >> strictHexDigits >> opt integerTypeSuffix
+  "0x" >> strictHexDigits >> opt integerTypeSuffix
 
 decimalIntegerLiteral : RExp True
 decimalIntegerLiteral =
@@ -270,9 +273,9 @@ floatLiteral =
 --------------------------------------------------------------------------------
 radixNumberCandidate : RExp True
 radixNumberCandidate =
-      (("0b" <|> "0B") >> star (asciiAlphaNum <|> '_'))
-  <|> (("0o" <|> "0O") >> star (asciiAlphaNum <|> '_'))
-  <|> (("0x" <|> "0X") >> star (asciiAlphaNum <|> '_'))
+      ("0b" >> star (asciiAlphaNum <|> '_'))
+  <|> ("0o" >> star (asciiAlphaNum <|> '_'))
+  <|> ("0x" >> star (asciiAlphaNum <|> '_'))
 
 looseExponentPart : RExp True
 looseExponentPart =

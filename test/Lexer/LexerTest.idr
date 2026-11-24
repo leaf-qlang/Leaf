@@ -1034,12 +1034,21 @@ runLexerTests = runTests $ Test.do
         , TokEOF
         ]
 
-  test "uppercase radix prefixes are accepted" $
-    lexTokenValues "0B1010 0O77 0XFF" `shouldBe`
-      Right
-        [ TokIntLitRaw "0B1010", TokIntLitRaw "0O77"
-        , TokIntLitRaw "0XFF", TokEOF
-        ]
+  test "uppercase radix prefixes are number literal errors" $
+    [ lexTokenValues "0B1010"
+    , lexTokenValues "0O77"
+    , lexTokenValues "0XFF"
+    , lexTokenValues "0X1F_u8"
+    ] `shouldBe`
+      [ Left (LexInvalidNumberLiteral "0B1010")
+      , Left (LexInvalidNumberLiteral "0O77")
+      , Left (LexInvalidNumberLiteral "0XFF")
+      , Left (LexInvalidNumberLiteral "0X1F_u8")
+      ]
+
+  test "uppercase hexadecimal digits and exponents are accepted" $
+    lexTokenValues "0xFF 1E5" `shouldBe`
+      Right [TokIntLitRaw "0xFF", TokFloatLitRaw "1E5", TokEOF]
 
   test "decimal floats use the supported float forms" $
     lexTokenValues "0.1 1.0 1.0e+2 1.0_f64 1e10 1E-10f32 12E+99 12E+99_f64 5f32" `shouldBe`

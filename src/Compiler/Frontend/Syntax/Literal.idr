@@ -69,8 +69,8 @@ TypedLiteral = Literal TypedAstPhase
 --------------------------------------------------------------------------------
 
 ||| Value of a well-formed integer literal's raw spelling: digit separators, a
-||| 0x/0o/0b prefix in either case and an integer type suffix are accepted,
-||| e.g. "1_000", "0xff_u8", "0XFF".
+||| 0x/0o/0b prefix and an integer type suffix are accepted, e.g. "1_000",
+||| "0xff_u8", "0xFF". The lexer rejects uppercase prefixes such as "0XFF".
 public export
 integerLiteralValue : String -> Maybe Nat
 integerLiteralValue rawLiteralText =
