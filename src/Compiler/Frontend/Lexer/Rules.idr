@@ -519,14 +519,14 @@ initialRules =
   [ string outerDocLineComment (\rawText => emitToken (TokOuterDoc rawText))
   , string innerDocLineComment (\rawText => emitToken (TokInnerDoc rawText))
 
-  , ignore allStarsOuterBlockComment
+  , ign allStarsOuterBlockComment
   , string outerBlockDocOpen (beginBlockComment OuterBlockDocComment)
   , string innerBlockDocOpen (beginBlockComment InnerBlockDocComment)
   , string bareOuterBlockCommentOpen (beginBlockComment NormalBlockComment)
-  , ignore normalLineComment
+  , ign normalLineComment
   , string normalBlockCommentOpen (beginBlockComment NormalBlockComment)
-  , ignore asciiWhitespace
-  , ignore nonAsciiWhitespaceCharacter
+  , ign asciiWhitespace
+  , ign nonAsciiWhitespaceCharacter
 
   , string basisStringCandidate emitBasisStringLiteral
   , string byteStringCandidate emitByteStringLiteral
