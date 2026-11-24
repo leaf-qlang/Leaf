@@ -189,6 +189,10 @@ excludedConstructTests = Test.do
     signaturesAndBodiesOutcome "fn f(q: &qbit) { let c = stabilized(q); }"
       `shouldBe` rejectedWith (InvalidBuiltinContext "stabilized" (spanAt 1 26))
 
+  test "Param is not a value" $
+    signaturesAndBodiesOutcome "fn f() { let p = Param; }"
+      `shouldBe` rejectedWith (InvalidBuiltinContext "Param" (spanAt 1 18))
+
   test "the prelude phase function is unsupported as a value" $
     signaturesAndBodiesOutcome "fn f() { let p = phase; }"
       `shouldBe` rejectedWith (UnsupportedFeature "phase" (spanAt 1 18))
@@ -1411,15 +1415,10 @@ storedRangeIndexTests = Test.do
     signaturesAndBodiesOutcome "fn f(a: [i32; 0]) { let s: &[i32] = &a[0..0]; let t: &[i32] = &a[..]; }"
       `shouldBe` accepted
 
--- Invalid forms that must be rejected but have no defined diagnostic: a prelude name
--- with no value type used as a value, a for loop over a value
--- that is not iterable and rev of something that is not a range.
+-- Invalid forms that must be rejected but have no defined diagnostic: a for loop over a
+-- value that is not iterable and rev of something that is not a range.
 unspecifiedDiagnosticTests : List TestResult
 unspecifiedDiagnosticTests = Test.do
-  test "Param is not a value" $
-    rejected (signaturesAndBodiesOutcome "fn f() { let p = Param; }")
-      `shouldBe` True
-
   test "a for loop over a value that is not iterable is rejected" $
     rejected (signaturesAndBodiesOutcome "fn f() { for i in 5 { } }")
       `shouldBe` True
