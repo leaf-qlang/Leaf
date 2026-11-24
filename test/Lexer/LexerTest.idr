@@ -328,6 +328,34 @@ runLexerTests = runTests $ Test.do
     lexTokenValues "let /* outer /** looks doc */ still plain */ x" `shouldBe`
       Right [TokKw KwLet, TokIdent "x", TokEOF]
 
+  test "a doubly nested comment inside an outer block doc is captured verbatim" $
+    lexTokenValues "/** a /* b /* c */ b */ a */fn" `shouldBe`
+      Right [TokOuterDoc "/** a /* b /* c */ b */ a */", TokKw KwFn, TokEOF]
+
+  test "an outer block doc containing a nested comment is bounded from its own opener to its own closer" $
+    lexFile "/** a /* b */ c */fn" `shouldBe`
+      Right
+        [ B (TokOuterDoc "/** a /* b */ c */") (BS (P 0 0) (P 0 17))
+        , B (TokKw KwFn) (BS (P 0 18) (P 0 19))
+        , B TokEOF (BS (P 0 20) (P 0 20))
+        ]
+
+  test "consecutive block comments each keep only their own documentation text" $
+    lexTokenValues "/** one */ /* plain */ /*! two */fn" `shouldBe`
+      Right [TokOuterDoc "/** one */", TokInnerDoc "/*! two */", TokKw KwFn, TokEOF]
+
+  test "an unterminated nested block comment error starts at the outermost opener" $
+    lexFile "x /* outer /* inner" `shouldBe`
+      Left (B LexUnterminatedBlockComment (BS (P 0 2) (P 0 19)))
+
+  test "an unterminated nested outer block doc error starts at the outermost opener" $
+    lexFile "x /** doc /* inner */" `shouldBe`
+      Left (B LexUnterminatedBlockComment (BS (P 0 2) (P 0 21)))
+
+  test "an unterminated nested inner block doc error starts at the outermost opener" $
+    lexFile "x /*! doc /* inner" `shouldBe`
+      Left (B LexUnterminatedBlockComment (BS (P 0 2) (P 0 18)))
+
   ------------------------------------------------------------
   -- Leading byte order mark.
   ------------------------------------------------------------

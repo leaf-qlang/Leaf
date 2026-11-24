@@ -86,30 +86,23 @@ import Compiler.Frontend.Lexer.Regex
 --------------------------------------------------------------------------------
 -- Lexer states.
 --
--- The lexer uses exactly two states:
---   * Initial        ordinary Leaf source text
---   * InBlockComment counting state for nested block comments
+-- The lexer uses one state for ordinary Leaf source text and one state per
+-- kind of block comment:
+--   * Initial                 ordinary Leaf source text
+--   * InBlockComment          inside an ordinary block comment, whose text is
+--                             skipped
+--   * InOuterBlockDocComment  inside an outer block doc comment (`/** ... */`),
+--                             whose text is collected
+--   * InInnerBlockDocComment  inside an inner block doc comment (`/*! ... */`),
+--                             whose text is collected
 --
--- Arbitrary nesting is represented by `commentDepth`, not by adding more states.
+-- The outermost opener chooses the state. Nested block comments stay in that
+-- state, so they never change whether the outer comment is documentation.
+-- The nesting depth is not stored in a state: it is the size of ilex's
+-- position stack (see "Block-comment actions" below).
 --------------------------------------------------------------------------------
-%runElab deriveParserState "LeafSz" "LeafState" ["Initial", "InBlockComment"]
-
---------------------------------------------------------------------------------
--- Documentation-comment mode.
---
--- This mode is chosen by the outermost block-comment opener. Nested block
--- comments only affect the extra nesting depth; they never change the doc/non-doc mode
--- of the outer comment.
---------------------------------------------------------------------------------
-data CommentMode
-  = NormalBlockComment
-  | OuterBlockDocComment
-  | InnerBlockDocComment
-
-commentModeToToken : CommentMode -> String -> Maybe Token
-commentModeToToken NormalBlockComment _ = Nothing
-commentModeToToken OuterBlockDocComment rawText = Just (TokOuterDoc rawText)
-commentModeToToken InnerBlockDocComment rawText = Just (TokInnerDoc rawText)
+%runElab deriveParserState "LeafSz" "LeafState"
+  ["Initial", "InBlockComment", "InOuterBlockDocComment", "InInnerBlockDocComment"]
 
 --------------------------------------------------------------------------------
 -- Mutable ilex state.
@@ -117,21 +110,19 @@ commentModeToToken InnerBlockDocComment rawText = Just (TokInnerDoc rawText)
 -- The installed Text.ILex.State.Regular.State record already supplies HasBytes,
 -- HasStringLits, HasBBErr, and HasStack instances (it derives them via
 -- `%runElab derive "State" [FullState]`). `LeafStack` only has to carry what
--- that generic record does not already provide: the emitted token buffer and
--- block-comment depth/mode counters. `commentDepth` counts nested comments
--- beyond the outermost block comment while in `InBlockComment`.
+-- that generic record does not already provide: the emitted token buffer.
+-- Block comments use the generic record's position stack for their nesting and
+-- its string-literal accumulator for documentation text.
 --------------------------------------------------------------------------------
 record LeafStack where
   constructor MkLeafStack
   outputTokens : SnocList (ByteBounded Token)
-  commentDepth : Nat
-  commentMode  : CommentMode
 
 0 LeafLexerStack : Type -> Type
 LeafLexerStack = State LexerError LeafStack LeafSz
 
 initialLeafStack : LeafStack
-initialLeafStack = MkLeafStack [<] Z NormalBlockComment
+initialLeafStack = MkLeafStack [<]
 
 --------------------------------------------------------------------------------
 -- Local rule alias.
@@ -422,77 +413,78 @@ emitIdentifierThenNonAsciiCharacter rawText =
 --------------------------------------------------------------------------------
 -- Block-comment actions.
 --
--- The block-comment depth and mode live on `LeafStack`; doc-comment text
--- pieces are accumulated with ilex's built-in string-literal accumulator
--- (`pushStr'`/`getStr`).
+-- Every block-comment opener, outermost or nested, pushes its start position
+-- onto ilex's position stack, and every closer pops one, so the size of that
+-- stack is the current nesting depth. No other rule pushes positions, so an
+-- empty stack after a closer means that the outermost comment has just been
+-- closed; the bounds the closer then receives from `closeWithBounds` run from
+-- the outermost opener to the end of the closer. At end of input, the oldest
+-- position left on the stack locates an unterminated comment.
+--
+-- Ordinary block comments skip their text. Documentation block comments
+-- collect all of theirs, nested openers and closers included, with ilex's
+-- string-literal accumulator (`pushStr'`/`getStr`).
 --------------------------------------------------------------------------------
-appendTextIfDoc :
+outermostBlockCommentWasClosed :
      (lexerStack : LeafLexerStack q)
-  => CommentMode
-  -> String
-  -> F1' q
-appendTextIfDoc NormalBlockComment _ = pure ()
-appendTextIfDoc OuterBlockDocComment rawText = pushStr' rawText
-appendTextIfDoc InnerBlockDocComment rawText = pushStr' rawText
+  => F1 q Bool
+outermostBlockCommentWasClosed = T1.do
+  openPositions <- read1 (positions lexerStack)
+  case openPositions of
+    [<] => pure True
+    _ => pure False
 
-beginBlockComment :
+openOrdinaryBlockComment :
      (lexerStack : LeafLexerStack q)
-  => CommentMode
-  -> String
-  -> F1 q LeafState
-beginBlockComment openingCommentMode rawText = T1.do
+  => F1 q LeafState
+openOrdinaryBlockComment = T1.do
   pushPosition
-  leafStack <- getStack
-  putStack ({ commentDepth := Z, commentMode := openingCommentMode } leafStack)
-  appendTextIfDoc openingCommentMode rawText
   pure InBlockComment
 
-beginNestedBlockComment :
+closeOrdinaryBlockComment :
      (lexerStack : LeafLexerStack q)
-  => String
-  -> F1 q LeafState
-beginNestedBlockComment rawText = T1.do
-  pushPosition
-  leafStack <- getStack
-  putStack ({ commentDepth $= S } leafStack)
-  appendTextIfDoc leafStack.commentMode rawText
-  pure InBlockComment
+  => F1 q LeafState
+closeOrdinaryBlockComment = T1.do
+  outermostClosed <- outermostBlockCommentWasClosed
+  case outermostClosed of
+    True => pure Initial
+    False => pure InBlockComment
 
-finishOutermostBlockComment :
+openBlockDocComment :
      (lexerStack : LeafLexerStack q)
-  => CommentMode
+  => (blockDocCommentState : LeafState)
+  -> String
+  -> F1 q LeafState
+openBlockDocComment blockDocCommentState rawText = T1.do
+  pushPosition
+  pushStr' rawText
+  pure blockDocCommentState
+
+collectBlockDocCommentText :
+     (lexerStack : LeafLexerStack q)
+  => (blockDocCommentState : LeafState)
+  -> String
+  -> F1 q LeafState
+collectBlockDocCommentText blockDocCommentState rawText = T1.do
+  pushStr' rawText
+  pure blockDocCommentState
+
+closeBlockDocComment :
+     (lexerStack : LeafLexerStack q)
+  => (blockDocCommentState : LeafState)
+  -> (blockDocToken : String -> Token)
   -> ByteBounds
   -> F1 q LeafState
-finishOutermostBlockComment outermostCommentMode fullCommentBounds = T1.do
-  rawCommentText <- getStr
-  case commentModeToToken outermostCommentMode rawCommentText of
-    Nothing => pure Initial
-    Just docToken =>
-      emitBoundedToken (B docToken fullCommentBounds)
+closeBlockDocComment blockDocCommentState blockDocToken commentBounds = T1.do
+  pushStr' "*/"
+  outermostClosed <- outermostBlockCommentWasClosed
+  case outermostClosed of
+    True => T1.do
+      rawCommentText <- getStr
+      emitBoundedToken (B (blockDocToken rawCommentText) commentBounds)
 
-closeBlockComment :
-     (lexerStack : LeafLexerStack q)
-  => ByteBounds
-  -> F1 q LeafState
-closeBlockComment fullCommentBounds = T1.do
-  leafStack <- getStack
-  appendTextIfDoc leafStack.commentMode "*/"
-  case leafStack.commentDepth of
-    Z =>
-      finishOutermostBlockComment leafStack.commentMode fullCommentBounds
-
-    S remainingDepth => T1.do
-      putStack ({ commentDepth := remainingDepth } leafStack)
-      pure InBlockComment
-
-consumeBlockCommentText :
-     (lexerStack : LeafLexerStack q)
-  => String
-  -> F1 q LeafState
-consumeBlockCommentText rawText = T1.do
-  leafStack <- getStack
-  appendTextIfDoc leafStack.commentMode rawText
-  pure InBlockComment
+    False =>
+      pure blockDocCommentState
 
 symbolRules : List (LeafRule q)
 symbolRules =
@@ -520,11 +512,11 @@ initialRules =
   , string innerDocLineComment (\rawText => emitToken (TokInnerDoc rawText))
 
   , ign allStarsOuterBlockComment
-  , string outerBlockDocOpen (beginBlockComment OuterBlockDocComment)
-  , string innerBlockDocOpen (beginBlockComment InnerBlockDocComment)
-  , string bareOuterBlockCommentOpen (beginBlockComment NormalBlockComment)
+  , string outerBlockDocOpen (openBlockDocComment InOuterBlockDocComment)
+  , string innerBlockDocOpen (openBlockDocComment InInnerBlockDocComment)
+  , step bareOuterBlockCommentOpen openOrdinaryBlockComment
   , ign normalLineComment
-  , string normalBlockCommentOpen (beginBlockComment NormalBlockComment)
+  , step normalBlockCommentOpen openOrdinaryBlockComment
   , ign asciiWhitespace
   , ign nonAsciiWhitespaceCharacter
 
@@ -567,17 +559,34 @@ initialRules =
 --------------------------------------------------------------------------------
 -- Block-comment rules.
 --
--- Active only in `InBlockComment`. `/*` increments depth, `*/` decrements depth,
--- and only the outermost close returns to Initial.
+-- Both rule lists below recognize the same regexes, in the same order: a
+-- nested opener `/*`, a closer `*/`, and the body text between them. They
+-- differ only in their actions. In an ordinary block comment the body text is
+-- skipped; in a documentation block comment it is collected. In both, a nested
+-- opener stays in the current state and only the outermost closer returns to
+-- `Initial`.
 --------------------------------------------------------------------------------
-blockCommentRules : List (LeafRule q)
-blockCommentRules =
-  [ string normalBlockCommentOpen beginNestedBlockComment
-  , closeWithBounds blockCommentClose closeBlockComment
-  , string blockCommentBodyChunk consumeBlockCommentText
-  , string blockCommentLineBreak consumeBlockCommentText
-  , string blockCommentSingleStar consumeBlockCommentText
-  , string blockCommentSingleSlash consumeBlockCommentText
+ordinaryBlockCommentRules : List (LeafRule q)
+ordinaryBlockCommentRules =
+  [ step normalBlockCommentOpen openOrdinaryBlockComment
+  , close blockCommentClose closeOrdinaryBlockComment
+  , ign blockCommentBodyChunk
+  , ign blockCommentLineBreak
+  , ign blockCommentSingleStar
+  , ign blockCommentSingleSlash
+  ]
+
+blockDocCommentRules :
+     (blockDocCommentState : LeafState)
+  -> (blockDocToken : String -> Token)
+  -> List (LeafRule q)
+blockDocCommentRules blockDocCommentState blockDocToken =
+  [ string normalBlockCommentOpen (openBlockDocComment blockDocCommentState)
+  , closeWithBounds blockCommentClose (closeBlockDocComment blockDocCommentState blockDocToken)
+  , string blockCommentBodyChunk (collectBlockDocCommentText blockDocCommentState)
+  , string blockCommentLineBreak (collectBlockDocCommentText blockDocCommentState)
+  , string blockCommentSingleStar (collectBlockDocCommentText blockDocCommentState)
+  , string blockCommentSingleSlash (collectBlockDocCommentText blockDocCommentState)
   ]
 
 --------------------------------------------------------------------------------
@@ -587,7 +596,9 @@ leafLexerSteps : Lex1 q LeafSz LeafLexerStack
 leafLexerSteps =
   lex1
     [ E Initial (dfa initialRules)
-    , E InBlockComment (dfa blockCommentRules)
+    , E InBlockComment (dfa ordinaryBlockCommentRules)
+    , E InOuterBlockDocComment (dfa (blockDocCommentRules InOuterBlockDocComment TokOuterDoc))
+    , E InInnerBlockDocComment (dfa (blockDocCommentRules InInnerBlockDocComment TokInnerDoc))
     ]
 
 finishLexingAtEndOfInput :
@@ -621,7 +632,7 @@ finishLexingAtEndOfInput lexerState lexerStack = T1.do
                   (B
                     (Custom
                       (LexInternalLexerError
-                        "InBlockComment at end of input without an opening position"))
+                        "inside a block comment at end of input without an opening position"))
                     (BB eofPosition eofPosition)))
 
 leafLexer : Lexer LexerError Token
