@@ -14,6 +14,7 @@ import Text.ParseError
 import Compiler.Frontend.Token
 import Compiler.Frontend.Lexer.Error
 import Compiler.Frontend.Lexer.Regex
+import Compiler.Frontend.Lexer.UnicodeNormalization
 
 %default total
 %language ElabReflection
@@ -382,6 +383,14 @@ emitDigitsThenDotOperator rawText =
       _ <- emitBoundedToken (B (TokIntLitRaw digitText) (BB tokenStart integerEnd))
       emitBoundedToken (B (TokSym dotOperator) (BB operatorStart tokenEnd))
 
+-- Like Rust, Leaf normalizes identifiers to NFC, so canonically equivalent
+-- spellings such as a composed `é` and `e` followed by U+0301 are the same
+-- identifier. Only the token text is normalized: token bounds always cover the
+-- identifier's spelling in the source.
+tokenFromNfcNormalizedIdentifier : (identifierSourceText : String) -> Token
+tokenFromNfcNormalizedIdentifier identifierSourceText =
+  tokenFromIdentLike (nfcNormalized identifierSourceText)
+
 -- Splits a match of `identifierFollowedByNonAsciiCharacter` into the
 -- identifier, emitted as its token, and the trailing character, which is
 -- skipped when it is whitespace and otherwise reported as unsupported.
@@ -402,7 +411,7 @@ emitIdentifierThenNonAsciiCharacter rawText =
       tokenEnd <- endPos
       let identifierEnd = incLen identifierByteLength tokenStart
       let trailingCharacterStart = incLen (S identifierByteLength) tokenStart
-      _ <- emitBoundedToken (B (tokenFromIdentLike identifierText) (BB tokenStart identifierEnd))
+      _ <- emitBoundedToken (B (tokenFromNfcNormalizedIdentifier identifierText) (BB tokenStart identifierEnd))
       case elem trailingCharacter nonAsciiWhitespaceCharacters of
         True => pure Initial
         False =>
@@ -501,7 +510,7 @@ symbolRules =
 --   1. documentation comments before ordinary comments and before `/`
 --   2. broad literal candidates before identifiers
 --   3. broad number candidate before identifier-like suffixes
---   4. single identifier rule through `tokenFromIdentLike`, before the rule for
+--   4. single identifier rule through `tokenFromNfcNormalizedIdentifier`, before the rule for
 --      an identifier followed by a non-ASCII character, so that an identifier
 --      character wins over that workaround rule (see Regex.idr)
 --   5. generated symbol rules from the finite `Symbol` values
@@ -552,7 +561,7 @@ initialRules =
 
   , string numberCandidate emitNumberLiteral
   , string digitsThenDotOperatorCandidate emitDigitsThenDotOperator
-  , string identifierLike (\rawText => emitToken (tokenFromIdentLike rawText))
+  , string identifierLike (\rawText => emitToken (tokenFromNfcNormalizedIdentifier rawText))
   , string identifierFollowedByNonAsciiCharacter emitIdentifierThenNonAsciiCharacter
   ] ++ symbolRules
 

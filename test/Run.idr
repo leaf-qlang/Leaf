@@ -11,6 +11,7 @@ import Examples.CompileCodeExamplesTest
 import Desugarer.DesugaringTest
 import TestFramework
 import Lexer.LexerTest
+import Lexer.UnicodeNormalizationTest
 import Parser.ExpressionParseTest
 import Parser.FunctionParseTest
 import Parser.TopModuleParseTest
@@ -28,6 +29,7 @@ import Validator.PostParseValidationTest
 suites : List (String, IO Bool)
 suites =
   [ ("Lexer.LexerTest", runLexerTests)
+  , ("Lexer.UnicodeNormalizationTest", runUnicodeNormalizationTests)
   , ("Backend.OpenQasm3SerializerTest", runSerializerTests)
   , ("Parser.ExpressionParseTest", runExpressionParseTests)
   , ("Utils.ASTDebugPrinterTest", runASTDebugPrinterTests)

@@ -509,17 +509,17 @@ runLexerTests = runTests $ Test.do
     lexTokenValues "नमस्ते गणना" `shouldBe`
       Right [TokIdent "नमस्ते", TokIdent "गणना", TokEOF]
 
-  test "a decomposed accented letter is one identifier" $
+  test "a decomposed accented letter is one identifier, in NFC" $
     lexFile ("cafe" ++ textOfCodePoint 0x301 ++ " x") `shouldBe`
       Right
-        [ B (TokIdent ("cafe" ++ textOfCodePoint 0x301)) (BS (P 0 0) (P 0 4))
+        [ B (TokIdent ("caf" ++ textOfCodePoint 0xE9)) (BS (P 0 0) (P 0 4))
         , B (TokIdent "x") (BS (P 0 6) (P 0 6))
         , B TokEOF (BS (P 0 7) (P 0 7))
         ]
 
-  test "a combining mark after a keyword turns it into an identifier" $
+  test "a combining mark after a keyword turns it into an identifier, in NFC" $
     lexTokenValues ("fn" ++ textOfCodePoint 0x301) `shouldBe`
-      Right [TokIdent ("fn" ++ textOfCodePoint 0x301), TokEOF]
+      Right [TokIdent ("f" ++ textOfCodePoint 0x144), TokEOF]
 
   test "letter numbers start and continue identifiers" $
     lexTokenValues "Ⅻ xⅫ" `shouldBe`

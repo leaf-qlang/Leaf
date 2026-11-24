@@ -97,9 +97,12 @@ asciiAlphaNumUnderscore = asciiAlphaNum <|> '_'
 --           decimal digit (Nd), or connector punctuation (Pc, which includes '_')
 --
 -- The marks make words such as `नमस्ते` and a decomposed `é` (`e` followed by
--- U+0301) single identifiers. Unlike rustc, Leaf does not normalize
--- identifiers to NFC, so a composed and a decomposed `é` spell different
--- identifiers.
+-- U+0301) single identifiers. Like rustc, Leaf normalizes identifiers to NFC
+-- (`tokenFromNfcNormalizedIdentifier` in Rules.idr), so a composed and a
+-- decomposed `é` spell the same identifier. The NFC tables in
+-- `UnicodeNormalizationData` and the general-category tables of
+-- `Text.ILex.RExp.Unicode` used here are generated independently and may come
+-- from different Unicode versions.
 --
 -- As in Rust, an apostrophe is never part of an identifier, so `foo'` is the
 -- identifier `foo` followed by a separate apostrophe.
