@@ -3,7 +3,7 @@ module DSL.Core
 import Data.So
 
 import public DSL.AngleConstants
-import DSL.Wrap2Pi
+import DSL.Wrap4Pi
 
 %default total
 

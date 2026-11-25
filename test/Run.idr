@@ -6,6 +6,7 @@ import System
 import Backend.OpenQasm3SerializerTest
 import DSL.IntrinsicProofsTest
 import DSL.TypeLevelReductionTest
+import DSL.Wrap4PiTest
 import Examples.CompileCodeExamples
 import Examples.CompileCodeExamplesTest
 import Desugarer.DesugaringTest
@@ -31,6 +32,7 @@ suites =
   [ ("Lexer.LexerTest", runLexerTests)
   , ("Lexer.UnicodeNormalizationTest", runUnicodeNormalizationTests)
   , ("Backend.OpenQasm3SerializerTest", runSerializerTests)
+  , ("DSL.Wrap4PiTest", runWrap4PiTests)
   , ("Parser.ExpressionParseTest", runExpressionParseTests)
   , ("Utils.ASTDebugPrinterTest", runASTDebugPrinterTests)
   , ("Utils.ASTPrettyPrinterTest", runASTPrettyPrinterTests)

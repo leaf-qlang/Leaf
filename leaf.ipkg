@@ -75,7 +75,7 @@ modules = Main,
           DSL.GateHelpers,
           DSL.Gates,
           DSL.Helpers,
-	  DSL.Wrap2Pi
+	  DSL.Wrap4Pi
 
 main = Main
 executable = leaf
