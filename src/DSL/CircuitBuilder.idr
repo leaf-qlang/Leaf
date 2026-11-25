@@ -203,7 +203,7 @@ public export
 ctrl : {n : Nat} ->
   {k : Nat} ->
   (cs : Vect k (Fin n)) ->           -- control wires
-  (bs : Vect k QState) ->              -- required polarities (True = |1>, False = |0>)
+  (bs : Vect k QState) ->            -- required qubits states
   (inner : UnitaryGate n) ->         -- gate to be controlled
   {auto 0 distinct : AllDistinct cs} ->
   {auto 0 disjoint : Disjoint cs (snd (wiresUnitary inner))} ->
