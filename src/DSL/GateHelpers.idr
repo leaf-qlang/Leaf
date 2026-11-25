@@ -227,17 +227,3 @@ ctrl cs bs inner {distinct} {disjoint} circ =
         {disjoint = disjoint}
   in Sequence circ (SingleGate (UGate uCtrl))
 
-
--- exampleMixedCtrl :
---   {n : Nat} ->
---   (c1, c2, t : Fin n) ->
---   Circuit n n ->
---   Circuit n n
--- exampleMixedCtrl c1 c2 t circ =
---   let cs    : Vect 2 (Fin n)
---       cs    = [c1, c2]
---       bs    : Vect 2 Bool
---       bs    = [True, False]      -- c1=1, c2=0
---       inner : UnitaryGate n
---       inner = RZ pi t
---   in ctrl cs bs inner circ
