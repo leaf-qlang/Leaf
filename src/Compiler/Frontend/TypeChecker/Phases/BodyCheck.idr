@@ -15,6 +15,8 @@ import Compiler.Frontend.TypeChecker.State
 import Compiler.Frontend.TypeChecker.Type
 import Compiler.Frontend.ASTData
 import Compiler.Frontend.ASTPhases
+import Compiler.Frontend.Source
+import Compiler.Frontend.TypeChecker.TcType
 import Compiler.Frontend.Syntax.Attribute
 import Compiler.Frontend.Syntax.AST
 import Compiler.Frontend.Syntax.Contract
@@ -146,6 +148,26 @@ isPreludeParamFunction (MkAstNode calleeInfo calleeMetadata (ExprName (MkAstNode
     Nothing => pure False
 isPreludeParamFunction _ = pure False
 
+unify : SourceSpan -> (expected : TcType) -> (actual : TcType) -> StateT TypeCheckerState (Either CheckFailure) ()
+unify = ?unifyH
+
+isAssignableTo : SourceSpan -> (actual : TcType) -> (expected : TcType) -> StateT TypeCheckerState (Either CheckFailure) ()
+isAssignableTo = ?isAssignableToH
+
+joinTypes : SourceSpan -> TcType -> TcType -> StateT TypeCheckerState (Either CheckFailure) TcType
+joinTypes = ?joinTypesH
+
+inferExpression : ResolvedExpr -> StateT TypeCheckerState (Either CheckFailure) TcType
+inferExpression resolvedExpression = ?inferExpressionH
+  where
+    inferNestedExpression nestedExpression = inferExpression (assert_smaller resolvedExpression nestedExpression)
+
+checkExpression : (expected : TcType) -> ResolvedExpr -> StateT TypeCheckerState (Either CheckFailure) ()
+checkExpression expectedType resolvedExpression = do
+  inferredTcType <- inferExpression resolvedExpression
+  let expressionSourceSpan = resolvedExpression.astInfo.span
+  isAssignableTo expressionSourceSpan inferredTcType expectedType
+
 checkExpressionNode : ExpressionNode ResolvedAstPhase -> StateT TypeCheckerState (Either CheckFailure) ()
 checkExpressionNode expression =
   case expression of
@@ -221,21 +243,18 @@ checkExpressionNode expression =
     ExprCtrl control => pure () --?checkExpressionCtrlHole
     ExprAdjoint adjoint => pure () --?checkExpressionAdjointHole
 
-checkExpression : ResolvedExpr -> StateT TypeCheckerState (Either CheckFailure) ()
-checkExpression (MkAstNode expressionInfo (MkProvenanceMetadata provenance) expressionNode) = checkExpressionNode expressionNode
-
 checkStatement : Statement ResolvedAstPhase -> StateT TypeCheckerState (Either CheckFailure) ()
 checkStatement (MkAstNode statementAstInfo (MkProvenanceMetadata provenance) statementNode) = do
   case statementNode of
     StatementLet (MkLetBindingNode qualifiers pattern typeAnnotation initializer) => pure () --?statementlet
     StatementAssignment (MkAssignmentNode assignmentTarget assignmentOperator assignmentValue) => pure () --?statemnassignment
-    StatementSemiExpression statementExpression => checkExpression statementExpression
-    StatementExpression statementExpression => checkExpression statementExpression
+    StatementSemiExpression statementExpression => checkExpressionNode statementExpression.nodeValue
+    StatementExpression statementExpression => checkExpressionNode statementExpression.nodeValue
 
 checkFunctionBody : Block ResolvedAstPhase ->  StateT TypeCheckerState (Either CheckFailure) ()
 checkFunctionBody (MkAstNode functionBodyAstInfo (MkProvenanceMetadata provenance) (MkBlockNode blockInnerDocs blockStatements finalExpression)) = do
       (traverse_ checkStatement blockStatements)
-      (traverse_ checkExpression finalExpression)
+      (traverse_ (\finalExpressionNode => checkExpressionNode finalExpressionNode.nodeValue) finalExpression)
 
 checkFunctionDeclaration : FunctionDeclarationNode ResolvedAstPhase -> StateT TypeCheckerState (Either CheckFailure) ()
 checkFunctionDeclaration
@@ -254,7 +273,7 @@ checkFunctionDeclaration
     ) = checkFunctionBody functionBody
 
 checkConstDeclaration : ConstDeclarationNode ResolvedAstPhase ->  StateT TypeCheckerState (Either CheckFailure) ()
-checkConstDeclaration (MkConstDeclarationNode constDocs constVisibility constName constType constValue) = checkExpression constValue
+checkConstDeclaration (MkConstDeclarationNode constDocs constVisibility constName constType constValue) = checkExpressionNode constValue.nodeValue
 
 export
 checkBody : ResolvedItem -> StateT TypeCheckerState (Either CheckFailure) ()

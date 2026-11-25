@@ -14,20 +14,16 @@ import Compiler.Frontend.Syntax.Operator
 -- Checker-internal types
 --------------------------------------------------------------------------------
 -- TcType mirrors LeafType constructor for constructor, but may still contain
--- unknowns while a function body or const initializer is being checked: the
--- type of an unsuffixed literal (TcVariable) and the quantum usage of a
--- `qalloc` qbit (QuantumUsageVariable). Writeback replaces every unknown,
--- by what unification fixed it to or by its default, and turns the TcType
--- into a LeafType.
+-- unknowns while a function body or const initializer is still being checked:
+-- an unknown type (TcVariable), such as the type of an unsuffixed literal,
+-- of the elements of an empty array, or of an unannotated, uninitialized local;
+-- and the quantum usage of a `qalloc` qbit (UnknownQuantumUsage).
 --------------------------------------------------------------------------------
 
 public export
 data TcQuantumUsage
   = KnownQuantumUsage QuantumUsageQualifier
-  | QuantumUsageVariable Nat          -- Nat identifies an entry in InferenceState.variables.
-                                      -- If its quantum usage qualifier remains unknown when inference finishes,
-                                      -- will default that qualifier to linear.
-
+  | UnknownQuantumUsage Nat                  -- Nat identifies an entry in InferenceState.inferenceVariables.
 
 public export
 data TcType
@@ -43,19 +39,27 @@ data TcType
   | TcQuantumQualifiedType TcQuantumUsage TcType
   | TcNeverType
   | TcStringLiteralType
-  | TcVariable Nat                     -- an unsuffixed literal's type, {integer} or {float}, Nat identifies an entry in InferenceState.variables.
+  | TcVariable Nat                           -- an unknown type; Nat identifies an entry in InferenceState.inferenceVariables
 
+-- The set of types that an unknown type (TcVariable) may still turn out to be.
 public export
-data TypeVariableKind
-  = GeneralTypeKind                    -- type for elements of an empty array or type an unannotated, uninitialized local.
-  | IntegerLiteral                     -- {integer}: any integer type or bit, defaults to i32
-  | FloatLiteral                       -- {float}: f32, f64, angle32 or angle64, defaults to f64
+data TypeVariableDomain
+  = AnyTypeDomain                            -- any type: type of the elements of an empty array or of an unannotated, uninitialized local; has no default
+  | IntegerLiteralDomain                     -- any integer type or bit, defaults to i32
+  | FloatLiteralDomain                       -- f32, f64, angle32 or angle64, defaults to f64
 
+-- Unified variables form union-find trees: each variable links to a parent,
+-- and the root at the top holds the state of the whole tree. An open root's
+-- rank is an upper bound on its tree's height. Linking two roots puts the
+-- lower-ranked one under the other, which keeps trees shallow; equal ranks
+-- link either way and raise the surviving root's rank by one.
 public export
-data VariableState
-  = OpenTypeVariable TypeVariableKind Nat           -- root; Nat is its rank
+data InferenceVariableState                         -- An inference variable is a placeholder for something the type checker may not know yet. 
+  = OpenTypeVariable TypeVariableDomain Nat         -- root; Nat is its union-find rank
   | FixedTypeVariable TcType                        -- root, solved
-  | OpenQuantumUsage Nat                            -- root; rank
+  | OpenQuantumUsage Nat                            -- root; Nat is its union-find rank
   | FixedQuantumUsage QuantumUsageQualifier         -- root, solved
-  | LinkedVariable Nat                              -- not a root: same sort as its target
+  | LinkedVariable Nat                              -- not a root: Nat identifies its parent, of the same sort
+                                                    -- Entry for an inference variable that was unified with another one, it no longer holds 
+                                                    -- its own state; it says "I'm the same unknown as variable #n, so look there 
 

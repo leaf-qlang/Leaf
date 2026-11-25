@@ -26,26 +26,21 @@ import Compiler.Frontend.Syntax.Common
 
 public export
 data LoopContext
-  = ValueLoop (Maybe TcType)                      -- `loop`: the type its break values combine to so far
-  | UnitLoop                                      -- while / for: break takes no value
+  = ValueLoop (Maybe TcType)     -- `loop`: the type its break values combine to so far
+  | UnitLoop                     -- while / for: break takes no value
 
 public export
-record FunctionContext where
-  constructor MkFunctionContext
-  returnType     : LeafType
-
-public export
-record InferenceState where                       -- per function or const initializer, emptied by writeback
+record InferenceState where                                       -- per function or const initializer, emptied by writeback
   constructor MkInferenceState
-  nextVariable     : Nat                          -- number of the next fresh inference variable
-  variables        : SortedMap Nat VariableState
-  expressionTypes  : SortedMap NodeId TcType
-  patternTypes     : SortedMap NodeId TcType
-  binderTypes      : SortedMap SymbolId TcType    -- locals of the function being checked
-  scratchBinders   : List SymbolId
-  uncomputeBinders : List SymbolId                -- bound with :=
-  integerLiterals  : List (NodeId, Integer)       -- range-checked at writeback
-  loops            : List LoopContext             -- innermost first
+  nextInferenceVariableId : Nat                                   -- identifier of the next fresh inference variable
+  inferenceVariables      : SortedMap Nat InferenceVariableState  -- inference variables by their Nat identifier: placeholders for something the type checker doesn't know yet.
+  expressionTypes         : SortedMap NodeId TcType               -- type of every expression in the body being checked
+  patternTypes            : SortedMap NodeId TcType               -- type of each pattern node in the body being checked
+  binderTypes             : SortedMap SymbolId TcType             -- locals of the function being checked
+  scratchBinders          : List SymbolId                         -- list of the local bindings in the current body that were declared with let scratch
+  uncomputeModeBinders    : List SymbolId                         -- list of the variables in the current function that were declared with :=
+  integerLiterals         : List (NodeId, Integer)                -- list of the integer literals in the current body whose range can't be checked yet
+  enclosingLoops          : List LoopContext                      -- stack of loops surrounding the code that pass B is checking right now, innermost first
 
 public export
 emptyInferenceState : InferenceState
@@ -54,16 +49,16 @@ emptyInferenceState = MkInferenceState 0 empty empty empty empty [] [] [] []
 public export
 record TypeCheckerState where
   constructor MkTypeCheckerState
-  typeTables      : TypeTables
-  functionContext : Maybe FunctionContext            -- tells pass B (BodyCheck) which function it is operating inside, if any.
-  inferenceState  : InferenceState                   -- pass B's (BodyCheck) scratch space for the one body it is checking right now
-  declarations    : SortedMap SymbolId ResolvedItem  -- maps each top-level item's symbol to that item's resolved AST node
-  checkedBodies   : SortedSet SymbolId               -- set of functions whose bodies pass B (BodyCheck) has already finished
-  constExprs      : SortedMap NodeId Nat
+  typeTables                  : TypeTables
+  enclosingFunctionReturnType : Maybe LeafType                    -- declared return type of the function whose body pass B is checking; Nothing for a const initializer
+  inferenceState              : InferenceState                    -- pass B's (BodyCheck) scratch space for the one body it is checking right now
+  topLevelItems               : SortedMap SymbolId ResolvedItem   -- maps each top-level item's symbol (const and fn for now) to that item's resolved AST node
+  checkedBodies               : SortedSet SymbolId                -- set of functions whose bodies pass B (BodyCheck) has already finished
+  constExprs                  : SortedMap NodeId Nat              -- memo table for evaluated length expressions
 
 public export
 data CheckFailure
-  = Blocked SymbolId                                 -- needs this symbol's signature, value or checked body first
+  = Blocked SymbolId        -- needs this symbol's signature, value or checked body first
   | Failed TypeError
 
 export
@@ -74,9 +69,9 @@ export
 blocked : SymbolId -> StateT TypeCheckerState (Either CheckFailure) a
 blocked awaitedSymbol = do
   checkerState <- get
-  case lookup awaitedSymbol checkerState.declarations of
+  case lookup awaitedSymbol checkerState.topLevelItems of
     Just _  => lift (Left (Blocked awaitedSymbol))
-    Nothing => unreachable __FILE__ {function = "blocked"} {reason = "symbol cannot be found in checker state top level declarations"}
+    Nothing => unreachable __FILE__ {function = "blocked"} {reason = "symbol cannot be found in the checker state top-level items"}
 
 --------------------------------------------------------------------------------
 -- Recording results
