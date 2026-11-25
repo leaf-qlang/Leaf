@@ -138,11 +138,10 @@ mutual
   adjointUnitaryPreservesWires (CCX c1 c2 t {d12} {d1t} {d2t}) = Refl
   adjointUnitaryPreservesWires (CSWAP c a b {ab} {ca} {cb}) = Refl
   adjointUnitaryPreservesWires (Controlled cs bs inner) =
-    cong (prependControlWires cs) (adjointUnitaryPreservesWires inner)
+    cong (prependControlWiresToInnerWires cs) (adjointUnitaryPreservesWires inner)
 
 public export
 adjointGate : Gate n -> Maybe (Gate n)
 adjointGate (UGate u)   = Just (UGate (adjointUnitary u))
 adjointGate (Measure _) = Nothing      -- not unitary
 adjointGate (Reset   _) = Nothing      -- not unitary
-adjointGate (Discard   _) = Nothing    -- not unitary

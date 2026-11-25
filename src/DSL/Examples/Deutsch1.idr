@@ -20,9 +20,9 @@ public export
 deutsch : Circuit 2 2 -> Circuit 0 2
 deutsch oracle =
   let prepared = hadamard 1 (hadamard 0 emptyCircuit)
-      queried = Seq prepared oracle
+      queried = Sequence prepared oracle
       result = measure 0 (hadamard 0 queried)
-  in Seq (Init [Zero, One]) result
+  in Sequence (AllocateQubits [Zero, One]) result
 
 ||| The measurement of wire 0 is deterministically 0.
 public export

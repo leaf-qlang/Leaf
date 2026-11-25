@@ -8,12 +8,9 @@ import public DSL.Control
 
 %default total
 
-||| Shared by wire collection and its preservation proof when taking an adjoint.
 public export
-prependControlWires : {k : Nat} -> Vect k (Fin n) ->
-  (m ** Vect m (Fin n)) -> (m ** Vect m (Fin n))
-prependControlWires {k} controlWires (innerWireCount ** innerWires) =
-  (k + innerWireCount ** controlWires ++ innerWires)
+prependControlWiresToInnerWires : {k : Nat} -> Vect k (Fin n) -> (m ** Vect m (Fin n)) -> (m ** Vect m (Fin n))
+prependControlWiresToInnerWires {k} controlWires (innerWireCount ** innerWires) = (k + innerWireCount ** controlWires ++ innerWires)
 
 -- The constructor checks disjointness against the inner gate's complete wire list.
 mutual
@@ -134,7 +131,7 @@ mutual
   wiresUnitary (CCX c1 c2 t)             = (3 ** [c1, c2, t])
   wiresUnitary (CSWAP c a b)             = (3 ** [c, a, b])
   wiresUnitary (Controlled controlWires _ inner) =
-    prependControlWires controlWires (wiresUnitary inner)
+    prependControlWiresToInnerWires controlWires (wiresUnitary inner)
 
 public export
 CNOT : (c,t : Fin n) -> {auto 0 neq : Not (c = t)} -> UnitaryGate n
@@ -145,7 +142,6 @@ data Gate : Nat -> Type where
   UGate   : UnitaryGate n -> Gate n
   Measure : (q : Fin n) -> Gate n
   Reset   : (q : Fin n) -> Gate n
-  Discard : (q : Fin n) -> Gate n
 
 public export
 mkControlled :

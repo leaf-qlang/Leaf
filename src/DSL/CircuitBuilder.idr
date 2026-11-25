@@ -21,7 +21,7 @@ build = execState Helpers.emptyCircuit
 
 public export
 append : Circuit n n -> Builder n ()
-append circuit = modify (\current => Seq current circuit)
+append circuit = modify (\current => Sequence current circuit)
 
 public export
 x : {n : Nat} -> (q : Fin n) -> Builder n ()

@@ -51,12 +51,12 @@ innerFredkin = CSWAP 0 1 2
 
 public export
 oneWireCircuit : Circuit 1 1
-oneWireCircuit = GateApplication (UGate singleWireGate)
+oneWireCircuit = SingleGate (UGate singleWireGate)
 
 public export
 twoWireCircuit : Circuit 2 2
-twoWireCircuit = GateApplication (UGate innerCnot)
+twoWireCircuit = SingleGate (UGate innerCnot)
 
 public export
 initializeOneWire : Circuit 1 2
-initializeOneWire = Init [Zero]
+initializeOneWire = AllocateQubits [Zero]

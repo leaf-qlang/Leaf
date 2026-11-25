@@ -63,12 +63,12 @@ resetOnLastWire = Reset 1
 
 -- Rejects a discard on a wire outside the register.
 failing "Can't find an implementation for So"
-  discardWireOutOfBounds : Gate 2
-  discardWireOutOfBounds = Discard 2
+  discardWireOutOfBounds : Circuit 2 1
+  discardWireOutOfBounds = DiscardQubit 2
 
 -- Accepts a discard on the last wire inside the register.
-discardOnLastWire : Gate 2
-discardOnLastWire = Discard 1
+discardOnLastWire : Circuit 2 1
+discardOnLastWire = DiscardQubit 1
 
 -- Rejects a control wire outside the register even when the target is valid.
 failing "Can't find an implementation for So"
@@ -410,7 +410,7 @@ toffoliWirePermutations =
 
 -- Accepts the circuit helper toffoli with its inequalities inferred.
 automaticToffoliCircuitHelper : Circuit 3 3
-automaticToffoliCircuitHelper = DSL.GateHelpers.toffoli 0 1 2 Id
+automaticToffoliCircuitHelper = DSL.GateHelpers.toffoli 0 1 2 Identity
 
 -- Accepts the builder toffoli with its inequalities inferred.
 automaticToffoliBuilder : Builder 3 ()
@@ -460,7 +460,7 @@ fredkinWirePermutations =
 
 -- Accepts the circuit helper fredkin with its inequalities inferred.
 automaticFredkinCircuitHelper : Circuit 3 3
-automaticFredkinCircuitHelper = DSL.GateHelpers.fredkin 2 1 0 Id
+automaticFredkinCircuitHelper = DSL.GateHelpers.fredkin 2 1 0 Identity
 
 -- Accepts the builder fredkin with its inequalities inferred.
 automaticFredkinBuilder : Builder 3 ()
@@ -633,7 +633,7 @@ failing "Mismatch between"
 -- Rejects a discard under quantum control.
 failing "Mismatch between"
   controlledDiscard : UnitaryGate 1
-  controlledDiscard = Controlled [] [] (Discard 0)
+  controlledDiscard = Controlled [] [] (DiscardQubit 0)
 
 -- Public helpers preserve the constructor's proof obligations.
 
@@ -687,20 +687,20 @@ helperControlsWithMatchingStates = mkControlled [0] [One] (X 1)
 -- Rejects the circuit helper ctrl with a repeated control wire.
 failing "Can't find an implementation for AllDistinct"
   circuitHelperDuplicateControls : Circuit 2 2
-  circuitHelperDuplicateControls = DSL.GateHelpers.ctrl [0, 0] [One, Zero] (X 1) Id
+  circuitHelperDuplicateControls = DSL.GateHelpers.ctrl [0, 0] [One, Zero] (X 1) Identity
 
 -- Accepts the circuit helper ctrl with two different control wires.
 circuitHelperDistinctControls : Circuit 3 3
-circuitHelperDistinctControls = DSL.GateHelpers.ctrl [0, 1] [One, Zero] (X 2) Id
+circuitHelperDistinctControls = DSL.GateHelpers.ctrl [0, 1] [One, Zero] (X 2) Identity
 
 -- Rejects the circuit helper ctrl with a control on the target wire.
 failing "Can't find an implementation for All ("
   circuitHelperControlOverlapsTarget : Circuit 1 1
-  circuitHelperControlOverlapsTarget = DSL.GateHelpers.ctrl [0] [One] singleWireGate Id
+  circuitHelperControlOverlapsTarget = DSL.GateHelpers.ctrl [0] [One] singleWireGate Identity
 
 -- Accepts the circuit helper ctrl with a control separate from the target.
 circuitHelperControlDisjointFromTarget : Circuit 2 2
-circuitHelperControlDisjointFromTarget = DSL.GateHelpers.ctrl [0] [One] (X 1) Id
+circuitHelperControlDisjointFromTarget = DSL.GateHelpers.ctrl [0] [One] (X 1) Identity
 
 -- Rejects the builder ctrl with a repeated control wire.
 failing "Can't find an implementation for AllDistinct"
@@ -721,7 +721,7 @@ builderControlDisjointFromTarget : Builder 2 ()
 builderControlDisjointFromTarget = DSL.CircuitBuilder.ctrl [0] [One] (X 1)
 
 -- Circuit indices enforce gate widths, sequential connections, parallel sums
--- and the number of wires introduced by initialization.
+-- and the number of wires introduced by initialization or removed by discard.
 
 -- Rejects wrapping a unitary gate into a Gate of a different register width.
 failing "Mismatch between"
@@ -735,84 +735,106 @@ unitaryGateWithSameRegisterWidth = UGate innerCnot
 -- Rejects an identity circuit whose output width differs from its input width.
 failing "Mismatch between"
   identityChangesWidth : Circuit 1 2
-  identityChangesWidth = Id
+  identityChangesWidth = Identity
 
 -- Accepts an identity circuit with equal input and output widths.
 identityPreservesWidth : Circuit 1 1
-identityPreservesWidth = Id
+identityPreservesWidth = Identity
 
 -- Accepts an identity circuit on an empty register.
 zeroWireCircuit : Circuit 0 0
-zeroWireCircuit = Id
+zeroWireCircuit = Identity
 
 -- Rejects a gate application that claims to change the circuit width.
 failing "Mismatch between"
   gateApplicationChangesWidth : Circuit 1 2
-  gateApplicationChangesWidth = GateApplication (UGate singleWireGate)
+  gateApplicationChangesWidth = SingleGate (UGate singleWireGate)
 
 -- Accepts a gate application that keeps the circuit width.
 gateApplicationPreservesWidth : Circuit 1 1
-gateApplicationPreservesWidth = GateApplication (UGate singleWireGate)
+gateApplicationPreservesWidth = SingleGate (UGate singleWireGate)
 
 -- Rejects sequencing circuits whose intermediate widths do not connect.
 failing "Mismatch between"
   sequentialWidthsDoNotMatch : Circuit 1 2
-  sequentialWidthsDoNotMatch = Seq oneWireCircuit twoWireCircuit
+  sequentialWidthsDoNotMatch = Sequence oneWireCircuit twoWireCircuit
 
 -- Rejects a sequence whose second circuit ignores a wire added by the first.
 failing "Mismatch between"
   sequenceIgnoresInitializedWire : Circuit 1 1
-  sequenceIgnoresInitializedWire = Seq initializeOneWire oneWireCircuit
+  sequenceIgnoresInitializedWire = Sequence initializeOneWire oneWireCircuit
 
 -- Accepts a sequence whose second circuit uses the wire added by the first.
 sequentialAllocation : Circuit 1 2
-sequentialAllocation = Seq initializeOneWire twoWireCircuit
+sequentialAllocation = Sequence initializeOneWire twoWireCircuit
 
 -- Rejects a parallel composition whose input width is not the sum of its parts.
 failing "Mismatch between"
   parallelInputWidthIsNotSum : Circuit 1 2
-  parallelInputWidthIsNotSum = Par oneWireCircuit oneWireCircuit
+  parallelInputWidthIsNotSum = Parallel oneWireCircuit oneWireCircuit
 
 -- Rejects a parallel composition whose output width is not the sum of its parts.
 failing "Mismatch between"
   parallelOutputWidthIsNotSum : Circuit 2 3
-  parallelOutputWidthIsNotSum = Par oneWireCircuit oneWireCircuit
+  parallelOutputWidthIsNotSum = Parallel oneWireCircuit oneWireCircuit
 
 -- Accepts a parallel composition whose widths are the sums of its parts.
 localWiresInParallel : Circuit 2 2
-localWiresInParallel = Par oneWireCircuit oneWireCircuit
+localWiresInParallel = Parallel oneWireCircuit oneWireCircuit
 
 -- Rejects a parallel composition that drops a wire allocated by one side.
 failing "Mismatch between"
   parallelAllocationOmitsOutput : Circuit 2 3
-  parallelAllocationOmitsOutput = Par initializeOneWire initializeOneWire
+  parallelAllocationOmitsOutput = Parallel initializeOneWire initializeOneWire
 
 -- Accepts a parallel composition that keeps the wires allocated by both sides.
 parallelAllocation : Circuit 2 4
-parallelAllocation = Par initializeOneWire initializeOneWire
+parallelAllocation = Parallel initializeOneWire initializeOneWire
 
 -- Rejects an initialization whose output omits the newly allocated wire.
 failing "Mismatch between"
   initializationOmitsOutput : Circuit 1 1
-  initializationOmitsOutput = Init [Zero]
+  initializationOmitsOutput = AllocateQubits [Zero]
 
 -- Rejects an initialization that claims more new wires than it allocates.
 failing "Mismatch between"
   initializationAddsExtraOutput : Circuit 1 3
-  initializationAddsExtraOutput = Init [Zero]
+  initializationAddsExtraOutput = AllocateQubits [Zero]
 
 -- Accepts an initialization that adds exactly one wire per initial state.
 initializationAddsOneOutput : Circuit 1 2
-initializationAddsOneOutput = Init [Zero]
+initializationAddsOneOutput = AllocateQubits [Zero]
 
 -- Rejects an empty initialization that claims to remove a wire.
 failing "Mismatch between"
   initializationRemovesWire : Circuit 2 1
-  initializationRemovesWire = Init []
+  initializationRemovesWire = AllocateQubits []
 
 -- Accepts an empty initialization that keeps the width unchanged.
 emptyInitialization : Circuit 1 1
-emptyInitialization = Init []
+emptyInitialization = AllocateQubits []
+
+-- Rejects a discard that claims to keep the circuit width.
+failing "Mismatch between"
+  discardKeepsWidth : Circuit 2 2
+  discardKeepsWidth = DiscardQubit 0
+
+-- Accepts a discard that removes exactly one wire.
+discardRemovesOneWire : Circuit 2 1
+discardRemovesOneWire = DiscardQubit 0
+
+-- Rejects a gate after a discard on a wire index that no longer exists.
+failing "Can't find an implementation for So"
+  gateAfterDiscardUsesRemovedWire : Circuit 2 1
+  gateAfterDiscardUsesRemovedWire = Sequence (DiscardQubit 1) (SingleGate (UGate (X 1)))
+
+-- Accepts a gate after a discard on a wire that remains.
+gateAfterDiscardUsesRemainingWire : Circuit 2 1
+gateAfterDiscardUsesRemainingWire = Sequence (DiscardQubit 1) (SingleGate (UGate (X 0)))
+
+-- Accepts discarding a freshly allocated wire, which restores the original width.
+discardAfterAllocation : Circuit 1 1
+discardAfterAllocation = Sequence initializeOneWire (DiscardQubit 1)
 
 -- Rejects repeating a circuit that changes the register width.
 failing "Mismatch between"

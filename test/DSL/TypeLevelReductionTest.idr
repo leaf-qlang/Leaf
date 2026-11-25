@@ -180,13 +180,12 @@ adjointOfUnitaryGateExists : {n : Nat} -> (q : Fin n) ->
   adjointGate (UGate (T q)) = Just (UGate (TDG q))
 adjointOfUnitaryGateExists q = Refl
 
--- Measurement, reset and discard have no adjoint.
+-- Measurement and reset have no adjoint.
 nonunitaryGatesHaveNoAdjoint : {n : Nat} -> (q : Fin n) ->
   ( adjointGate (Measure q) = Nothing
   , adjointGate (Reset q) = Nothing
-  , adjointGate (Discard q) = Nothing
   )
-nonunitaryGatesHaveNoAdjoint q = (Refl, Refl, Refl)
+nonunitaryGatesHaveNoAdjoint q = (Refl, Refl)
 
 -- Rejects an equation claiming that a measurement is its own adjoint.
 failing "Mismatch between"
@@ -194,51 +193,55 @@ failing "Mismatch between"
   measurementIsSelfAdjoint = Refl
 
 -- The identity circuit is its own inverse.
-inverseOfIdentityIsIdentity : inv (Id {n = 1}) = Just Id
+inverseOfIdentityIsIdentity : inv (Identity {n = 1}) = Just Identity
 inverseOfIdentityIsIdentity = Refl
 
 -- Inverting a sequence reverses its order and takes each gate's adjoint.
 inverseReversesSequence : {n : Nat} -> (q : Fin n) ->
-  inv (Seq (GateApplication (UGate (S q))) (GateApplication (UGate (T q))))
-    = Just (Seq (GateApplication (UGate (TDG q))) (GateApplication (UGate (SDG q))))
+  inv (Sequence (SingleGate (UGate (S q))) (SingleGate (UGate (T q))))
+    = Just (Sequence (SingleGate (UGate (TDG q))) (SingleGate (UGate (SDG q))))
 inverseReversesSequence q = Refl
 
 -- Rejects an equation in which inverting a sequence keeps its original order.
 failing "Mismatch between"
   inverseKeepsSequenceOrder :
-    inv (Seq (GateApplication (UGate (S {n = 1} 0))) (GateApplication (UGate (T 0))))
-      = Just (Seq (GateApplication (UGate (SDG 0))) (GateApplication (UGate (TDG 0))))
+    inv (Sequence (SingleGate (UGate (S {n = 1} 0))) (SingleGate (UGate (T 0))))
+      = Just (Sequence (SingleGate (UGate (SDG 0))) (SingleGate (UGate (TDG 0))))
   inverseKeepsSequenceOrder = Refl
 
 -- Inverting a parallel composition inverts each side in place.
 inverseOfParallelInvertsEachSide :
-  inv (Par (GateApplication (UGate (S {n = 1} 0))) (GateApplication (UGate (T {n = 1} 0))))
-    = Just (Par (GateApplication (UGate (SDG {n = 1} 0))) (GateApplication (UGate (TDG {n = 1} 0))))
+  inv (Parallel (SingleGate (UGate (S {n = 1} 0))) (SingleGate (UGate (T {n = 1} 0))))
+    = Just (Parallel (SingleGate (UGate (SDG {n = 1} 0))) (SingleGate (UGate (TDG {n = 1} 0))))
 inverseOfParallelInvertsEachSide = Refl
 
 -- A circuit that measures has no inverse, even when its other gates do.
 inverseOfSequenceWithMeasurementIsNothing : {n : Nat} -> (q : Fin n) ->
-  inv (Seq (GateApplication (UGate (H q))) (GateApplication (Measure q))) = Nothing
+  inv (Sequence (SingleGate (UGate (H q))) (SingleGate (Measure q))) = Nothing
 inverseOfSequenceWithMeasurementIsNothing q = Refl
 
 -- Allocating wires cannot be inverted.
-inverseOfInitializationIsNothing : inv (Init {n = 1} [Zero]) = Nothing
+inverseOfInitializationIsNothing : inv (AllocateQubits {n = 1} [Zero]) = Nothing
 inverseOfInitializationIsNothing = Refl
+
+-- Discarding a wire cannot be inverted.
+inverseOfDiscardIsNothing : inv (DiscardQubit {n = 1} 0) = Nothing
+inverseOfDiscardIsNothing = Refl
 
 -- pow unfolds by recursion on its literal count, for any circuit.
 
 -- Repeating a circuit zero times gives the identity circuit.
-powerZeroIsIdentity : {n : Nat} -> (circuit : Circuit n n) -> pow 0 circuit = Id
+powerZeroIsIdentity : {n : Nat} -> (circuit : Circuit n n) -> pow 0 circuit = Identity
 powerZeroIsIdentity circuit = Refl
 
 -- Repeating a circuit twice gives two copies in sequence.
 powerTwoUnfoldsToTwoCopies : {n : Nat} -> (circuit : Circuit n n) ->
-  pow 2 circuit = Seq circuit (Seq circuit Id)
+  pow 2 circuit = Sequence circuit (Sequence circuit Identity)
 powerTwoUnfoldsToTwoCopies circuit = Refl
 
 -- Rejects an equation in which repeating a circuit twice gives one copy.
 failing "Mismatch between"
-  powerTwoUnfoldsToOneCopy : (circuit : Circuit 1 1) -> pow 2 circuit = Seq circuit Id
+  powerTwoUnfoldsToOneCopy : (circuit : Circuit 1 1) -> pow 2 circuit = Sequence circuit Identity
   powerTwoUnfoldsToOneCopy circuit = Refl
 
 -- Circuit helpers and the builder append gates in call order.
@@ -246,23 +249,23 @@ failing "Mismatch between"
 -- The circuit helpers append each gate after the circuit built so far.
 circuitHelpersAppendGatesInOrder : {n : Nat} -> (c, t : Fin n) ->
   {auto 0 neq : Not (c = t)} ->
-  DSL.GateHelpers.cnot c t (DSL.GateHelpers.hadamard c Id)
-    = Seq (Seq Id (GateApplication (UGate (H c)))) (GateApplication (UGate (CX c t)))
+  DSL.GateHelpers.cnot c t (DSL.GateHelpers.hadamard c Identity)
+    = Sequence (Sequence Identity (SingleGate (UGate (H c)))) (SingleGate (UGate (CX c t)))
 circuitHelpersAppendGatesInOrder c t = Refl
 
 -- Building a builder that does nothing gives the empty circuit.
-buildingEmptyBuilderGivesIdentity : build {n = 1} (pure ()) = Id
+buildingEmptyBuilderGivesIdentity : build {n = 1} (pure ()) = Identity
 buildingEmptyBuilderGivesIdentity = Refl
 
 -- Appending a circuit to a builder sequences it after the empty circuit.
 buildingAppendedCircuitSequencesIt : {n : Nat} -> (circuit : Circuit n n) ->
-  build (append circuit) = Seq Id circuit
+  build (append circuit) = Sequence Identity circuit
 buildingAppendedCircuitSequencesIt circuit = Refl
 
 -- The builder records gates in the order its steps run.
 builderAppendsGatesInOrder :
   build {n = 2} (do DSL.CircuitBuilder.hadamard 0; DSL.CircuitBuilder.cnot 0 1)
-    = Seq (Seq Id (GateApplication (UGate (H 0)))) (GateApplication (UGate (CX 0 1)))
+    = Sequence (Sequence Identity (SingleGate (UGate (H 0)))) (SingleGate (UGate (CX 0 1)))
 builderAppendsGatesInOrder = Refl
 
 -- Wire literals and inequality decisions reduce to concrete values.

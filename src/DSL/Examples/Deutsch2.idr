@@ -18,7 +18,7 @@ balancedOracle = build $ do
 
 public export
 deutsch : Circuit 2 2 -> Circuit 0 2
-deutsch oracle = Seq (Init [Zero, One]) $ build $ do
+deutsch oracle = Sequence (AllocateQubits [Zero, One]) $ build $ do
   hadamard 0
   hadamard 1
   append oracle
