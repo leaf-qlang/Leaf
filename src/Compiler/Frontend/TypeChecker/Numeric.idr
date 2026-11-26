@@ -3,6 +3,7 @@ module Compiler.Frontend.TypeChecker.Numeric
 import Data.Bits
 import Data.Maybe
 
+import Compiler.Helper
 import Compiler.Frontend.TypeChecker.Data
 import Compiler.Frontend.TypeChecker.Type
 import Compiler.Frontend.Source
@@ -61,6 +62,16 @@ fitsLiteral literalType value =
     Nothing => False
     Just (lowerBound, upperBound) => (value >= lowerBound) && (value <= upperBound)
 
+export
+checkIntegerLiteralRange : TypPrimName -> Integer -> SourceSpan -> Either TypeError ()
+checkIntegerLiteralRange literalType literalValue sourceSpan =
+  case literalBounds literalType of
+    Nothing => unreachable __FILE__ {function = "checkIntegerLiteralRange"} {reason = "an integer literal has the non-integer type " ++ show literalType}
+    Just (lowerBound, upperBound) =>
+      if literalValue >= lowerBound && literalValue <= upperBound
+        then Right ()
+        else Left (IntegerLiteralOutOfRange literalValue (LeafPrimitiveType literalType) sourceSpan)
+
 inferLiteral : (isNegated : Bool) -> Maybe TypPrimName -> String -> SourceSpan -> Either TypeError (TypPrimName, Integer)
 inferLiteral isNegated expectedPrimitive rawLiteralText sourceSpan = do
   let expectedLiteralType = do
@@ -81,9 +92,8 @@ inferLiteral isNegated expectedPrimitive rawLiteralText sourceSpan = do
     then Left (InvalidUnaryOperand (show UnaryNegate) (LeafPrimitiveType literalType) sourceSpan)
     else do
       let literalValue = if isNegated then negate literalMagnitude else literalMagnitude
-      if fitsLiteral literalType literalValue
-        then Right (literalType, literalValue)
-        else Left (IntegerLiteralOutOfRange literalValue (LeafPrimitiveType literalType) sourceSpan)
+      checkIntegerLiteralRange literalType literalValue sourceSpan
+      Right (literalType, literalValue)
 
 export
 inferIntegerLiteral : Maybe TypPrimName -> String -> SourceSpan -> Either TypeError (TypPrimName, Integer)

@@ -48,18 +48,17 @@ data TypeVariableDomain
   | IntegerLiteralDomain                     -- any integer type or bit, defaults to i32
   | FloatLiteralDomain                       -- f32, f64, angle32 or angle64, defaults to f64
 
--- Unified variables form union-find trees: each variable links to a parent,
--- and the root at the top holds the state of the whole tree. An open root's
--- rank is an upper bound on its tree's height. Linking two roots puts the
+-- Merged variables form union-find trees: each non-root variable stores its
+-- parent's ID, and the root holds the shared inference state. An open root's
+-- rank is an upper bound on its tree's height. Merging two roots puts the
 -- lower-ranked one under the other, which keeps trees shallow; equal ranks
--- link either way and raise the surviving root's rank by one.
+-- allow either root to survive and raise its rank by one.
 public export
 data InferenceVariableState                         -- An inference variable is a placeholder for something the type checker may not know yet. 
-  = OpenTypeVariable TypeVariableDomain Nat         -- root; Nat is its union-find rank
-  | FixedTypeVariable TcType                        -- root, solved
-  | OpenQuantumUsage Nat                            -- root; Nat is its union-find rank
-  | FixedQuantumUsage QuantumUsageQualifier         -- root, solved
-  | LinkedVariable Nat                              -- not a root: Nat identifies its parent, of the same sort
-                                                    -- Entry for an inference variable that was unified with another one, it no longer holds 
-                                                    -- its own state; it says "I'm the same unknown as variable #n, so look there 
+  = OpenTypeVariable TypeVariableDomain Nat         -- unknown type; stores allowed types and tree rank
+  | FixedTypeVariable TcType                        -- stores the inferred type
+  | OpenQuantumUsage Nat                            -- unknown linear/affine qualifier; Nat is the tree rank
+  | FixedQuantumUsage QuantumUsageQualifier         -- stores the inferred linear/affine qualifier
+  | ParentReference Nat                             -- parent variable ID; follow it to the shared inference state
+                                                    -- Both variables represent types, or both quantum usage qualifiers.
 

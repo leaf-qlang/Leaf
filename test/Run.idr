@@ -19,6 +19,7 @@ import Parser.TopModuleParseTest
 import ScopeAndNameResolution.PreludeTest
 import ScopeAndNameResolution.ResolveTest
 import ScopeAndNameResolution.ValidationTest
+import TypeChecker.InferenceVariableTest
 import TypeChecker.NumericTest
 import TypeChecker.Phases.BodyCheckTest
 import TypeChecker.Phases.SignatureCheckTest
@@ -44,6 +45,7 @@ suites =
   , ("ScopeAndNameResolution.PreludeTest", runPreludeFunctionsResolutionTests)
   , ("ScopeAndNameResolution.ValidationTest", runResolutionValidationTests)
   , ("TypeChecker.NumericTest", runNumericTests)
+--  , ("TypeChecker.InferenceVariableTest", runInferenceVariableTests)
   , ("TypeChecker.TypeTranslationTest", runTypeTranslationTests)
   , ("TypeChecker.Phases.SignatureCheckTest", runSignatureCheckTests)
 --  , ("TypeChecker.Phases.BodyCheckTest", runBodyCheckTests)

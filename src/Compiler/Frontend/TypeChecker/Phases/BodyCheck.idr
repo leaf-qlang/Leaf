@@ -148,6 +148,7 @@ isPreludeParamFunction (MkAstNode calleeInfo calleeMetadata (ExprName (MkAstNode
     Nothing => pure False
 isPreludeParamFunction _ = pure False
 
+export
 unify : SourceSpan -> (expected : TcType) -> (actual : TcType) -> StateT TypeCheckerState (Either CheckFailure) ()
 unify = ?unifyH
 
