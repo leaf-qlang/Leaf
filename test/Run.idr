@@ -4,7 +4,11 @@ import Data.String
 import System
 
 import Backend.OpenQasm3SerializerTest
+import DSL.CircuitBuilderReductionTest
+import DSL.CircuitInverseReductionTest
 import DSL.IntrinsicProofsTest
+import DSL.RadiansArithmeticTest
+import DSL.RadiansConstructionTest
 import DSL.TypeLevelReductionTest
 import DSL.Wrap4PiTest
 import Examples.CompileCodeExamples
@@ -34,6 +38,7 @@ suites =
   , ("Lexer.UnicodeNormalizationTest", runUnicodeNormalizationTests)
   , ("Backend.OpenQasm3SerializerTest", runSerializerTests)
   , ("DSL.Wrap4PiTest", runWrap4PiTests)
+  , ("DSL.RadiansArithmeticTest", runRadiansArithmeticTests)
   , ("Parser.ExpressionParseTest", runExpressionParseTests)
   , ("Utils.ASTDebugPrinterTest", runASTDebugPrinterTests)
   , ("Utils.ASTPrettyPrinterTest", runASTPrettyPrinterTests)

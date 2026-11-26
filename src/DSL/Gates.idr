@@ -37,8 +37,8 @@ mutual
     -- OpenQASM 2 primitives / U-family
     U     : Radians -> Radians -> Radians -> (q : Fin n) -> UnitaryGate n      -- U(θ, φ, λ)
     U1    : Radians -> (q : Fin n) -> UnitaryGate n                            -- U1(λ)   == U(0, 0, λ)
-    U2    : Radians -> Radians -> (q : Fin n) -> UnitaryGate n                 -- U2(φ,λ) == U(π/2, φ, λ)
-    U3    : Radians -> Radians -> Radians -> (q : Fin n) -> UnitaryGate n      -- U3(θ,φ,λ) == U(θ, φ, λ)
+    U2    : Radians -> Radians -> (q : Fin n) -> UnitaryGate n                 -- U2(φ,λ) == gphase(-(φ+λ+π/2)/2) U(π/2, φ, λ), as in OpenQASM 3
+    U3    : Radians -> Radians -> Radians -> (q : Fin n) -> UnitaryGate n      -- U3(θ,φ,λ) == gphase(-(φ+λ+θ)/2) U(θ, φ, λ), as in OpenQASM 3
 
     -- 2-qbit (with a proof that control ≠ target)
     CX    : (c,t : Fin n) -> {auto 0 neq : Not (c = t)} -> UnitaryGate n
@@ -89,24 +89,24 @@ mutual
 
   public export
   wiresUnitary : UnitaryGate n -> (m ** Vect m (Fin n))
-  wiresUnitary (Id q)                    = (_ ** [q])
-  wiresUnitary (X q)                     = (_ ** [q])
-  wiresUnitary (Y q)                     = (_ ** [q])
-  wiresUnitary (Z q)                     = (_ ** [q])
-  wiresUnitary (H q)                     = (_ ** [q])
-  wiresUnitary (S q)                     = (_ ** [q])
-  wiresUnitary (SDG q)                   = (_ ** [q])
-  wiresUnitary (T q)                     = (_ ** [q])
-  wiresUnitary (TDG q)                   = (_ ** [q])
-  wiresUnitary (SX q)                    = (_ ** [q])
-  wiresUnitary (SXDG q)                  = (_ ** [q])
-  wiresUnitary (RX _ q)                  = (_ ** [q])
-  wiresUnitary (RY _ q)                  = (_ ** [q])
-  wiresUnitary (RZ _ q)                  = (_ ** [q])
-  wiresUnitary (U _ _ _ q)               = (_ ** [q])
-  wiresUnitary (U1 _ q)                  = (_ ** [q])
-  wiresUnitary (U2 _ _ q)                = (_ ** [q])
-  wiresUnitary (U3 _ _ _ q)              = (_ ** [q])
+  wiresUnitary (Id q)                    = (1 ** [q])
+  wiresUnitary (X q)                     = (1 ** [q])
+  wiresUnitary (Y q)                     = (1 ** [q])
+  wiresUnitary (Z q)                     = (1 ** [q])
+  wiresUnitary (H q)                     = (1 ** [q])
+  wiresUnitary (S q)                     = (1 ** [q])
+  wiresUnitary (SDG q)                   = (1 ** [q])
+  wiresUnitary (T q)                     = (1 ** [q])
+  wiresUnitary (TDG q)                   = (1 ** [q])
+  wiresUnitary (SX q)                    = (1 ** [q])
+  wiresUnitary (SXDG q)                  = (1 ** [q])
+  wiresUnitary (RX _ q)                  = (1 ** [q])
+  wiresUnitary (RY _ q)                  = (1 ** [q])
+  wiresUnitary (RZ _ q)                  = (1 ** [q])
+  wiresUnitary (U _ _ _ q)               = (1 ** [q])
+  wiresUnitary (U1 _ q)                  = (1 ** [q])
+  wiresUnitary (U2 _ _ q)                = (1 ** [q])
+  wiresUnitary (U3 _ _ _ q)              = (1 ** [q])
   wiresUnitary (CX c t)                  = (2 ** [c, t])
   wiresUnitary (CY c t)                  = (2 ** [c, t])
   wiresUnitary (CZ c t)                  = (2 ** [c, t])
@@ -123,34 +123,18 @@ mutual
   wiresUnitary (CU1 _ c t)               = (2 ** [c, t])
   wiresUnitary (CU2 _ _ c t)             = (2 ** [c, t])
   wiresUnitary (CU3 _ _ _ c t)           = (2 ** [c, t])
-  wiresUnitary (SWAP a b)                = (_ ** [a, b])
-  wiresUnitary (RXX _ a b)               = (_ ** [a, b])
-  wiresUnitary (RYY _ a b)               = (_ ** [a, b])
-  wiresUnitary (RZZ _ a b)               = (_ ** [a, b])
-  wiresUnitary (RZX _ a b)               = (_ ** [a, b])
+  wiresUnitary (SWAP a b)                = (2 ** [a, b])
+  wiresUnitary (RXX _ a b)               = (2 ** [a, b])
+  wiresUnitary (RYY _ a b)               = (2 ** [a, b])
+  wiresUnitary (RZZ _ a b)               = (2 ** [a, b])
+  wiresUnitary (RZX _ a b)               = (2 ** [a, b])
   wiresUnitary (CCX c1 c2 t)             = (3 ** [c1, c2, t])
   wiresUnitary (CSWAP c a b)             = (3 ** [c, a, b])
   wiresUnitary (Controlled controlWires _ inner) =
     prependControlWiresToInnerWires controlWires (wiresUnitary inner)
 
 public export
-CNOT : (c,t : Fin n) -> {auto 0 neq : Not (c = t)} -> UnitaryGate n
-CNOT c t {neq} = CX c t {neq = neq}
-
-public export
 data Gate : Nat -> Type where
   UGate   : UnitaryGate n -> Gate n
   Measure : (q : Fin n) -> Gate n
   Reset   : (q : Fin n) -> Gate n
-
-public export
-mkControlled :
-  {k : Nat} ->
-  (cs : Vect k (Fin n)) ->
-  (qsts : Vect k QState) ->
-  (inner : UnitaryGate n) ->
-  {auto 0 distinct : AllDistinct cs} ->                             -- keeps the control wires pairwise distinct
-  {auto 0 disjoint : Disjoint cs (snd (wiresUnitary inner))} ->     -- checks that controls do not overlap any inner gate wire
-  UnitaryGate n
-mkControlled cs bs inner {distinct} {disjoint} =
-  Controlled cs bs inner {distinct = distinct} {disjoint = disjoint}

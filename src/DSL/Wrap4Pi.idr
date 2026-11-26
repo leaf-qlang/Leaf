@@ -8,18 +8,21 @@ import DSL.AngleConstants
 -- preserves precision when removing many periods. The high and middle parts
 -- each use 21 significant bits, so their products with the period count are
 -- exact below the cutoff used here. The low-part product can still round.
+public export
 fourPiHigh : Double
 fourPiHigh = 12.566368103027344
 
+public export
 fourPiMiddle : Double
 fourPiMiddle = 2.511331331334077e-6
 
+public export
 fourPiLow : Double
 fourPiLow = 4.978697737517291e-13
 
 -- Rotation angles are taken modulo 4π, the period of the rotation gates, and
 -- each angle is represented by its unique value in [-2π, 2π).
-export
+public export
 reduceModuloFourPiIntoSignedTwoPiRange : Double -> Double
 reduceModuloFourPiIntoSignedTwoPiRange angle =
   let magnitude = abs angle

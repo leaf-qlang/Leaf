@@ -74,7 +74,6 @@ modules = Main,
           DSL.Examples.Deutsch2,
           DSL.GateHelpers,
           DSL.Gates,
-          DSL.Helpers,
 	  DSL.Wrap4Pi
 
 main = Main

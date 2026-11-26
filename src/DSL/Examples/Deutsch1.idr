@@ -10,16 +10,16 @@ import DSL.GateHelpers
 
 public export
 constantOracle : Circuit 2 2
-constantOracle = emptyCircuit
+constantOracle = EmptyCircuit
 
 public export
 balancedOracle : Circuit 2 2
-balancedOracle = cnot 0 1 emptyCircuit
+balancedOracle = cnot 0 1 EmptyCircuit
 
 public export
 deutsch : Circuit 2 2 -> Circuit 0 2
 deutsch oracle =
-  let prepared = hadamard 1 (hadamard 0 emptyCircuit)
+  let prepared = hadamard 1 (hadamard 0 EmptyCircuit)
       queried = Sequence prepared oracle
       result = measure 0 (hadamard 0 queried)
   in Sequence (AllocateQubits [Zero, One]) result

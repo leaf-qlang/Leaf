@@ -2,7 +2,7 @@ module DSL.Circuit
 
 import Data.Fin
 
-import DSL.Adjoint
+import public DSL.Adjoint
 import DSL.Core
 import DSL.Gates
 
@@ -11,8 +11,8 @@ import DSL.Gates
 -- Quantum circuits with n inputs and m outputs
 public export
 data Circuit : Nat -> Nat -> Type where
-  -- Identity circuit: n wires and no gates
-  Identity : {0 n : Nat} -> Circuit n n
+  -- Empty circuit: n wires and no gates
+  EmptyCircuit : {0 n : Nat} -> Circuit n n
 
   -- A single primitive gate
   SingleGate : {0 n : Nat} -> Gate n -> Circuit n n
@@ -38,11 +38,17 @@ data Circuit : Nat -> Nat -> Type where
   -- The output width is n, so no later gate can refer to the discarded qubit.
   DiscardQubit : {0 n : Nat} -> (q : Fin (S n)) -> Circuit (S n) n
 
+
 -- Inverse of a circuit, if it exists
+-- inv (inv c) is the same operator as c, but not always the same term:
+-- applying the adjoint twice to a U2 or CU2 gate, also when nested inside
+-- Controlled, moves both angles by 2π and rounds the ±π terms of the formula;
+-- and inv (AllocateQubits []) is EmptyCircuit, whose inverse is EmptyCircuit.
+-- Every other gate adjoint only negates angles, and Radians negation is exact.
 public export
 inv : Circuit n m -> Maybe (Circuit m n)
 
-inv Identity = Just Identity
+inv EmptyCircuit = Just EmptyCircuit
 
 inv (SingleGate g) =
   case adjointGate g of
@@ -59,7 +65,9 @@ inv (Parallel c1 c2) = do
   c2' <- inv c2
   pure (Parallel c1' c2')
 
-inv (AllocateQubits _) = Nothing
+-- An empty allocation adds no wire, so its inverse is the empty circuit.
+inv {n} (AllocateQubits []) = Just (rewrite plusZeroRightNeutral n in EmptyCircuit)
+inv (AllocateQubits (_ :: _)) = Nothing
 
 inv (DiscardQubit _) = Nothing
 
@@ -67,5 +75,5 @@ inv (DiscardQubit _) = Nothing
 -- Repeated application of a circuit
 public export
 pow : (k : Nat) -> Circuit n n -> Circuit n n
-pow Z     _ = Identity
+pow Z     _ = EmptyCircuit
 pow (S k) c = Sequence c (pow k c)

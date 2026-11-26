@@ -9,7 +9,6 @@ import DSL.Core
 import DSL.GateHelpers
 import DSL.Gates
 import DSL.Helper
-import DSL.Helpers
 
 %default total
 
@@ -82,20 +81,20 @@ controlOnLastWire = Controlled [1] [One] (X 0)
 -- Rejects a numeric literal equal to the Fin bound.
 failing "Can't find an implementation for LTE"
   literalAtRegisterBound : Fin 2
-  literalAtRegisterBound = fromLiteral 2
+  literalAtRegisterBound = natToFinLT 2
 
 -- Accepts the same literal once it is below the Fin bound.
 literalWithinBounds : Fin 3
-literalWithinBounds = fromLiteral 2
+literalWithinBounds = natToFinLT 2
 
 -- Rejects any numeric literal for the uninhabited type Fin 0.
 failing "Can't find an implementation for LTE"
   literalInEmptyRegister : Fin 0
-  literalInEmptyRegister = fromLiteral 0
+  literalInEmptyRegister = natToFinLT 0
 
 -- Accepts literal 0 for Fin 1, its only inhabitant.
 literalInSingleWireRegister : Fin 1
-literalInSingleWireRegister = fromLiteral 0
+literalInSingleWireRegister = natToFinLT 0
 
 -- Proof constructors must not manufacture evidence for repeated wires.
 
@@ -135,7 +134,7 @@ failing "Can't find an implementation for NotElem"
 separateWiresAreDisjoint : Disjoint (the (Vect 2 (Fin 3)) [0, 1]) [2]
 separateWiresAreDisjoint = [%search, %search]
 
--- Every two-wire primitive (and the CNOT alias) requires distinct operands.
+-- Every two-wire primitive requires distinct operands.
 
 -- Rejects CX with the same wire as control and target.
 failing "Can't find an implementation for Void"
@@ -326,15 +325,6 @@ failing "Can't find an implementation for Void"
 rzxWithDistinctWires : UnitaryGate 2
 rzxWithDistinctWires = RZX testAngle 0 1
 
--- Rejects the CNOT alias with the same wire as control and target.
-failing "Can't find an implementation for Void"
-  cnotWithRepeatedWire : UnitaryGate 1
-  cnotWithRepeatedWire = CNOT 0 0
-
--- Accepts the CNOT alias on two distinct wires.
-cnotWithDistinctWires : UnitaryGate 2
-cnotWithDistinctWires = CNOT 0 1
-
 -- The accepted calls must infer every inequality using the production proof
 -- hint. Nonzero operands and permutations catch hints that prematurely choose FZ.
 
@@ -410,7 +400,7 @@ toffoliWirePermutations =
 
 -- Accepts the circuit helper toffoli with its inequalities inferred.
 automaticToffoliCircuitHelper : Circuit 3 3
-automaticToffoliCircuitHelper = DSL.GateHelpers.toffoli 0 1 2 Identity
+automaticToffoliCircuitHelper = DSL.GateHelpers.toffoli 0 1 2 EmptyCircuit
 
 -- Accepts the builder toffoli with its inequalities inferred.
 automaticToffoliBuilder : Builder 3 ()
@@ -460,7 +450,7 @@ fredkinWirePermutations =
 
 -- Accepts the circuit helper fredkin with its inequalities inferred.
 automaticFredkinCircuitHelper : Circuit 3 3
-automaticFredkinCircuitHelper = DSL.GateHelpers.fredkin 2 1 0 Identity
+automaticFredkinCircuitHelper = DSL.GateHelpers.fredkin 2 1 0 EmptyCircuit
 
 -- Accepts the builder fredkin with its inequalities inferred.
 automaticFredkinBuilder : Builder 3 ()
@@ -637,70 +627,23 @@ failing "Mismatch between"
 
 -- Public helpers preserve the constructor's proof obligations.
 
--- Rejects mkControlled with a control on the target wire.
-failing "Can't find an implementation for All ("
-  helperControlOverlapsTarget : UnitaryGate 1
-  helperControlOverlapsTarget = mkControlled [0] [One] (X 0)
-
--- Accepts mkControlled with a control separate from the target.
-helperControlDisjointFromTarget : UnitaryGate 2
-helperControlDisjointFromTarget = mkControlled [0] [One] (X 1)
-
--- Rejects mkControlled with a repeated control wire.
-failing "Can't find an implementation for AllDistinct"
-  helperDuplicateControls : UnitaryGate 2
-  helperDuplicateControls = mkControlled [0, 0] [One, Zero] (X 1)
-
--- Accepts mkControlled with two different control wires.
-helperControlledGate : UnitaryGate 3
-helperControlledGate = mkControlled [0, 1] [One, Zero] (X 2)
-
--- Rejects mkControlled with a control on the control wire of an inner CX.
-failing "Can't find an implementation for All ("
-  helperControlOverlapsPrimitiveControl : UnitaryGate 2
-  helperControlOverlapsPrimitiveControl = mkControlled [0] [One] innerCnot
-
--- Accepts mkControlled with a control on a wire unused by the inner CX.
-helperControlAfterPrimitiveWires : UnitaryGate 3
-helperControlAfterPrimitiveWires = mkControlled [2] [One] (CX 0 1)
-
--- Rejects mkControlled with a control on the control wire of a nested
--- Controlled gate.
-failing "Can't find an implementation for All ("
-  helperControlOverlapsNestedControl : UnitaryGate 3
-  helperControlOverlapsNestedControl = mkControlled [1] [One] innerControlledRotation
-
--- Accepts mkControlled with a control on a wire unused by the nested
--- Controlled gate.
-helperNestedControlledRotation : UnitaryGate 3
-helperNestedControlledRotation = mkControlled [0] [One] innerControlledRotation
-
--- Rejects mkControlled with a control wire but no control state.
-failing "Mismatch between"
-  helperControlsWithoutStates : UnitaryGate 2
-  helperControlsWithoutStates = mkControlled {k = 1} [0] [] (X 1)
-
--- Accepts mkControlled with one control state per control wire.
-helperControlsWithMatchingStates : UnitaryGate 2
-helperControlsWithMatchingStates = mkControlled [0] [One] (X 1)
-
 -- Rejects the circuit helper ctrl with a repeated control wire.
 failing "Can't find an implementation for AllDistinct"
   circuitHelperDuplicateControls : Circuit 2 2
-  circuitHelperDuplicateControls = DSL.GateHelpers.ctrl [0, 0] [One, Zero] (X 1) Identity
+  circuitHelperDuplicateControls = DSL.GateHelpers.ctrl [0, 0] [One, Zero] (X 1) EmptyCircuit
 
 -- Accepts the circuit helper ctrl with two different control wires.
 circuitHelperDistinctControls : Circuit 3 3
-circuitHelperDistinctControls = DSL.GateHelpers.ctrl [0, 1] [One, Zero] (X 2) Identity
+circuitHelperDistinctControls = DSL.GateHelpers.ctrl [0, 1] [One, Zero] (X 2) EmptyCircuit
 
 -- Rejects the circuit helper ctrl with a control on the target wire.
 failing "Can't find an implementation for All ("
   circuitHelperControlOverlapsTarget : Circuit 1 1
-  circuitHelperControlOverlapsTarget = DSL.GateHelpers.ctrl [0] [One] singleWireGate Identity
+  circuitHelperControlOverlapsTarget = DSL.GateHelpers.ctrl [0] [One] singleWireGate EmptyCircuit
 
 -- Accepts the circuit helper ctrl with a control separate from the target.
 circuitHelperControlDisjointFromTarget : Circuit 2 2
-circuitHelperControlDisjointFromTarget = DSL.GateHelpers.ctrl [0] [One] (X 1) Identity
+circuitHelperControlDisjointFromTarget = DSL.GateHelpers.ctrl [0] [One] (X 1) EmptyCircuit
 
 -- Rejects the builder ctrl with a repeated control wire.
 failing "Can't find an implementation for AllDistinct"
@@ -732,18 +675,18 @@ failing "Mismatch between"
 unitaryGateWithSameRegisterWidth : Gate 2
 unitaryGateWithSameRegisterWidth = UGate innerCnot
 
--- Rejects an identity circuit whose output width differs from its input width.
+-- Rejects an empty circuit whose output width differs from its input width.
 failing "Mismatch between"
   identityChangesWidth : Circuit 1 2
-  identityChangesWidth = Identity
+  identityChangesWidth = EmptyCircuit
 
--- Accepts an identity circuit with equal input and output widths.
+-- Accepts an empty circuit with equal input and output widths.
 identityPreservesWidth : Circuit 1 1
-identityPreservesWidth = Identity
+identityPreservesWidth = EmptyCircuit
 
--- Accepts an identity circuit on an empty register.
+-- Accepts an empty circuit on an empty register.
 zeroWireCircuit : Circuit 0 0
-zeroWireCircuit = Identity
+zeroWireCircuit = EmptyCircuit
 
 -- Rejects a gate application that claims to change the circuit width.
 failing "Mismatch between"
@@ -858,3 +801,24 @@ failing "Mismatch between"
 -- Accepts appending a circuit with the builder's register width.
 appendedCircuit : Circuit 1 1
 appendedCircuit = build (append oneWireCircuit)
+
+-- Circuit helpers and builder operations keep no register width at run time,
+-- so functions that erase the width can call them.
+
+-- Accepts the circuit helper hadamard in a function whose output width is erased.
+hadamardHelperWithErasedWidth : {0 width : Nat} -> Fin width -> Circuit 0 width -> Circuit 0 width
+hadamardHelperWithErasedWidth wire circuit = DSL.GateHelpers.hadamard wire circuit
+
+-- Accepts the circuit helper cnot with an erased width, given that its wires differ.
+cnotHelperWithErasedWidth : {0 width : Nat} -> (control, target : Fin width) ->
+  {auto 0 controlDiffersFromTarget : Not (control = target)} ->
+  Circuit 0 width -> Circuit 0 width
+cnotHelperWithErasedWidth control target circuit = DSL.GateHelpers.cnot control target circuit
+
+-- Accepts the builder hadamard in a function whose register width is erased.
+hadamardBuilderWithErasedWidth : {0 width : Nat} -> Fin width -> Builder width ()
+hadamardBuilderWithErasedWidth wire = DSL.CircuitBuilder.hadamard wire
+
+-- Accepts building a circuit in a function whose register width is erased.
+builtHadamardWithErasedWidth : {0 width : Nat} -> Fin width -> Circuit width width
+builtHadamardWithErasedWidth wire = build (DSL.CircuitBuilder.hadamard wire)

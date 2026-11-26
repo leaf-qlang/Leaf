@@ -2,7 +2,6 @@ module DSL.Control
 
 import Data.Vect
 import Data.Fin
-import Data.Nat
 import Data.So
 -- Clients must see the All constructors to build Disjoint proofs by search.
 import public Data.Vect.Quantifiers

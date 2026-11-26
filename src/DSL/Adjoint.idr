@@ -37,16 +37,23 @@ mutual
   adjointUnitary (U1 lambda q) =
     U1 (-lambda) q
 
-  -- U2(φ, λ)† = U2(-λ - π, -φ + π) holds exactly, with no global phase, so
-  -- the same formula is also correct for CU2 below.
+  -- U2(φ, λ)† = U2(-λ - π, -φ + π) holds exactly, including the global phase
+  -- of the OpenQASM 3 definition of U2, so the same formula is also correct for
+  -- CU2 below, where control turns that phase into a relative phase.
+  -- Note: this adjoint is not involutive. Applying it twice gives
+  -- U2(φ - 2π, λ - 2π), the same operator as U2(φ, λ) but a different term.
+  -- No other U2 formula avoids this: the matrix and the global phase together
+  -- force both angles to move by 2π. Rounding in the Double arithmetic of the
+  -- ±π terms also changes the last digits. Compare such gates as operators,
+  -- not as terms.
   adjointUnitary (U2 phi lambda q) =
-    U2 (-lambda - pi) ( -phi + pi ) q
+    U2 (-lambda - pi) (-phi + pi) q
 
   adjointUnitary (U3 theta phi lambda q) =
     U3 (-theta) (-lambda) (-phi) q
 
   -- 2-qbit + 3-qbit: many of these are self-adjoint
-  adjointUnitary (CX c t {neq})       = CNOT c t {neq = neq}
+  adjointUnitary (CX c t {neq})       = CX c t {neq = neq}
   adjointUnitary (CY c t {neq})       = CY c t {neq = neq}
   adjointUnitary (CZ c t {neq})       = CZ c t {neq = neq}
   adjointUnitary (CH c t {neq})       = CH c t {neq = neq}

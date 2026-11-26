@@ -1,7 +1,6 @@
 module DSL.TypeLevelReductionTest
 
 import Data.Fin
-import Data.Maybe
 import Data.Vect
 import DSL.Adjoint
 import DSL.Circuit
@@ -9,7 +8,6 @@ import DSL.CircuitBuilder
 import DSL.Core
 import DSL.GateHelpers
 import DSL.Gates
-import DSL.Helpers
 
 %default total
 
@@ -121,6 +119,26 @@ adjointOfRotationsNegateAngle : {n : Nat} -> (theta : Radians) -> (q : Fin n) ->
   )
 adjointOfRotationsNegateAngle theta q = (Refl, Refl, Refl)
 
+-- Concrete rotation adjoints evaluate the angle arithmetic and its bounds
+-- check during type checking.
+adjointOfLiteralRotationsReduces :
+  ( adjointUnitary (RX {n = 1} (MkRadians 0.25) 0) = RX (MkRadians (-0.25)) 0
+  , adjointUnitary (RY {n = 1} (MkRadians 0.25) 0) = RY (MkRadians (-0.25)) 0
+  , adjointUnitary (RZ {n = 1} (MkRadians 0.25) 0) = RZ (MkRadians (-0.25)) 0
+  )
+adjointOfLiteralRotationsReduces = (Refl, Refl, Refl)
+
+-- U2(φ, λ)† = U2(-λ - π, -φ + π), exact including the OpenQASM 3 global phase.
+adjointOfU2IsU2 : {n : Nat} -> (phi, lambda : Radians) -> (q : Fin n) ->
+  adjointUnitary (U2 phi lambda q) = U2 (-lambda - DSL.Core.pi) (-phi + DSL.Core.pi) q
+adjointOfU2IsU2 phi lambda q = Refl
+
+-- CU2 uses the same formula on the same wires.
+adjointOfCU2IsCU2 : {n : Nat} -> (phi, lambda : Radians) -> (c, t : Fin n) ->
+  {auto 0 neq : Not (c = t)} ->
+  adjointUnitary (CU2 phi lambda c t) = CU2 (-lambda - DSL.Core.pi) (-phi + DSL.Core.pi) c t
+adjointOfCU2IsCU2 phi lambda c t = Refl
+
 -- Self-adjoint two-wire gates keep their operands in order.
 adjointOfSelfAdjointTwoWireGates : {n : Nat} -> (c, t : Fin n) ->
   {auto 0 neq : Not (c = t)} ->
@@ -192,8 +210,8 @@ failing "Mismatch between"
   measurementIsSelfAdjoint : adjointGate (Measure {n = 1} 0) = Just (Measure 0)
   measurementIsSelfAdjoint = Refl
 
--- The identity circuit is its own inverse.
-inverseOfIdentityIsIdentity : inv (Identity {n = 1}) = Just Identity
+-- The empty circuit is its own inverse.
+inverseOfIdentityIsIdentity : inv (EmptyCircuit {n = 1}) = Just EmptyCircuit
 inverseOfIdentityIsIdentity = Refl
 
 -- Inverting a sequence reverses its order and takes each gate's adjoint.
@@ -220,9 +238,20 @@ inverseOfSequenceWithMeasurementIsNothing : {n : Nat} -> (q : Fin n) ->
   inv (Sequence (SingleGate (UGate (H q))) (SingleGate (Measure q))) = Nothing
 inverseOfSequenceWithMeasurementIsNothing q = Refl
 
--- Allocating wires cannot be inverted.
+-- Allocating at least one wire cannot be inverted.
 inverseOfInitializationIsNothing : inv (AllocateQubits {n = 1} [Zero]) = Nothing
 inverseOfInitializationIsNothing = Refl
+
+-- An empty allocation adds no wire, so its inverse is the empty circuit.
+inverseOfEmptyAllocationIsIdentity : inv (AllocateQubits {n = 1} []) = Just EmptyCircuit
+inverseOfEmptyAllocationIsIdentity = Refl
+
+-- An empty allocation inside a sequence does not prevent inverting the sequence:
+-- the inverse of "allocate nothing, then H" is "H, then the empty circuit".
+inverseOfEmptyAllocationBeforeHadamard :
+  inv (Sequence (AllocateQubits {n = 1} []) (SingleGate (UGate (H 0))))
+    = Just (Sequence (SingleGate (UGate (H 0))) EmptyCircuit)
+inverseOfEmptyAllocationBeforeHadamard = Refl
 
 -- Discarding a wire cannot be inverted.
 inverseOfDiscardIsNothing : inv (DiscardQubit {n = 1} 0) = Nothing
@@ -230,18 +259,18 @@ inverseOfDiscardIsNothing = Refl
 
 -- pow unfolds by recursion on its literal count, for any circuit.
 
--- Repeating a circuit zero times gives the identity circuit.
-powerZeroIsIdentity : {n : Nat} -> (circuit : Circuit n n) -> pow 0 circuit = Identity
+-- Repeating a circuit zero times gives the empty circuit.
+powerZeroIsIdentity : {n : Nat} -> (circuit : Circuit n n) -> pow 0 circuit = EmptyCircuit
 powerZeroIsIdentity circuit = Refl
 
 -- Repeating a circuit twice gives two copies in sequence.
 powerTwoUnfoldsToTwoCopies : {n : Nat} -> (circuit : Circuit n n) ->
-  pow 2 circuit = Sequence circuit (Sequence circuit Identity)
+  pow 2 circuit = Sequence circuit (Sequence circuit EmptyCircuit)
 powerTwoUnfoldsToTwoCopies circuit = Refl
 
 -- Rejects an equation in which repeating a circuit twice gives one copy.
 failing "Mismatch between"
-  powerTwoUnfoldsToOneCopy : (circuit : Circuit 1 1) -> pow 2 circuit = Sequence circuit Identity
+  powerTwoUnfoldsToOneCopy : (circuit : Circuit 1 1) -> pow 2 circuit = Sequence circuit EmptyCircuit
   powerTwoUnfoldsToOneCopy circuit = Refl
 
 -- Circuit helpers and the builder append gates in call order.
@@ -249,40 +278,60 @@ failing "Mismatch between"
 -- The circuit helpers append each gate after the circuit built so far.
 circuitHelpersAppendGatesInOrder : {n : Nat} -> (c, t : Fin n) ->
   {auto 0 neq : Not (c = t)} ->
-  DSL.GateHelpers.cnot c t (DSL.GateHelpers.hadamard c Identity)
-    = Sequence (Sequence Identity (SingleGate (UGate (H c)))) (SingleGate (UGate (CX c t)))
+  DSL.GateHelpers.cnot c t (DSL.GateHelpers.hadamard c EmptyCircuit)
+    = Sequence (Sequence EmptyCircuit (SingleGate (UGate (H c)))) (SingleGate (UGate (CX c t)))
 circuitHelpersAppendGatesInOrder c t = Refl
 
+-- The identity helper appends an Id gate like any other single-wire helper.
+identityHelperAppendsIdGate : {n : Nat} -> (q : Fin n) ->
+  DSL.GateHelpers.identity q EmptyCircuit = Sequence EmptyCircuit (SingleGate (UGate (Id q)))
+identityHelperAppendsIdGate q = Refl
+
+-- A circuit helper acts on the output wires of the circuit it extends, so it
+-- accepts a circuit that allocates wires.
+hadamardHelperAppendsToAllocation :
+  DSL.GateHelpers.hadamard 0 (AllocateQubits {n = 0} [Zero])
+    = Sequence (AllocateQubits [Zero]) (SingleGate (UGate (H 0)))
+hadamardHelperAppendsToAllocation = Refl
+
+cnotHelperAppendsToAllocation :
+  DSL.GateHelpers.cnot 0 1 (AllocateQubits {n = 0} [Zero, One])
+    = Sequence (AllocateQubits [Zero, One]) (SingleGate (UGate (CX 0 1)))
+cnotHelperAppendsToAllocation = Refl
+
 -- Building a builder that does nothing gives the empty circuit.
-buildingEmptyBuilderGivesIdentity : build {n = 1} (pure ()) = Identity
+buildingEmptyBuilderGivesIdentity : build {n = 1} (pure ()) = EmptyCircuit
 buildingEmptyBuilderGivesIdentity = Refl
 
 -- Appending a circuit to a builder sequences it after the empty circuit.
 buildingAppendedCircuitSequencesIt : {n : Nat} -> (circuit : Circuit n n) ->
-  build (append circuit) = Sequence Identity circuit
+  build (append circuit) = Sequence EmptyCircuit circuit
 buildingAppendedCircuitSequencesIt circuit = Refl
 
 -- The builder records gates in the order its steps run.
 builderAppendsGatesInOrder :
   build {n = 2} (do DSL.CircuitBuilder.hadamard 0; DSL.CircuitBuilder.cnot 0 1)
-    = Sequence (Sequence Identity (SingleGate (UGate (H 0)))) (SingleGate (UGate (CX 0 1)))
+    = Sequence (Sequence EmptyCircuit (SingleGate (UGate (H 0)))) (SingleGate (UGate (CX 0 1)))
 builderAppendsGatesInOrder = Refl
 
 -- Wire literals and inequality decisions reduce to concrete values.
 
 -- A literal reduces to the matching Fin constructors.
-literalReducesToFinConstructors : fromLiteral {n = 3} 2 = FS (FS FZ)
+literalReducesToFinConstructors : natToFinLT {n = 3} 2 = FS (FS FZ)
 literalReducesToFinConstructors = Refl
 
 -- Rejects an equation in which a literal reduces to a smaller index.
 failing "Mismatch between"
-  literalReducesToSmallerIndex : fromLiteral {n = 3} 2 = FS FZ
+  literalReducesToSmallerIndex : natToFinLT {n = 3} 2 = FS FZ
   literalReducesToSmallerIndex = Refl
 
--- Deciding inequality for different wires returns a proof.
-inequalityOfDifferentWiresIsDecided : isJust (mkNeq {n = 2} 0 1) = True
+-- decEq decides wire inequality; the proof hint in DSL.Control relies on it
+-- reducing in client modules.
+
+-- Deciding equality of different wires returns the inequality proof (No case).
+inequalityOfDifferentWiresIsDecided : isNo (decEq (the (Fin 2) 0) 1) = True
 inequalityOfDifferentWiresIsDecided = Refl
 
--- Deciding inequality for a repeated wire returns no proof.
-inequalityOfRepeatedWireIsRefuted : mkNeq {n = 2} 1 1 = Nothing
+-- Deciding equality of a repeated wire returns an equality proof (Yes case).
+inequalityOfRepeatedWireIsRefuted : isYes (decEq (the (Fin 2) 1) 1) = True
 inequalityOfRepeatedWireIsRefuted = Refl

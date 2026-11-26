@@ -7,7 +7,8 @@ import public DSL.Circuit
 import public DSL.Control
 import DSL.Core
 import DSL.Gates
-import DSL.GateHelpers as Helpers
+-- Client proofs must be able to unfold the helpers used by build and the gates.
+import public DSL.GateHelpers
 
 %default total
 
@@ -16,191 +17,195 @@ Builder : Nat -> Type -> Type
 Builder n = Control.Monad.State.State (Circuit n n)
 
 public export
-build : {n : Nat} -> Builder n () -> Circuit n n
-build = execState Helpers.emptyCircuit
+build : {0 n : Nat} -> Builder n () -> Circuit n n
+build = execState EmptyCircuit
 
 public export
 append : Circuit n n -> Builder n ()
 append circuit = modify (\current => Sequence current circuit)
 
 public export
-x : {n : Nat} -> (q : Fin n) -> Builder n ()
-x q = modify (Helpers.x q)
+identity : {0 n : Nat} -> (q : Fin n) -> Builder n ()
+identity q = modify (GateHelpers.identity q)
 
 public export
-y : {n : Nat} -> (q : Fin n) -> Builder n ()
-y q = modify (Helpers.y q)
+x : {0 n : Nat} -> (q : Fin n) -> Builder n ()
+x q = modify (GateHelpers.x q)
 
 public export
-z : {n : Nat} -> (q : Fin n) -> Builder n ()
-z q = modify (Helpers.z q)
+y : {0 n : Nat} -> (q : Fin n) -> Builder n ()
+y q = modify (GateHelpers.y q)
 
 public export
-hadamard : {n : Nat} -> (q : Fin n) -> Builder n ()
-hadamard q = modify (Helpers.hadamard q)
+z : {0 n : Nat} -> (q : Fin n) -> Builder n ()
+z q = modify (GateHelpers.z q)
 
 public export
-s : {n : Nat} -> (q : Fin n) -> Builder n ()
-s q = modify (Helpers.s q)
+hadamard : {0 n : Nat} -> (q : Fin n) -> Builder n ()
+hadamard q = modify (GateHelpers.hadamard q)
 
 public export
-t : {n : Nat} -> (q : Fin n) -> Builder n ()
-t q = modify (Helpers.t q)
+s : {0 n : Nat} -> (q : Fin n) -> Builder n ()
+s q = modify (GateHelpers.s q)
 
 public export
-sDag : {n : Nat} -> (q : Fin n) -> Builder n ()
-sDag q = modify (Helpers.sDag q)
+t : {0 n : Nat} -> (q : Fin n) -> Builder n ()
+t q = modify (GateHelpers.t q)
 
 public export
-tDag : {n : Nat} -> (q : Fin n) -> Builder n ()
-tDag q = modify (Helpers.tDag q)
+sDag : {0 n : Nat} -> (q : Fin n) -> Builder n ()
+sDag q = modify (GateHelpers.sDag q)
 
 public export
-sx : {n : Nat} -> (q : Fin n) -> Builder n ()
-sx q = modify (Helpers.sx q)
+tDag : {0 n : Nat} -> (q : Fin n) -> Builder n ()
+tDag q = modify (GateHelpers.tDag q)
 
 public export
-sxDag : {n : Nat} -> (q : Fin n) -> Builder n ()
-sxDag q = modify (Helpers.sxDag q)
+sx : {0 n : Nat} -> (q : Fin n) -> Builder n ()
+sx q = modify (GateHelpers.sx q)
 
 public export
-rotX : {n : Nat} -> Radians -> (q : Fin n) -> Builder n ()
-rotX angle q = modify (Helpers.rotX angle q)
+sxDag : {0 n : Nat} -> (q : Fin n) -> Builder n ()
+sxDag q = modify (GateHelpers.sxDag q)
 
 public export
-rotY : {n : Nat} -> Radians -> (q : Fin n) -> Builder n ()
-rotY angle q = modify (Helpers.rotY angle q)
+rotX : {0 n : Nat} -> Radians -> (q : Fin n) -> Builder n ()
+rotX angle q = modify (GateHelpers.rotX angle q)
 
 public export
-rotZ : {n : Nat} -> Radians -> (q : Fin n) -> Builder n ()
-rotZ angle q = modify (Helpers.rotZ angle q)
+rotY : {0 n : Nat} -> Radians -> (q : Fin n) -> Builder n ()
+rotY angle q = modify (GateHelpers.rotY angle q)
 
 public export
-u : {n : Nat} -> Radians -> Radians -> Radians -> (q : Fin n) -> Builder n ()
-u theta phi lambda q = modify (Helpers.u theta phi lambda q)
+rotZ : {0 n : Nat} -> Radians -> (q : Fin n) -> Builder n ()
+rotZ angle q = modify (GateHelpers.rotZ angle q)
 
 public export
-u1 : {n : Nat} -> Radians -> (q : Fin n) -> Builder n ()
-u1 lambda q = modify (Helpers.u1 lambda q)
+u : {0 n : Nat} -> Radians -> Radians -> Radians -> (q : Fin n) -> Builder n ()
+u theta phi lambda q = modify (GateHelpers.u theta phi lambda q)
 
 public export
-u2 : {n : Nat} -> Radians -> Radians -> (q : Fin n) -> Builder n ()
-u2 phi lambda q = modify (Helpers.u2 phi lambda q)
+u1 : {0 n : Nat} -> Radians -> (q : Fin n) -> Builder n ()
+u1 lambda q = modify (GateHelpers.u1 lambda q)
 
 public export
-u3 : {n : Nat} -> Radians -> Radians -> Radians -> (q : Fin n) -> Builder n ()
-u3 theta phi lambda q = modify (Helpers.u3 theta phi lambda q)
+u2 : {0 n : Nat} -> Radians -> Radians -> (q : Fin n) -> Builder n ()
+u2 phi lambda q = modify (GateHelpers.u2 phi lambda q)
 
 public export
-measure : {n : Nat} -> (q : Fin n) -> Builder n ()
-measure q = modify (Helpers.measure q)
+u3 : {0 n : Nat} -> Radians -> Radians -> Radians -> (q : Fin n) -> Builder n ()
+u3 theta phi lambda q = modify (GateHelpers.u3 theta phi lambda q)
 
 public export
-reset : {n : Nat} -> (q : Fin n) -> Builder n ()
-reset q = modify (Helpers.reset q)
+measure : {0 n : Nat} -> (q : Fin n) -> Builder n ()
+measure q = modify (GateHelpers.measure q)
 
 public export
-cnot : {n : Nat} -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
-cnot c t = modify (Helpers.cnot c t)
+reset : {0 n : Nat} -> (q : Fin n) -> Builder n ()
+reset q = modify (GateHelpers.reset q)
 
 public export
-ctrlY : {n : Nat} -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
-ctrlY c t = modify (Helpers.ctrlY c t)
+cnot : {0 n : Nat} -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
+cnot c t = modify (GateHelpers.cnot c t)
 
 public export
-ctrlZ : {n : Nat} -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
-ctrlZ c t = modify (Helpers.ctrlZ c t)
+ctrlY : {0 n : Nat} -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
+ctrlY c t = modify (GateHelpers.ctrlY c t)
 
 public export
-swap : {n : Nat} -> (a, b : Fin n) -> {auto 0 neq : Not (a = b)} -> Builder n ()
-swap a b = modify (Helpers.swap a b)
+ctrlZ : {0 n : Nat} -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
+ctrlZ c t = modify (GateHelpers.ctrlZ c t)
 
 public export
-ctrlH : {n : Nat} -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
-ctrlH c t = modify (Helpers.ctrlH c t)
+swap : {0 n : Nat} -> (a, b : Fin n) -> {auto 0 neq : Not (a = b)} -> Builder n ()
+swap a b = modify (GateHelpers.swap a b)
 
 public export
-ctrlS : {n : Nat} -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
-ctrlS c t = modify (Helpers.ctrlS c t)
+ctrlH : {0 n : Nat} -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
+ctrlH c t = modify (GateHelpers.ctrlH c t)
 
 public export
-ctrlSDag : {n : Nat} -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
-ctrlSDag c t = modify (Helpers.ctrlSDag c t)
+ctrlS : {0 n : Nat} -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
+ctrlS c t = modify (GateHelpers.ctrlS c t)
 
 public export
-ctrlT : {n : Nat} -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
-ctrlT c t = modify (Helpers.ctrlT c t)
+ctrlSDag : {0 n : Nat} -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
+ctrlSDag c t = modify (GateHelpers.ctrlSDag c t)
 
 public export
-ctrlTDag : {n : Nat} -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
-ctrlTDag c t = modify (Helpers.ctrlTDag c t)
+ctrlT : {0 n : Nat} -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
+ctrlT c t = modify (GateHelpers.ctrlT c t)
 
 public export
-ctrlSX : {n : Nat} -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
-ctrlSX c t = modify (Helpers.ctrlSX c t)
+ctrlTDag : {0 n : Nat} -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
+ctrlTDag c t = modify (GateHelpers.ctrlTDag c t)
 
 public export
-ctrlSXDag : {n : Nat} -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
-ctrlSXDag c t = modify (Helpers.ctrlSXDag c t)
+ctrlSX : {0 n : Nat} -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
+ctrlSX c t = modify (GateHelpers.ctrlSX c t)
 
 public export
-ctrlRX : {n : Nat} -> Radians -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
-ctrlRX angle c t = modify (Helpers.ctrlRX angle c t)
+ctrlSXDag : {0 n : Nat} -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
+ctrlSXDag c t = modify (GateHelpers.ctrlSXDag c t)
 
 public export
-ctrlRY : {n : Nat} -> Radians -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
-ctrlRY angle c t = modify (Helpers.ctrlRY angle c t)
+ctrlRX : {0 n : Nat} -> Radians -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
+ctrlRX angle c t = modify (GateHelpers.ctrlRX angle c t)
 
 public export
-ctrlRZ : {n : Nat} -> Radians -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
-ctrlRZ angle c t = modify (Helpers.ctrlRZ angle c t)
+ctrlRY : {0 n : Nat} -> Radians -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
+ctrlRY angle c t = modify (GateHelpers.ctrlRY angle c t)
 
 public export
-ctrlU1 : {n : Nat} -> Radians -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
-ctrlU1 lambda c t = modify (Helpers.ctrlU1 lambda c t)
+ctrlRZ : {0 n : Nat} -> Radians -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
+ctrlRZ angle c t = modify (GateHelpers.ctrlRZ angle c t)
 
 public export
-ctrlU2 : {n : Nat} -> Radians -> Radians -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
-ctrlU2 phi lambda c t = modify (Helpers.ctrlU2 phi lambda c t)
+ctrlU1 : {0 n : Nat} -> Radians -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
+ctrlU1 lambda c t = modify (GateHelpers.ctrlU1 lambda c t)
 
 public export
-ctrlU3 : {n : Nat} -> Radians -> Radians -> Radians -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
-ctrlU3 theta phi lambda c t = modify (Helpers.ctrlU3 theta phi lambda c t)
+ctrlU2 : {0 n : Nat} -> Radians -> Radians -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
+ctrlU2 phi lambda c t = modify (GateHelpers.ctrlU2 phi lambda c t)
 
 public export
-rxx : {n : Nat} -> Radians -> (a, b : Fin n) -> {auto 0 neq : Not (a = b)} -> Builder n ()
-rxx angle a b = modify (Helpers.rxx angle a b)
+ctrlU3 : {0 n : Nat} -> Radians -> Radians -> Radians -> (c, t : Fin n) -> {auto 0 neq : Not (c = t)} -> Builder n ()
+ctrlU3 theta phi lambda c t = modify (GateHelpers.ctrlU3 theta phi lambda c t)
 
 public export
-ryy : {n : Nat} -> Radians -> (a, b : Fin n) -> {auto 0 neq : Not (a = b)} -> Builder n ()
-ryy angle a b = modify (Helpers.ryy angle a b)
+rxx : {0 n : Nat} -> Radians -> (a, b : Fin n) -> {auto 0 neq : Not (a = b)} -> Builder n ()
+rxx angle a b = modify (GateHelpers.rxx angle a b)
 
 public export
-rzz : {n : Nat} -> Radians -> (a, b : Fin n) -> {auto 0 neq : Not (a = b)} -> Builder n ()
-rzz angle a b = modify (Helpers.rzz angle a b)
+ryy : {0 n : Nat} -> Radians -> (a, b : Fin n) -> {auto 0 neq : Not (a = b)} -> Builder n ()
+ryy angle a b = modify (GateHelpers.ryy angle a b)
 
 public export
-rzx : {n : Nat} -> Radians -> (a, b : Fin n) -> {auto 0 neq : Not (a = b)} -> Builder n ()
-rzx angle a b = modify (Helpers.rzx angle a b)
+rzz : {0 n : Nat} -> Radians -> (a, b : Fin n) -> {auto 0 neq : Not (a = b)} -> Builder n ()
+rzz angle a b = modify (GateHelpers.rzz angle a b)
 
 public export
-toffoli : {n : Nat} -> (c1, c2, t : Fin n)
+rzx : {0 n : Nat} -> Radians -> (a, b : Fin n) -> {auto 0 neq : Not (a = b)} -> Builder n ()
+rzx angle a b = modify (GateHelpers.rzx angle a b)
+
+public export
+toffoli : {0 n : Nat} -> (c1, c2, t : Fin n)
         -> {auto 0 d12 : Not (c1 = c2)}
         -> {auto 0 d1t : Not (c1 = t)}
         -> {auto 0 d2t : Not (c2 = t)}
         -> Builder n ()
-toffoli c1 c2 t = modify (Helpers.toffoli c1 c2 t)
+toffoli c1 c2 t = modify (GateHelpers.toffoli c1 c2 t)
 
 public export
-fredkin : {n : Nat} -> (c, a, b : Fin n)
+fredkin : {0 n : Nat} -> (c, a, b : Fin n)
         -> {auto 0 cab : Not (a = b)}
         -> {auto 0 ca  : Not (c = a)}
         -> {auto 0 cb  : Not (c = b)}
         -> Builder n ()
-fredkin c a b = modify (Helpers.fredkin c a b)
+fredkin c a b = modify (GateHelpers.fredkin c a b)
 
 public export
-ctrl : {n : Nat} ->
+ctrl : {0 n : Nat} ->
   {k : Nat} ->
   (cs : Vect k (Fin n)) ->           -- control wires
   (bs : Vect k QState) ->            -- required qubits states
@@ -209,4 +214,4 @@ ctrl : {n : Nat} ->
   {auto 0 disjoint : Disjoint cs (snd (wiresUnitary inner))} ->
   Builder n ()
 ctrl cs bs inner {distinct} {disjoint} =
-  modify (Helpers.ctrl cs bs inner {distinct = distinct} {disjoint = disjoint})
+  modify (GateHelpers.ctrl cs bs inner {distinct = distinct} {disjoint = disjoint})
