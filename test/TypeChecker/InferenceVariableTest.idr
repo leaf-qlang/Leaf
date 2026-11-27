@@ -58,11 +58,11 @@ variableStatesFromEmptyState inferenceOperation = do
   pure (map (\(variableId, variableState) => (variableId, describeVariableState variableState))
             (Data.SortedMap.toList finalState.inferenceVariables))
 
-reportSpansFromEmptyState : StateT InferenceState (Either TypeError) a -> Either String (List (Nat, String))
-reportSpansFromEmptyState inferenceOperation = do
+anyTypeDomainVariableSpansFromEmptyState : StateT InferenceState (Either TypeError) a -> Either String (List (Nat, String))
+anyTypeDomainVariableSpansFromEmptyState inferenceOperation = do
   (finalState, _) <- runFromEmptyState inferenceOperation
   pure (map (\(variableId, reportSpan) => (variableId, showSourceSpan reportSpan))
-            (Data.SortedMap.toList finalState.generalVariableReportSpans))
+            (Data.SortedMap.toList finalState.anyTypeDomainVariableSpans))
 
 -- unify runs over the whole checker state. These tests need only its inference
 -- state, so the tables and the other fields start empty.
@@ -122,7 +122,7 @@ runInferenceVariableTests = runTests $ Test.do
       Right [(0, "open general, rank 0"), (1, "open integer, rank 0"), (2, "open float, rank 0"), (3, "open quantum usage, rank 0")]
 
   test "only a general variable records the span of the node that created it" $
-    reportSpansFromEmptyState (do
+    anyTypeDomainVariableSpansFromEmptyState (do
       _ <- freshTypeVariable inferenceTestSpan IntegerLiteralDomain
       _ <- freshTypeVariable secondInferenceTestSpan AnyTypeDomain
       freshTypeVariable inferenceTestSpan FloatLiteralDomain) `shouldBe`
@@ -271,7 +271,7 @@ runInferenceVariableTests = runTests $ Test.do
   test "the root lookup returns the root and points every visited variable directly at it" $
     resultFromEmptyState (do
       put (stateWithVariables [(0, OpenTypeVariable AnyTypeDomain 2), (1, ParentReference 0), (2, ParentReference 1), (3, ParentReference 2)])
-      (rootId, _) <- findInferenceVariableRoot 3
+      (rootId, _) <- findInferenceVariableRootAndShortenPath 3
       finalState <- get
       pure (rootId, map (\(variableId, variableState) => (variableId, describeVariableState variableState))
                         (Data.SortedMap.toList finalState.inferenceVariables))) `shouldBe`

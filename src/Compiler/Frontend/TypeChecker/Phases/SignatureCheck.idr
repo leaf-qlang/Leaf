@@ -76,7 +76,7 @@ checkFunctionDeclaration
                   case symbolInfo.symbolKind of
                     SymbolFunctionParameter => do
                       recordSymbolType nameNodeSymbolId paramLeafType
-                      recordParameterStorage nameNodeSymbolId paramLeafType
+                      recordLocalStorage nameNodeSymbolId paramLeafType
                     _ => pure ()
               pure paramLeafType
             ReceiverParameter _ _ => notImplemented __FILE__ {function = "checkFunctionDeclaration"} {feature = "receiver parameters"}

@@ -46,12 +46,13 @@ record InferenceState where                                          -- per func
   integerLiterals            : List (SourceSpan, NodeId, Integer)    -- list of the integer literals in the current body whose range can't be checked yet
   enclosingLoops             : List LoopContext                      -- stack of loops surrounding the code that pass B is checking right now, innermost first
   linearQualifiers           : List (SourceSpan, NodeId)             -- each remaining `let linear` qualifier's span and its pattern's NodeId, checked at writeback
-  generalVariableReportSpans : SortedMap Nat SourceSpan              -- where writeback reports CannotInferType for each general variable still open
+  anyTypeDomainVariableSpans : SortedMap Nat SourceSpan              -- where writeback reports CannotInferType for each AnyTypeDomain type variable still open
+  variablesWithLetReportSpan : SortedSet Nat                         -- AnyTypeDomain variables whose report span a let already moved to its pattern
 
  
 public export
 emptyInferenceState : InferenceState
-emptyInferenceState = MkInferenceState 0 empty empty empty empty [] [] [] [] [] empty
+emptyInferenceState = MkInferenceState 0 empty empty empty empty [] [] [] [] [] empty Data.SortedSet.empty
 
 public export
 record TypeCheckerState where
@@ -87,6 +88,7 @@ blocked awaitedSymbol = do
 updatedTypedSymbolInfo : TypedSymbolInfo -> InferredType -> TypedSymbolInfo
 updatedTypedSymbolInfo symbolInfo inferredType = { symbolType := inferredType } symbolInfo
 
+export
 recordInferenceVariableState : (variableId : Nat) -> InferenceVariableState -> StateT InferenceState (Either TypeError) ()
 recordInferenceVariableState variableId variableState =
   modify $ \currentState => { inferenceVariables := insert variableId variableState currentState.inferenceVariables } currentState
@@ -108,11 +110,11 @@ typedLocalVarQualifiers localVarQualifiers leafType =
     else { quantumStorage := NotQbitLocal } localVarQualifiers
 
 export
-recordParameterStorage : SymbolId -> LeafType -> StateT TypeCheckerState (Either CheckFailure) ()
-recordParameterStorage symbolId leafType = do
+recordLocalStorage : SymbolId -> LeafType -> StateT TypeCheckerState (Either CheckFailure) ()
+recordLocalStorage symbolId leafType = do
   checkerState <- get
   case lookup symbolId checkerState.typeTables.localVarsMeta of
-    Nothing => unreachable __FILE__ {function = "recordParameterStorage"} {reason = "symbol cannot be found in the local variable metadata"}
+    Nothing => unreachable __FILE__ {function = "recordLocalStorage"} {reason = "symbol cannot be found in the local variable metadata"}
     Just localVariableQualifiers => do
       let classifiedQualifiers = typedLocalVarQualifiers localVariableQualifiers leafType
       modify $ \currentState => { typeTables.localVarsMeta := insert symbolId classifiedQualifiers currentState.typeTables.localVarsMeta } currentState
@@ -121,6 +123,36 @@ export
 recordConstValue : SymbolId -> ConstValue -> StateT TypeCheckerState (Either CheckFailure) ()
 recordConstValue symbolId constValue =
   modify $ \currentState => { typeTables.constValues := insert symbolId constValue currentState.typeTables.constValues } currentState
+
+export
+recordExpressionType : NodeId -> TcType -> StateT TypeCheckerState (Either CheckFailure) ()
+recordExpressionType nodeId expressionType =
+  modify $ \currentState => { inferenceState.expressionTypes := insert nodeId expressionType currentState.inferenceState.expressionTypes } currentState
+
+export
+recordPatternType : NodeId -> TcType -> StateT TypeCheckerState (Either CheckFailure) ()
+recordPatternType nodeId patternType =
+  modify $ \currentState => { inferenceState.patternTypes := insert nodeId patternType currentState.inferenceState.patternTypes } currentState
+
+export
+recordBinderType : SymbolId -> TcType -> StateT TypeCheckerState (Either CheckFailure) ()
+recordBinderType symbolId binderType =
+  modify $ \currentState => { inferenceState.binderTypes := insert symbolId binderType currentState.inferenceState.binderTypes } currentState
+
+export
+recordIntegerLiteral : SourceSpan -> NodeId -> (literalValue : Integer) -> StateT TypeCheckerState (Either CheckFailure) ()
+recordIntegerLiteral literalSpan literalNodeId literalValue =
+  modify $ \currentState => { inferenceState.integerLiterals := (literalSpan, literalNodeId, literalValue) :: currentState.inferenceState.integerLiterals } currentState
+
+export
+recordLinearQualifier : (qualifierSpan : SourceSpan) -> (patternNodeId : NodeId) -> StateT TypeCheckerState (Either CheckFailure) ()
+recordLinearQualifier qualifierSpan patternNodeId =
+  modify $ \currentState => { inferenceState.linearQualifiers := (qualifierSpan, patternNodeId) :: currentState.inferenceState.linearQualifiers } currentState
+
+export
+recordCallResolution : NodeId -> CallResolution -> StateT TypeCheckerState (Either CheckFailure) ()
+recordCallResolution callNodeId callResolution =
+  modify $ \currentState => { typeTables.calls := insert callNodeId callResolution currentState.typeTables.calls } currentState
 
 --------------------------------------------------------------------------------
 -- Inference variables
@@ -149,16 +181,13 @@ allocateInferenceVariable initialVariableState = do
   recordInferenceVariableState variableId initialVariableState
   pure variableId
 
-||| A general variable starts with the span of the node that created it as its
-||| report span, where writeback reports CannotInferType if nothing solves it.
-||| A literal variable always has a default, so it gets no report span.
 export
 freshTypeVariable : (creatingNodeSpan : SourceSpan) -> TypeVariableDomain -> StateT InferenceState (Either TypeError) TcType
 freshTypeVariable creatingNodeSpan variableDomain = do
   variableId <- allocateInferenceVariable (OpenTypeVariable variableDomain 0)
   case variableDomain of
-    AnyTypeDomain =>
-      modify $ \currentState => { generalVariableReportSpans := insert variableId creatingNodeSpan currentState.generalVariableReportSpans } currentState
+    AnyTypeDomain => modify $
+      \currentState => { anyTypeDomainVariableSpans := insert variableId creatingNodeSpan currentState.anyTypeDomainVariableSpans } currentState
     IntegerLiteralDomain => pure ()
     FloatLiteralDomain => pure ()
   pure (TcVariable variableId)
@@ -188,53 +217,41 @@ followParentIdsToRoot fuel variableId inferenceVariables visitedVariableIds =
             {reason = "the parent references from inference variable " ++
                       show variableId ++ " form a cycle"}
         S remainingFuel =>
-          followParentIdsToRoot remainingFuel parentVariableId inferenceVariables
-            (variableId :: visitedVariableIds)
-    Just rootState => (variableId, rootState, visitedVariableIds)
+          followParentIdsToRoot remainingFuel parentVariableId inferenceVariables (variableId :: visitedVariableIds)
+    Just rootInferenceVariableState => (variableId, rootInferenceVariableState, visitedVariableIds)
 
 export
-findInferenceVariableRoot : (variableId : Nat)
-  -> StateT InferenceState (Either TypeError) (Nat, InferenceVariableState)
-findInferenceVariableRoot variableId = do
+findInferenceVariableRootAndShortenPath : (variableId : Nat) -> StateT InferenceState (Either TypeError) (Nat, InferenceVariableState)
+findInferenceVariableRootAndShortenPath variableId = do
   inferenceState <- get
-  let (rootId, rootState, visitedVariableIds) =
-        followParentIdsToRoot inferenceState.nextInferenceVariableId variableId inferenceState.inferenceVariables []
+  let (rootId, rootState, visitedVariableIds) = followParentIdsToRoot inferenceState.nextInferenceVariableId variableId inferenceState.inferenceVariables []
   traverse_ (\visitedVariableId => recordInferenceVariableState visitedVariableId (ParentReference rootId)) visitedVariableIds
   pure (rootId, rootState)
 
--- Merges two distinct open roots: the lower-ranked root goes under the other.
--- With equal ranks the second root goes under the first, whose rank grows by one.
--- The surviving root is rebuilt from its rank with openRootWithRank.
 mergeOpenRootsByRank : (firstRootId : Nat)
   -> (firstRank : Nat)
   -> (secondRootId : Nat)
   -> (secondRank : Nat)
-  -> (openRootWithRank : Nat -> InferenceVariableState)
+  -> (buildSurvivingRootStateFromRank : Nat -> InferenceVariableState)
   -> StateT InferenceState (Either TypeError) ()
-mergeOpenRootsByRank firstRootId firstRank secondRootId secondRank openRootWithRank =
+mergeOpenRootsByRank firstRootId firstRank secondRootId secondRank buildSurvivingRootStateFromRank =
   if firstRank < secondRank
     then do
       recordInferenceVariableState firstRootId (ParentReference secondRootId)
-      recordInferenceVariableState secondRootId (openRootWithRank secondRank)
+      recordInferenceVariableState secondRootId (buildSurvivingRootStateFromRank secondRank)
     else if secondRank < firstRank
       then do
         recordInferenceVariableState secondRootId (ParentReference firstRootId)
-        recordInferenceVariableState firstRootId (openRootWithRank firstRank)
+        recordInferenceVariableState firstRootId (buildSurvivingRootStateFromRank firstRank)
       else do
         recordInferenceVariableState secondRootId (ParentReference firstRootId)
-        recordInferenceVariableState firstRootId (openRootWithRank (S firstRank))
+        recordInferenceVariableState firstRootId (buildSurvivingRootStateFromRank (S firstRank))
 
-||| Makes two open type variables the same unknown, keeping the intersection of
-||| their domains: a general variable merged with a literal variable takes the
-||| literal's domain. An integer literal variable and a float literal variable
-||| have no type in common, which is a TypeMismatch at the span, shown with the
-||| literals' defaults i32 and f64. Merging a variable with itself does nothing.
-||| A fixed variable cannot be merged: unify resolves it to its type first.
 export
 mergeTypeVariables : SourceSpan -> (expectedVariableId : Nat) -> (actualVariableId : Nat) -> StateT InferenceState (Either TypeError) ()
 mergeTypeVariables sourceSpan expectedVariableId actualVariableId = do
-  (expectedRootId, expectedRootState) <- findInferenceVariableRoot expectedVariableId
-  (actualRootId, actualRootState) <- findInferenceVariableRoot actualVariableId
+  (expectedRootId, expectedRootState) <- findInferenceVariableRootAndShortenPath expectedVariableId
+  (actualRootId, actualRootState) <- findInferenceVariableRootAndShortenPath actualVariableId
   if expectedRootId == actualRootId
     then pure ()
     else
@@ -261,15 +278,11 @@ mergeTypeVariables sourceSpan expectedVariableId actualVariableId = do
             {reason = "only two open type variables can be merged, not " ++
                       show expectedVariableId ++ " and " ++ show actualVariableId}
 
-||| Makes two open quantum usage variables the same unknown. Merging a variable
-||| with itself does nothing. A fixed variable cannot be merged: unify resolves it first.
 export
-mergeQuantumUsageVariables : (firstVariableId : Nat)
-  -> (secondVariableId : Nat)
-  -> StateT InferenceState (Either TypeError) ()
+mergeQuantumUsageVariables : (firstVariableId : Nat) -> (secondVariableId : Nat) -> StateT InferenceState (Either TypeError) ()
 mergeQuantumUsageVariables firstVariableId secondVariableId = do
-  (firstRootId, firstRootState) <- findInferenceVariableRoot firstVariableId
-  (secondRootId, secondRootState) <- findInferenceVariableRoot secondVariableId
+  (firstRootId, firstRootState) <- findInferenceVariableRootAndShortenPath firstVariableId
+  (secondRootId, secondRootState) <- findInferenceVariableRootAndShortenPath secondVariableId
   if firstRootId == secondRootId
     then pure ()
     else
@@ -283,12 +296,11 @@ mergeQuantumUsageVariables firstVariableId secondVariableId = do
                       show firstVariableId ++ " and " ++ show secondVariableId}
 
 export
-resolveQuantumUsageThroughParentReferences : TcQuantumUsage
-  -> StateT InferenceState (Either TypeError) TcQuantumUsage
+resolveQuantumUsageThroughParentReferences : TcQuantumUsage -> StateT InferenceState (Either TypeError) TcQuantumUsage
 resolveQuantumUsageThroughParentReferences (KnownQuantumUsage quantumUsageQualifier) =
   pure (KnownQuantumUsage quantumUsageQualifier)
 resolveQuantumUsageThroughParentReferences (UnknownQuantumUsage variableId) = do
-  (rootId, rootState) <- findInferenceVariableRoot variableId
+  (rootId, rootState) <- findInferenceVariableRootAndShortenPath variableId
   case rootState of
     OpenQuantumUsage _ => pure (UnknownQuantumUsage rootId)
     FixedQuantumUsage quantumUsageQualifier => pure (KnownQuantumUsage quantumUsageQualifier)
@@ -324,7 +336,7 @@ resolveTcTypeWithFuel fuel tcType =
     TcNeverType => pure tcType
     TcStringLiteralType => pure tcType
     TcVariable variableId => do
-      (rootId, rootState) <- findInferenceVariableRoot variableId
+      (rootId, rootState) <- findInferenceVariableRootAndShortenPath variableId
       case rootState of
         OpenTypeVariable _ _ => pure (TcVariable rootId)
         FixedTypeVariable fixedType =>
@@ -353,8 +365,7 @@ resolveTcTypeWithFuel fuel tcType =
 ||| Replaces every fixed variable in the type by its resolved fixed type, and
 ||| every open variable by its root, so the result holds only open roots.
 export
-resolveTcTypeThroughParentReferences : TcType
-  -> StateT InferenceState (Either TypeError) TcType
+resolveTcTypeThroughParentReferences : TcType -> StateT InferenceState (Either TypeError) TcType
 resolveTcTypeThroughParentReferences tcType = do
   inferenceState <- get
   resolveTcTypeWithFuel inferenceState.nextInferenceVariableId tcType
@@ -390,13 +401,53 @@ checkVariableDoesNotOccurInType : SourceSpan
   -> (candidateType : TcType)
   -> StateT InferenceState (Either TypeError) ()
 checkVariableDoesNotOccurInType sourceSpan variableId candidateType = do
-  (rootId, _) <- findInferenceVariableRoot variableId
+  (rootId, _) <- findInferenceVariableRootAndShortenPath variableId
   resolvedCandidateType <- resolveTcTypeThroughParentReferences candidateType
   case resolvedCandidateType of
     TcVariable _ => pure ()
     _ =>
       when (typeContainsVariable rootId resolvedCandidateType) $
         lift (Left (CannotInferType sourceSpan))
+
+variableIdsInType : TcType -> List Nat
+variableIdsInType tcType =
+  case tcType of
+    TcPrimitiveType _ => []
+    TcNamedType _ => []
+    TcUnitType => []
+    TcTupleType elementTypes => concatMap recur (forget elementTypes)
+    TcArrayType elementType _ => recur elementType
+    TcSliceType elementType => recur elementType
+    TcRangeType _ elementType => recur elementType
+    TcReferenceType _ referencedType => recur referencedType
+    TcFunctionType _ _ parameterTypes resultType => concatMap recur parameterTypes ++ recur resultType
+    TcQuantumQualifiedType _ qualifiedType => recur qualifiedType
+    TcNeverType => []
+    TcStringLiteralType => []
+    TcVariable variableId => [variableId]
+  where
+    recur : TcType -> List Nat
+    recur componentType = variableIdsInType (assert_smaller tcType componentType)
+
+||| After a let pattern's type is recorded, every AnyTypeDomain variable still open in
+||| it is reported at the pattern if it stays open, as Rust reports `let a = [];` at
+||| `a`. Only the first let moves a variable's report span: a later let leaves it.
+export
+moveOpenAnyTypeDomainVariableSpansToLetPattern : (patternSpan : SourceSpan) -> (patternType : TcType) -> StateT InferenceState (Either TypeError) ()
+moveOpenAnyTypeDomainVariableSpansToLetPattern patternSpan patternType = do
+  resolvedPatternType <- resolveTcTypeThroughParentReferences patternType
+  traverse_ moveReportSpanToLetPattern (variableIdsInType resolvedPatternType)
+  where
+    moveReportSpanToLetPattern : Nat -> StateT InferenceState (Either TypeError) ()
+    moveReportSpanToLetPattern rootId = do
+      inferenceState <- get
+      case lookup rootId inferenceState.inferenceVariables of
+        Just (OpenTypeVariable AnyTypeDomain _) =>
+          unless (contains rootId inferenceState.variablesWithLetReportSpan) $
+            put $ { anyTypeDomainVariableSpans := insert rootId patternSpan inferenceState.anyTypeDomainVariableSpans
+                  , variablesWithLetReportSpan := insert rootId inferenceState.variablesWithLetReportSpan
+                  } inferenceState
+        _ => pure ()
 
 ||| Fixes every open root that has a default: an integer literal variable to i32,
 ||| a float literal variable to f64 and a quantum usage variable to linear. A general
@@ -459,3 +510,25 @@ resolvedTcTypeToLeafType tcType =
 export
 tcTypeToLeafType : TcType -> StateT InferenceState (Either TypeError) LeafType
 tcTypeToLeafType tcType = resolvedTcTypeToLeafType <$> resolveTcTypeThroughParentReferences tcType
+
+export
+leafTypeToTcType : LeafType -> TcType
+leafTypeToTcType leafType =
+  case leafType of
+    LeafPrimitiveType primitiveName => TcPrimitiveType primitiveName
+    LeafNamedType symbolId => TcNamedType symbolId
+    LeafUnitType => TcUnitType
+    LeafTupleType elementTypes => TcTupleType (map recur elementTypes)
+    LeafArrayType elementType arrayLength => TcArrayType (recur elementType) arrayLength
+    LeafSliceType elementType => TcSliceType (recur elementType)
+    LeafRangeType rangeShape elementType => TcRangeType rangeShape (recur elementType)
+    LeafReferenceType borrowKind referencedType => TcReferenceType borrowKind (recur referencedType)
+    LeafFunctionType functionEffect supportKinds parameterTypes resultType =>
+      TcFunctionType functionEffect supportKinds (map recur parameterTypes) (recur resultType)
+    LeafQuantumQualifiedType quantumUsageQualifier qualifiedType =>
+      TcQuantumQualifiedType (KnownQuantumUsage quantumUsageQualifier) (recur qualifiedType)
+    LeafStringLiteralType => TcStringLiteralType
+    LeafNeverType => TcNeverType
+  where
+    recur : LeafType -> TcType
+    recur componentType = leafTypeToTcType (assert_smaller leafType componentType)

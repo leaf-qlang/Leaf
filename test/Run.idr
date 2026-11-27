@@ -50,10 +50,10 @@ suites =
   , ("ScopeAndNameResolution.PreludeTest", runPreludeFunctionsResolutionTests)
   , ("ScopeAndNameResolution.ValidationTest", runResolutionValidationTests)
   , ("TypeChecker.NumericTest", runNumericTests)
---  , ("TypeChecker.InferenceVariableTest", runInferenceVariableTests)
+  , ("TypeChecker.InferenceVariableTest", runInferenceVariableTests)
   , ("TypeChecker.TypeTranslationTest", runTypeTranslationTests)
   , ("TypeChecker.Phases.SignatureCheckTest", runSignatureCheckTests)
---  , ("TypeChecker.Phases.BodyCheckTest", runBodyCheckTests)
+  , ("TypeChecker.Phases.BodyCheckTest", runBodyCheckTests)
   , ("Examples.CompileCodeExamplesTest", runCompileCodeExamplesTests)
   ]
 

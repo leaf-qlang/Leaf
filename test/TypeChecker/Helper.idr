@@ -1,6 +1,7 @@
 module TypeChecker.Helper
 
 import Data.List1
+import Data.SortedMap
 import Data.String
 import Text.Bounds
 
@@ -12,6 +13,7 @@ import Compiler.Frontend.TypeChecker.Data
 import Compiler.Frontend.TypeChecker.Type
 import Compiler.Frontend.TypeChecker.TypeCheck
 import Compiler.Frontend.Validator.PostParseValidation
+import Compiler.Frontend.ASTData
 import Compiler.Frontend.ASTPhases
 import Compiler.Frontend.Lexer.Error
 import Compiler.Frontend.Lexer.Lexer
@@ -59,6 +61,26 @@ signaturesAndBodiesOutcome : String -> Either String ()
 signaturesAndBodiesOutcome inputProgram =
   bimap show (const ())
     (checkResolvedFixture typeCheckSignaturesAndBodies "test-fixture.rs" inputProgram)
+
+||| Check only signatures and bodies, and return the tables passes A and B built,
+||| so a test can assert their contents.
+export
+signaturesAndBodiesTables : String -> Either TypeError TypeTables
+signaturesAndBodiesTables = checkResolvedFixture typeCheckSignaturesAndBodies "test-fixture.rs"
+
+||| The types writeback recorded for the local bindings named `bindingName`, in
+||| declaration order. A binding whose type is not resolved is left out.
+export
+localBindingTypes : (bindingName : String) -> TypeTables -> List LeafType
+localBindingTypes bindingName typeTables =
+  mapMaybe recordedLocalBindingType (values typeTables.symbols)
+  where
+    recordedLocalBindingType : TypedSymbolInfo -> Maybe LeafType
+    recordedLocalBindingType symbolInfo =
+      case (symbolInfo.symbolKind, symbolInfo.symbolType) of
+        (SymbolLocalBinding, ResolvedType leafType) =>
+          if symbolInfo.declaredName == bindingName then Just leafType else Nothing
+        _ => Nothing
 
 export
 typeCheckAndPrettyPrint : String -> Either TypeError String

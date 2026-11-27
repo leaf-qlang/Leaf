@@ -113,6 +113,17 @@ integerLiteralSuffixType rawLiteralText =
     (_, []) => Nothing
     (_, suffixCharacters) => typeFromString (pack suffixCharacters)
 
+||| The float type named by the suffix of a well-formed float literal's raw
+||| spelling, if one was written: "12E+99_f64" names f64, "5f32" f32, "1.0e-3"
+||| none. Float literals are decimal and their exponent marker is `e` or `E`, so
+||| the suffix starts at the first `f`.
+public export
+floatLiteralSuffixType : String -> Maybe TypPrimName
+floatLiteralSuffixType rawLiteralText =
+  case break (== 'f') (unpack rawLiteralText) of
+    (_, []) => Nothing
+    (_, suffixCharacters) => typeFromString (pack suffixCharacters)
+
 ||| The current target uses 64-bit pointers, independently of the compiler host.
 public export
 usizeBitWidth : Nat
