@@ -1,8 +1,14 @@
-module DSL.CircuitInverseReductionTest
+module DSL.CircuitInverseCompileTimeTest
 
--- This module does not import DSL.Adjoint, so it checks that importing
--- DSL.Circuit is enough for inv to reduce while type checking: inv calls
--- adjointGate, which Idris unfolds only when DSL.Adjoint is visible.
+-- Compile-time checks for inv, the inverse of a circuit. Each equation below is
+-- proved by Refl, so the compiler must evaluate `inv` on a concrete circuit
+-- while this module type checks. A broken check stops the test package from
+-- compiling; nothing runs at test time.
+--
+-- The module does not import DSL.Adjoint, so it also checks that importing
+-- DSL.Circuit is enough: inv calls adjointGate, which Idris unfolds only when
+-- DSL.Adjoint is visible, so DSL.Circuit must re-export it.
+
 import Data.Fin
 import DSL.Circuit
 import DSL.Core

@@ -68,13 +68,14 @@ modules = Main,
           DSL.AngleConstants,
           DSL.Circuit,
           DSL.CircuitBuilder,
+          DSL.Classical,
           DSL.Control,
           DSL.Core,
           DSL.Examples.Deutsch1,
           DSL.Examples.Deutsch2,
           DSL.GateHelpers,
           DSL.Gates,
-	  DSL.Wrap4Pi
+	  DSL.ReduceModulo4Pi
 
 main = Main
 executable = leaf

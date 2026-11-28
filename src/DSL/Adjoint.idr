@@ -149,6 +149,5 @@ mutual
 
 public export
 adjointGate : Gate n -> Maybe (Gate n)
-adjointGate (UGate u)   = Just (UGate (adjointUnitary u))
-adjointGate (Measure _) = Nothing      -- not unitary
-adjointGate (Reset   _) = Nothing      -- not unitary
+adjointGate (UGate u) = Just (UGate (adjointUnitary u))
+adjointGate (Reset _) = Nothing      -- not unitary

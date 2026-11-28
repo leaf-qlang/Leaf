@@ -1,4 +1,9 @@
-module DSL.TypeLevelReductionTest
+module DSL.GateAndCircuitFunctionsCompileTimeTest
+
+-- Compile-time checks that DSL functions evaluate while a module type checks.
+-- The proofs in DSL.Gates and DSL.Control rely on functions such as
+-- wiresUnitary and adjointUnitary doing so. A broken check stops the test
+-- package from compiling; nothing runs at test time.
 
 import Data.Fin
 import Data.Vect

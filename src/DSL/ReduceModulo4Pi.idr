@@ -1,13 +1,18 @@
-module DSL.Wrap4Pi
+module DSL.ReduceModulo4Pi
 
 import DSL.AngleConstants
 
 %default total
 
--- These three parts approximate 4π. Subtracting their multiples separately
--- preserves precision when removing many periods. The high and middle parts
--- each use 21 significant bits, so their products with the period count are
--- exact below the cutoff used here. The low-part product can still round.
+-- Standard trick for reducing doubles without losing precision (Cody–Waite).
+-- 4π is split into three parts whose sum is closer to the true 4π than a single
+-- Double. Removing k periods as three separate subtractions, largest part first,
+-- avoids multiplying the rounding error of a single-Double 4π by k. The high and
+-- middle parts are short enough that multiplying them by k gives an exact
+-- result, with no rounding, as long as the angle is below the 2^35 cutoff used
+-- below. Only the product with the tiny low part can round, and that error is
+-- negligible.
+
 public export
 fourPiHigh : Double
 fourPiHigh = 12.566368103027344
@@ -23,8 +28,8 @@ fourPiLow = 4.978697737517291e-13
 -- Rotation angles are taken modulo 4π, the period of the rotation gates, and
 -- each angle is represented by its unique value in [-2π, 2π).
 public export
-reduceModuloFourPiIntoSignedTwoPiRange : Double -> Double
-reduceModuloFourPiIntoSignedTwoPiRange angle =
+reduceIntoSignedTwoPiRange : Double -> Double
+reduceIntoSignedTwoPiRange angle =
   let magnitude = abs angle
       remainder =
         if magnitude <= twoPi then angle
@@ -38,7 +43,7 @@ reduceModuloFourPiIntoSignedTwoPiRange angle =
           -- For large inputs, accuracy depends on the platform's math library.
           4.0 * atan (tan (angle / 4.0))
   in -- A result outside [-twoPi, twoPi) needs one final adjustment.
-     -- In particular, twoPi wraps to -twoPi.
+     -- In particular, twoPi reduces to -twoPi.
      if remainder >= twoPi then remainder - fourPi
      else if remainder < negate twoPi then remainder + fourPi
      else remainder

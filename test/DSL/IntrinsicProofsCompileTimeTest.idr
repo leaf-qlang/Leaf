@@ -1,4 +1,12 @@
-module DSL.IntrinsicProofsTest
+module DSL.IntrinsicProofsCompileTimeTest
+
+-- Compile-time checks that the DSL's types reject invalid gates and circuits:
+-- wires outside the register, repeated wires, controls that overlap the
+-- controlled gate, nonunitary gates under quantum control, and circuits whose
+-- register widths do not fit together. Each rejection sits in a failing block,
+-- which the compiler accepts only if the code inside fails to type check with
+-- the expected error. A broken check stops the test package from compiling;
+-- nothing runs at test time.
 
 import Data.Fin
 import Data.Vect

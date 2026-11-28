@@ -135,6 +135,5 @@ mutual
 
 public export
 data Gate : Nat -> Type where
-  UGate   : UnitaryGate n -> Gate n
-  Measure : (q : Fin n) -> Gate n
-  Reset   : (q : Fin n) -> Gate n
+  UGate : UnitaryGate n -> Gate n
+  Reset : (q : Fin n) -> Gate n

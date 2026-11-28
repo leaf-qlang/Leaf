@@ -4,13 +4,13 @@ import Data.String
 import System
 
 import Backend.OpenQasm3SerializerTest
-import DSL.CircuitBuilderReductionTest
-import DSL.CircuitInverseReductionTest
-import DSL.IntrinsicProofsTest
+import DSL.CircuitBuilderCompileTimeTest
+import DSL.CircuitInverseCompileTimeTest
+import DSL.GateAndCircuitFunctionsCompileTimeTest
+import DSL.IntrinsicProofsCompileTimeTest
 import DSL.RadiansArithmeticTest
-import DSL.RadiansConstructionTest
-import DSL.TypeLevelReductionTest
-import DSL.Wrap4PiTest
+import DSL.RadiansCompileTimeTest
+import DSL.ReduceModulo4PiTest
 import Examples.CompileCodeExamples
 import Examples.CompileCodeExamplesTest
 import Desugarer.DesugaringTest
@@ -37,7 +37,7 @@ suites =
   [ ("Lexer.LexerTest", runLexerTests)
   , ("Lexer.UnicodeNormalizationTest", runUnicodeNormalizationTests)
   , ("Backend.OpenQasm3SerializerTest", runSerializerTests)
-  , ("DSL.Wrap4PiTest", runWrap4PiTests)
+  , ("DSL.ReduceModulo4PiTest", runReduceModulo4PiTests)
   , ("DSL.RadiansArithmeticTest", runRadiansArithmeticTests)
   , ("Parser.ExpressionParseTest", runExpressionParseTests)
   , ("Utils.ASTDebugPrinterTest", runASTDebugPrinterTests)
